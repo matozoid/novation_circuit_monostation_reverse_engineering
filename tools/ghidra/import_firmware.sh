@@ -25,6 +25,6 @@ mkdir -p "$project_dir"
     -loader BinaryLoader \
     -loader-baseAddr 0x0800C000 \
     -scriptPath "$here" \
-    -preScript map_memory.py \
+    -preScript MapMemory.java \
     -analysisTimeoutPerFile 1200 \
     -overwrite

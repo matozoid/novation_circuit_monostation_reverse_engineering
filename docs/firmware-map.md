@@ -69,6 +69,23 @@ On-chip flash program/erase (FLASH_IF, 2 refs at `0x0801A930`, `0x08028890`) sav
 - **Patch/session (de)serialiser**: the 136-byte patch and `.monostationsession` layout handlers (#12/#13) live in the storage region above.
 - **SPI device assignment**: which SPI port drives LEDs vs an external DAC.
 
+## Ghidra auto-analysis (#9)
+
+`tools/ghidra/import_firmware.sh` imports the image, runs `MapMemory.java` (memory map + reset-handler seed) and leaves the DB in `ghidra-project/` (git-ignored). `ExportMap.java` writes the full function listing to `docs/ghidra-functions.txt`; `DecompileFunc.java <addr>…` prints decompiled C for investigation. (Ghidra 12.x headless has no Jython, so these are Java GhidraScripts, not Python.)
+
+Auto-analysis finds **467 functions**. Confirmed so far:
+
+| Function | Role |
+|----------|------|
+| `FUN_08025E60` | Reset handler (CMSIS startup) |
+| `FUN_08025F3C` | `memset(dst, val, len)` |
+| `FUN_08026752` | `memcpy(dst, src, len)` |
+| `FUN_08018CA4` | **Session initialiser** — builds the "Initial Session" struct in RAM out to offset `0x155DE` (≈87.9 KB, matching the 90,112-byte `.monostationsession`); drives #13. |
+| `FUN_0800E1F8`, `FUN_0801B4E0` | reference the "Initial Patch" default — patch load/init; drive #12. |
+| `FUN_0800C2D0` (7142 B), `FUN_0800FB5C` (6288 B) | largest routines — likely the main loop / scan or the sequencer; not yet identified. |
+
+Note: the UI debug-string pool words (`0x08017930`+) sit in a code region auto-analysis did not promote to a function (reached by tail call); revisit by disassembling from the enclosing block.
+
 ## Data tables noted
 - `0x08027F29`: symmetric ramp `~}||{…ghh…||}~` — waveform/curve LUT.
 - `0x0802ABDC`: ASCII-ordered `@ABC…` run — likely a character/segment table for a display or name entry.
