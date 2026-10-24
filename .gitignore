@@ -1,0 +1,8 @@
+# Vendor binaries (large, redistributable only from vendor)
+*.exe
+*.dmg
+
+# Extracted / decoded firmware blobs
+firmware/
+
+.idea/
