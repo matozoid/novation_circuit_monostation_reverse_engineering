@@ -116,6 +116,21 @@ class ParamDecodeTest(unittest.TestCase):
 
 
 @unittest.skipUnless(PACK.exists(), "Roboo.monostationpack absent")
+class EnumTest(unittest.TestCase):
+    def test_category_names(self):
+        self.assertEqual(len(patchbank.CATEGORIES), 15)
+        self.assertEqual(patchbank.category_name(0), "None")
+        self.assertEqual(patchbank.category_name(2), "Bass")
+        self.assertEqual(patchbank.category_name(14), "Voc/Tune")
+        self.assertEqual(patchbank.category_name(15), "15")
+
+    def test_genre_names(self):
+        self.assertEqual(len(patchbank.GENRES), 10)
+        self.assertEqual(patchbank.genre_name(3), "House")
+        self.assertEqual(patchbank.genre_name(9), "Dubstep")
+        self.assertEqual(patchbank.genre_name(10), "10")
+
+
 class RealBankTest(unittest.TestCase):
     def setUp(self):
         self.msgs = patchbank.split_bank(patchbank.read_pack(PACK))
@@ -132,6 +147,8 @@ class RealBankTest(unittest.TestCase):
         self.assertTrue(all(n == "Initial Patch" for n in names[32:]))
 
     def test_bass_patches_are_category_1(self):
+        # Raw byte only: Roboo's author tagged bass1-4 with 1 (= "Arp" in
+        # Components' table), so the stored value doesn't match the name.
         for m in self.msgs[:4]:
             self.assertEqual(patchbank.decode_meta(m)["category"], 1)
 

@@ -47,7 +47,13 @@ GENRE_OFF = 26
 PARAMS_OFF = 27                  # through 134; 135 is F7
 
 MSG_TYPES = {0: "current-patch", 1: "slot-write"}
-CATEGORIES = {1: "Bass", 3: "Drum/Percussion"}   # partial; full enum TBD
+# Category / genre names, by index (Components' Circuit-family librarian:
+# modules frontend/constants/circuit/patch-categories and patch-genres).
+CATEGORIES = ["None", "Arp", "Bass", "Bell", "Classic", "Drum", "Keyboard",
+              "Lead", "Movement", "Pad", "Poly", "SFX", "String", "User",
+              "Voc/Tune"]
+GENRES = ["None", "Classic", "D&B/Breaks", "House", "Industrial", "Jazz",
+          "R&B/HHop", "Rock/Pop", "Techno", "Dubstep"]
 
 # --- 136-byte parameter map (community PDF offsets == message byte offsets) ---
 #
@@ -220,8 +226,12 @@ def _fmt_type(t):
     return MSG_TYPES.get(t, "?%d" % t)
 
 
-def _fmt_cat(c):
-    return CATEGORIES.get(c, str(c))
+def category_name(c):
+    return CATEGORIES[c] if c < len(CATEGORIES) else str(c)
+
+
+def genre_name(g):
+    return GENRES[g] if g < len(GENRES) else str(g)
 
 
 def main(argv):
@@ -231,9 +241,9 @@ def main(argv):
         print("%d message(s), device id 01 61" % len(msgs))
         for m in msgs:
             d = decode_meta(m)
-            print("  slot %2d  %-16s  type=%-13s category=%-14s genre=%d"
+            print("  slot %2d  %-16s  type=%-13s category=%-9s genre=%s"
                   % (d["slot"], d["name"], _fmt_type(d["message_type"]),
-                     _fmt_cat(d["category"]), d["genre"]))
+                     category_name(d["category"]), genre_name(d["genre"])))
         return
     if len(argv) == 4 and argv[1] == "show":
         msgs = split_bank(read_pack(argv[2]))
@@ -244,8 +254,9 @@ def main(argv):
                         if decode_meta(m)["name"] == argv[3])
         m = msgs[slot]
         d = decode_meta(m)
-        print("slot %d  %r  category=%s genre=%d"
-              % (d["slot"], d["name"], _fmt_cat(d["category"]), d["genre"]))
+        print("slot %d  %r  category=%s genre=%s"
+              % (d["slot"], d["name"], category_name(d["category"]),
+                 genre_name(d["genre"])))
         for name, value in decode_params(m).items():
             print("  %-22s %d" % (name, value))
         return

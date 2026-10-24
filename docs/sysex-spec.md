@@ -40,8 +40,10 @@ Per 136-byte message:
 | 7 | slot index (0–63 in a bank) |
 | 8 | `00` |
 | 9–24 | patch name, 16 ASCII, space-padded |
-| 25 | category (observed: `1` = Bass, `3` = Drum/Percussion; full enum TBD) |
-| 26 | genre (`0` observed) |
+| 25 | category index: 0 None, 1 Arp, 2 Bass, 3 Bell, 4 Classic, 5 Drum, 6 Keyboard, 7 Lead, 8 Movement, 9 Pad, 10 Poly, 11 SFX, 12 String, 13 User, 14 Voc/Tune |
+| 26 | genre index: 0 None, 1 Classic, 2 D&B/Breaks, 3 House, 4 Industrial, 5 Jazz, 6 R&B/HHop, 7 Rock/Pop, 8 Techno, 9 Dubstep |
+
+The category and genre tables come from Components' Circuit-family librarian (modules `frontend/constants/circuit/patch-categories` and `patch-genres`, JS names `mP`/`gP`; the sidebar binds `categoryOptions=mP`, `genreOptions=gP`). The similar lists `kR`/`Wte` (`Motion`, `User 1`, `User 2`) belong to Peak, not the Circuit family. Real packs use the field loosely: Roboo tags its basses `1` (Arp) and its drums `3` (Bell), the YBC banks use only 0–3, and every genre seen is `0`. Treat the byte as a free user tag, not a reliable description of the sound.
 | 27–40 | reserved / unmapped (`00` in the init patch; `27` = env retrigger/legato per the PDF) |
 | 41–134 | parameters, in the split "LSB + `0x00`/`0x40`" encoding — offsets per the community PDF (osc1/osc2 from 41, mixer, filter, env, LFO, distortion, 93–133 mod matrix, 134 selected routing) |
 | 135 | `F7` |
@@ -134,7 +136,7 @@ Unused payload bytes in 7–99: 59–67, 88–90, 93 (reserved / sequencer handl
 `overlayIndex` (1–80 in the TSV) is **not** a value MSB — it indexes a separate per-parameter *overlay* map used by packs to mark which parameters a pack overrides (`hasOverlay`, `clearOverlay`, `initOverlaysFromCurrentPatch` in Components). Irrelevant to decoding a single patch.
 
 ## Open items (need a hardware dump to close #12)
-- The 136-byte split-pair value decode is **resolved** (see *Split-pair decode* above), validated against vendor soundpack banks. Remaining per-param semantics still fuzzy: the exact centre/scale of osc coarse (≈ centre 128) and fine (centre 50), and the `category` enum (byte 25 values in real packs don't track patch names — see `issues.md` #12).
+- The 136-byte split-pair value decode is **resolved** (see *Split-pair decode* above), validated against vendor soundpack banks. Remaining per-param semantics still fuzzy: the exact centre/scale of osc coarse (≈ centre 128) and fine (centre 50). The `category`/`genre` enums are resolved (#28), although real packs don't set them consistently.
 - Byte-exact confirmation of a real 154-byte dump (decode a known patch, compare).
 - Header bytes 4–5 and the message-type enum at byte 7 (dump / write-slot / request).
 - The exact name/category layout in unpacked bytes 100–125.
