@@ -8,12 +8,20 @@ All messages are `F0 00 20 29 00 <cmd> <body…> F7`.
 
 | cmd | count | length | meaning |
 |-----|-------|--------|---------|
-| `0x71` | 1 | 15 | start; body `00 7f 00 00 00 08 00 00` — not yet decoded (#6) |
+| `0x71` | 1 | 15 | start: product id `00 7f`, then the version as 6 decimal digits, most significant first (`00 00 00 08 00 00` = 800) |
 | `0x72` | 4056 | 44 | data block, image offsets 32, 64, … in order |
 | `0x73` | 1 | 44 | data block for image offset **0**, sent after all `0x72` blocks |
-| `0x76` | 1 | 24 | trailer: `00` `"Firmware"` `00` `02 07 09 0a 05 02 04` — not yet decoded (#6) |
+| `0x76` | 1 | 24 | trailer: `00`, `"Firmware"`, then the image checksum as 8 nibbles, most significant first (`00 02 07 09 0a 05 02 04` = `0x0279A524`) |
 
 Sending offset 0, which holds the vector table, last most likely means an interrupted flash leaves no valid reset vector, so the bootloader stays in control. This is unverified.
+
+Components also uses `0x71` outside the firmware file. `rebootToBootloader()` sends `F0 00 20 29 00 71 <pid0> <pid1> 00 00 F7` to the running application. `0x70` (`F0 00 20 29 00 70 F7`) is a version inquiry. Its reply carries the bootloader version in bytes 6–10 and the firmware version in bytes 11–15, both as decimal digits.
+
+## Checksum
+
+`checksum = -(sum of the image as little-endian uint32 words) mod 2**32`, so all words plus the checksum sum to 0. The image length is a multiple of 4. The stock image matches: the stored value is `0x0279A524`. Whether the bootloader actually verifies it can't be checked until the bootloader has been dumped, but modified images should always carry a correct value.
+
+Cross-checked on Novation Peak firmware build 352 (Components catalogue id 10, pid `00 7e`), which uses the same container. Its start digits are `000352` and its trailer `0b 08 04 07 0c 09 0f 0f` equals its image's negated word sum. Still unexplained: the constant `00` byte after the `0x76` command.
 
 ## Data block encoding
 

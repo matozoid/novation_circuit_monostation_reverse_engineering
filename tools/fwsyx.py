@@ -1,11 +1,19 @@
 """Circuit Mono Station firmware .syx container (see docs/firmware-container.md)."""
 
+import struct
+
 NOVATION_HEADER = bytes([0xF0, 0x00, 0x20, 0x29, 0x00])
 
 CMD_START = 0x71
 CMD_DATA = 0x72
 CMD_DATA_FIRST = 0x73  # image offset 0, sent last
 CMD_TRAILER = 0x76
+
+MONOSTATION_PRODUCT_ID = (0x00, 0x7F)
+
+VERSION_DIGITS = 6
+TRAILER_NAME = b"Firmware"
+CHECKSUM_NIBBLES = 8
 
 BLOCK_BYTES = 32
 BLOCK_SEPTETS = 37  # 259 bits: 256 payload + 3 look-ahead bits
@@ -62,6 +70,48 @@ def data_blocks(messages):
             payload, spare = decode_block(message[len(NOVATION_HEADER) + 1:-1])
             blocks.append((cmd, payload, spare))
     return blocks
+
+
+def checksum(image):
+    """Two's complement of the little-endian 32-bit word sum, so words + checksum == 0 mod 2**32."""
+    if len(image) % 4:
+        raise ValueError("image length must be a multiple of 4")
+    return -sum(struct.unpack(f"<{len(image) // 4}I", image)) & 0xFFFFFFFF
+
+
+def build_start(product_id, version):
+    """0x71 message: product id, then the version as decimal digits, most significant first."""
+    digits = f"{version:0{VERSION_DIGITS}d}"
+    if len(digits) != VERSION_DIGITS:
+        raise ValueError(f"version {version} does not fit in {VERSION_DIGITS} digits")
+    return NOVATION_HEADER + bytes([CMD_START, *product_id, *map(int, digits), 0xF7])
+
+
+def parse_start(message):
+    """Return (product_id, version) from a 0x71 message."""
+    body = message[len(NOVATION_HEADER) + 1:-1]
+    if command(message) != CMD_START or len(body) != 2 + VERSION_DIGITS:
+        raise ValueError(f"not a firmware start message: {message.hex(' ')}")
+    return tuple(body[:2]), int("".join(str(digit) for digit in body[2:]))
+
+
+def build_trailer(image_checksum):
+    """0x76 message: 0x00, "Firmware", then the checksum as nibbles, most significant first."""
+    nibbles = [(image_checksum >> (4 * i)) & 0xF for i in reversed(range(CHECKSUM_NIBBLES))]
+    return NOVATION_HEADER + bytes([CMD_TRAILER, 0x00]) + TRAILER_NAME + bytes(nibbles + [0xF7])
+
+
+def parse_trailer(message):
+    """Return the image checksum stored in a 0x76 message."""
+    body = message[len(NOVATION_HEADER) + 1:-1]
+    if (command(message) != CMD_TRAILER or body[:1] != b"\x00"
+            or body[1:1 + len(TRAILER_NAME)] != TRAILER_NAME
+            or len(body) != 1 + len(TRAILER_NAME) + CHECKSUM_NIBBLES):
+        raise ValueError(f"not a firmware trailer message: {message.hex(' ')}")
+    value = 0
+    for nibble in body[-CHECKSUM_NIBBLES:]:
+        value = (value << 4) | nibble
+    return value
 
 
 def decode_image(data):

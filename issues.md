@@ -30,6 +30,8 @@ Write a script that pulls `app.asar` out of both the Windows nupkg and the macOS
 Parse the firmware catalogue embedded in `app.asar` and list every `product: "monostation"` entry (id, build, version, release notes). Download each `.syx`. Older builds are useful for diffing and for rollback.
 - **Done when:** a `docs/firmware-versions.md` table exists and the blobs sit in `firmware/` with hashes.
 
+Found so far: the catalogue has two Mono Station entries. Id 8 is build 800 (v1.2), identical to the bundled file. Id 9 is build 745 (v1.1) with `url: null`, and `/firmwares/9/file` returns HTTP 500. An older build would have to come from another source: older Components versions, the S3 `circuit-content` bucket, or the community.
+
 ### #4 Reverse the firmware-update protocol from Components JS
 Find the Mono Station updater in `app.asar`. Relevant markers: `WAITING_FOR_PACKET_REQUEST`, `FIRMWARE_TRANSFER_IN_PROGRESS`, `deviceIsInBootloader`, `sendToMainApplication`, `maxWaitForResetTimeout`. Document:
 - how the device enters the bootloader
@@ -38,6 +40,12 @@ Find the Mono Station updater in `app.asar`. Relevant markers: `WAITING_FOR_PACK
 - how success and failure are reported
 - **Done when:** `docs/update-protocol.md` describes the full exchange, enough to re-implement it.
 
+Found during #6:
+- Mono Station device class: productId `[0,127]`, `firmwareUpdateConfig` `{sendToMainApplication: false, waitForDeviceConfirmation: false}`, so firmware is sent only to the bootloader port. The bootloader port is detected by a MIDI port name containing `"Circuit Mono Station Bootloader"` or `"Circuit Mono Station BL"`.
+- `rebootToBootloader` sends `F0 00 20 29 00 71 00 7f 00 00 F7`.
+- `0x70` is the version inquiry.
+- The generic updater lives near the `WAITING_FOR_PACKET_REQUEST` state enum.
+
 ---
 
 ## Firmware container format
@@ -45,9 +53,8 @@ Find the Mono Station updater in `app.asar`. Relevant markers: `WAITING_FOR_PACK
 ### #5 Decode the `0x72`/`0x73` data block encoding — DONE
 37 septets per block are an MSB-first bitstream: 32 payload bytes plus 3 look-ahead bits (the top bits of the next block, not a checksum). There is no address field. `0x73` holds image offset 0 and is sent last. The decoded image is 129,824 bytes of Cortex-M code, loading at `0x0800C000`. See `docs/firmware-container.md`, `tools/fwsyx.py`, `tools/syx2bin.py` and `tests/test_fwsyx.py`.
 
-### #6 Decode the `0x71` start and `0x76` trailer messages
-`0x71`: `00 7f 00 00 00 08 00 00` (product/target id? image size? erase range?). `0x76`: `"Firmware"` + `02 07 09 0a 05 02 04` (version, CRC, length?). Identify the check the bootloader performs so that modified images are accepted.
-- **Done when:** every field is documented, and the CRC/checksum algorithm, if any, is reproduced in code and matches the stock image.
+### #6 Decode the `0x71` start and `0x76` trailer messages — DONE
+`0x71` = product id `00 7f` followed by the version as 6 decimal digits. `0x76` = `00`, `"Firmware"`, then 8 checksum nibbles. The checksum is the negated sum of the image's 32-bit little-endian words. This was confirmed on stock 800 and on Peak 352. See `docs/firmware-container.md` and `checksum` / `build_start` / `build_trailer` in `tools/fwsyx.py`. Open question: whether the bootloader actually verifies the checksum (needs a bootloader dump).
 
 ### #7 Round-trip tool: bin → syx
 Implement `tools/bin2syx`, the inverse of #5 and #6. `syx2bin | bin2syx` must reproduce the original `.syx` byte-for-byte.
