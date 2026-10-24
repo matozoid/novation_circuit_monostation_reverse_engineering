@@ -28,13 +28,14 @@ Cross-checked on Novation Peak firmware build 352 (Components catalogue id 10, p
 Body = 37 septets (7-bit bytes). Concatenate them MSB-first into a 259-bit integer:
 
 - the top 256 bits are 32 payload bytes, big-endian;
-- the low 3 bits are "spare". In every block they equal the top 3 bits of the next block's first payload byte, in transmission order, and they are `0` for the final block. This looks like an encoder artifact (it reads 259 bits and advances 256), not a checksum.
+- the low 3 bits are "spare". They equal the top 3 bits of the byte that follows the block in **image order** (offset + 32). For the block at the image end they match the top 3 bits of the image's last byte: Mono 800 ends in `00` fill and gives `0`, Peak 352 ends in `FF` fill and gives `7`. This is presumably the original packer reading 259 bits and advancing 256 through a buffer that continues with the fill. It is not a checksum, and the bootloader most likely ignores it. `encode_firmware` reproduces it so stock files re-encode byte-exactly.
 
 Encoding `0xFF` fill produces `7f` × 37. No per-block address or checksum has been found. Ordering is implicit.
 
 ## Decoded image
 
 `tools/syx2bin.py firmware/monostation-firmware-800.syx out.bin` → 129,824 bytes.
+`tools/bin2syx.py out.bin out.syx --version 800` reverses it. The output is byte-identical to the stock file, and the same holds for Peak 352 with `--product-id "00 7e"`. Images that aren't a multiple of 32 bytes are padded with `FF` (erased flash), and the padding is included in the checksum.
 
 - ARM Cortex-M Thumb-2. Vector table at offset 0: initial SP `0x10010000` (top of 64 KB CCM RAM at `0x10000000`, which points to an STM32F4-class part), Reset `0x08025e61`.
 - **Load address `0x0800C000`.** Thumb function pointers in the image land on `push` prologues for this base (317 hits; the next best candidate base scores 79). The image therefore spans `0x0800C000–0x0802BB20`, and `0x08000000–0x0800BFFF` (48 KB, which would be STM32F4 sectors 0–2) is presumably the bootloader.

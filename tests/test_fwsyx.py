@@ -34,6 +34,17 @@ class ContainerChecks:
         self.assertEqual(fwsyx.parse_trailer(trailer), fwsyx.checksum(self.image))
         self.assertEqual(fwsyx.build_trailer(fwsyx.checksum(self.image)), trailer)
 
+    def test_reencode_is_byte_exact(self):
+        self.assertEqual(fwsyx.encode_firmware(self.image, self.product_id, self.version), self.data)
+
+    def test_spare_bits_look_ahead_in_image_order(self):
+        blocks = fwsyx.data_blocks(self.messages)
+        in_image_order = blocks[-1:] + blocks[:-1]
+        self.assertEqual(in_image_order[0][0], fwsyx.CMD_DATA_FIRST)
+        for (_, _, spare), (_, next_payload, _) in zip(in_image_order, in_image_order[1:]):
+            self.assertEqual(spare, next_payload[0] >> (8 - fwsyx.SPARE_BITS))
+        self.assertEqual(in_image_order[-1][2], self.image[-1] >> (8 - fwsyx.SPARE_BITS))
+
 
 @unittest.skipUnless(PEAK_352.exists(), "firmware/peak-firmware-352.syx not downloaded")
 class Peak352Test(ContainerChecks, unittest.TestCase):
@@ -55,6 +66,22 @@ class BlockCodingTest(unittest.TestCase):
         self.assertEqual(septets, b"\x7f" * 37)
 
 
+class EncodeFirmwareTest(unittest.TestCase):
+    def test_pads_to_whole_blocks_with_erased_bytes(self):
+        image = bytes(range(70))
+        syx = fwsyx.encode_firmware(image, fwsyx.MONOSTATION_PRODUCT_ID, 1)
+        decoded = fwsyx.decode_image(syx)
+        self.assertEqual(decoded, image + b"\xff" * 26)
+        trailer = fwsyx.split_messages(syx)[-1]
+        self.assertEqual(fwsyx.parse_trailer(trailer), fwsyx.checksum(decoded))
+
+    def test_message_order(self):
+        syx = fwsyx.encode_firmware(bytes(96), fwsyx.MONOSTATION_PRODUCT_ID, 1)
+        commands = [fwsyx.command(m) for m in fwsyx.split_messages(syx)]
+        self.assertEqual(commands, [fwsyx.CMD_START, fwsyx.CMD_DATA, fwsyx.CMD_DATA,
+                                    fwsyx.CMD_DATA_FIRST, fwsyx.CMD_TRAILER])
+
+
 @unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not extracted")
 class Firmware800Test(ContainerChecks, unittest.TestCase):
     path = FIRMWARE_800
@@ -68,12 +95,6 @@ class Firmware800Test(ContainerChecks, unittest.TestCase):
         initial_sp, reset = struct.unpack("<2I", self.image[:8])
         self.assertEqual(initial_sp, 0x10010000)
         self.assertEqual(reset, 0x08025E61)
-
-    def test_spare_bits_are_next_block_lookahead(self):
-        blocks = fwsyx.data_blocks(self.messages)
-        for (_, _, spare), (_, next_payload, _) in zip(blocks, blocks[1:]):
-            self.assertEqual(spare, next_payload[0] >> (8 - fwsyx.SPARE_BITS))
-        self.assertEqual(blocks[-1][2], 0)
 
     def test_data_messages_reencode_exactly(self):
         for message in self.messages:

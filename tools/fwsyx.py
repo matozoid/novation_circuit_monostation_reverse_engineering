@@ -15,6 +15,8 @@ VERSION_DIGITS = 6
 TRAILER_NAME = b"Firmware"
 CHECKSUM_NIBBLES = 8
 
+ERASED_BYTE = 0xFF  # padding for images that are not a whole number of blocks
+
 BLOCK_BYTES = 32
 BLOCK_SEPTETS = 37  # 259 bits: 256 payload + 3 look-ahead bits
 SPARE_BITS = BLOCK_SEPTETS * 7 - BLOCK_BYTES * 8
@@ -122,3 +124,28 @@ def decode_image(data):
         raise ValueError(f"expected one 0x{CMD_DATA_FIRST:02x} block, found {len(first)}")
     rest = [payload for cmd, payload, _ in blocks if cmd == CMD_DATA]
     return first[0] + b"".join(rest)
+
+
+def encode_firmware(image, product_id, version):
+    """Build a firmware .syx from a raw image (inverse of decode_image plus start/trailer)."""
+    if not image:
+        raise ValueError("image is empty")
+    image = image + bytes([ERASED_BYTE]) * (-len(image) % BLOCK_BYTES)
+    # Spare bits look ahead to the next byte in image order; past the end, the last byte
+    # repeats (matches stock files whose images end in 00 or FF fill).
+    lookahead = image + image[-1:]
+    blocks = [
+        encode_block(image[i:i + BLOCK_BYTES], lookahead[i + BLOCK_BYTES] >> (8 - SPARE_BITS))
+        for i in range(0, len(image), BLOCK_BYTES)
+    ]
+
+    def data_message(cmd, septets):
+        return NOVATION_HEADER + bytes([cmd]) + septets + b"\xf7"
+
+    # Offset 0 travels last as the 0x73 block.
+    return b"".join([
+        build_start(product_id, version),
+        *(data_message(CMD_DATA, septets) for septets in blocks[1:]),
+        data_message(CMD_DATA_FIRST, blocks[0]),
+        build_trailer(checksum(image)),
+    ])

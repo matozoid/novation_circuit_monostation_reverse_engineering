@@ -12,6 +12,7 @@ Reverse-engineering project for the Novation Circuit Mono Station. Goal: reverse
 
 - Run tests: `python3 -m unittest discover -s tests -v` (single test: `python3 -m unittest tests.test_fwsyx.Firmware800Test.test_vector_table`). Firmware tests skip when `firmware/monostation-firmware-800.syx` is absent; `firmware/` is git-ignored and must currently be filled by hand (#2).
 - Decode firmware: `python3 tools/syx2bin.py firmware/monostation-firmware-800.syx firmware/monostation-firmware-800.bin` → raw Cortex-M image at `0x0800C000`. Container format: `docs/firmware-container.md`.
+- Encode firmware: `python3 tools/bin2syx.py image.bin out.syx --version 800` (pads with `FF`, writes checksum; byte-exact on stock).
 
 Firmware: Components bundles `monostation-firmware-800.syx` inside `app.asar` (Windows: installer → `Components-1.72.5-full.nupkg` → `lib/net45/resources/app.asar`; parse the asar JSON header to extract). It is 4059 SysEx msgs: `0x71` start, `0x72` data, `0x73` last data, `0x76` trailer.
 
