@@ -42,14 +42,8 @@ Find the Mono Station updater in `app.asar`. Relevant markers: `WAITING_FOR_PACK
 
 ## Firmware container format
 
-### #5 Decode the `0x72`/`0x73` data block encoding
-Each 44-byte message is a 6-byte header, 37 body bytes and `F7`. Work out:
-- the address or sequence field (bytes 6–8?)
-- the 7-bit → 8-bit packing scheme (likely 8-to-7 or 7-to-8 bit-packing of ~32 payload bytes)
-- any per-block checksum
-
-Verify by checking that the decoded image contains plausible code: a vector table, ASCII strings, or a repeating `FF` fill.
-- **Done when:** `tools/syx2bin` produces a raw binary image and `strings` on it shows firmware text.
+### #5 Decode the `0x72`/`0x73` data block encoding — DONE
+37 septets per block are an MSB-first bitstream: 32 payload bytes plus 3 look-ahead bits (the top bits of the next block, not a checksum). There is no address field. `0x73` holds image offset 0 and is sent last. The decoded image is 129,824 bytes of Cortex-M code, loading at `0x0800C000`. See `docs/firmware-container.md`, `tools/fwsyx.py`, `tools/syx2bin.py` and `tests/test_fwsyx.py`.
 
 ### #6 Decode the `0x71` start and `0x76` trailer messages
 `0x71`: `00 7f 00 00 00 08 00 00` (product/target id? image size? erase range?). `0x76`: `"Firmware"` + `02 07 09 0a 05 02 04` (version, CRC, length?). Identify the check the bootloader performs so that modified images are accepted.
@@ -71,6 +65,8 @@ Determine the CPU architecture and part number. Sources:
 - peripheral register addresses referenced by the code
 
 Record flash and RAM base addresses and sizes, and the load address of the application image (versus the bootloader region it must not touch).
+
+Already known from #5: Cortex-M (Thumb-2); initial SP `0x10010000` (64 KB CCM, so STM32F4-class); application at `0x0800C000–0x0802BB20`; bootloader presumably at `0x08000000–0x0800BFFF`. Remaining work: pin down the exact part, which can be narrowed from the peripheral addresses the code uses (e.g. RCC, USB OTG FS/HS, I2S/SAI for audio) and from a teardown photo.
 - **Depends on:** #5
 - **Done when:** `docs/hardware.md` names the MCU, includes the memory map, and confirms the image load address.
 

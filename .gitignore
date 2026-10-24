@@ -6,3 +6,5 @@
 firmware/
 
 .idea/
+
+__pycache__/

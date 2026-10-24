@@ -2,13 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Don't commit, don't push. Let the user do this.
+
+Ask the user to make decisions.
+
 ## Project state
 
-Reverse-engineering project for the Novation Circuit Mono Station. Goal: reverse engineer the firmware and add new features to it. Work is tracked in `issues.md` (also holds established facts about the firmware container). There is no source code, build system, or test suite yet — only reference inputs. Add build/test commands here once code exists.
+Reverse-engineering project for the Novation Circuit Mono Station. Goal: reverse engineer the firmware and add new features to it. Work is tracked in `issues.md` (also holds established facts about the firmware container). There is no source code, build system, or test suite yet — only reference inputs. Tooling language: Python 3, stdlib only (in `tools/`).
+
+- Run tests: `python3 -m unittest discover -s tests -v` (single test: `python3 -m unittest tests.test_fwsyx.Firmware800Test.test_vector_table`). Firmware tests skip when `firmware/monostation-firmware-800.syx` is absent; `firmware/` is git-ignored and must currently be filled by hand (#2).
+- Decode firmware: `python3 tools/syx2bin.py firmware/monostation-firmware-800.syx firmware/monostation-firmware-800.bin` → raw Cortex-M image at `0x0800C000`. Container format: `docs/firmware-container.md`.
 
 Firmware: Components bundles `monostation-firmware-800.syx` inside `app.asar` (Windows: installer → `Components-1.72.5-full.nupkg` → `lib/net45/resources/app.asar`; parse the asar JSON header to extract). It is 4059 SysEx msgs: `0x71` start, `0x72` data, `0x73` last data, `0x76` trailer.
-
-Not a git repository yet.
 
 ## Reference inputs (repo root)
 
