@@ -1,8 +1,14 @@
 # Circuit Mono Station patch SysEx — authoritative spec
 
-This supersedes the community PDF (`CircuitMonoStationPatchSysExFormat.pdf`, rev. 2020-06-30). It is derived from Novation **Components 1.72.5** (`app.asar` → `main-*.js`): the parameter array `kD`, the parse/build methods `fromPatchSysex` / `overlayFromPatchSysex`, the 7↔8-bit codec `RX`/`OX`/`LX`, the value transform `UX`, and the framing constants `PD` (`SYSEX_SIZE=154`, `HEADER_SIZE=9`, `LEGACY_SYSEX_SIZE=122`). Parameter names, offsets, types, ranges and CC/NRPN numbers are vendor data, taken verbatim. Byte-exact validation against a real hardware dump is the one remaining step (no standalone patch `.syx` was available); see *Open items*.
+This supersedes the community PDF (`CircuitMonoStationPatchSysExFormat.pdf`, rev. 2020-06-30). It is derived from Novation **Components 1.72.5** (`app.asar` → `main-*.js`): the parameter array `kD`, the parse/build methods `fromPatchSysex` / `overlayFromPatchSysex`, the 7↔8-bit codec `RX`/`OX`/`LX`, the value transform `UX`, and the framing constants `PD` (`SYSEX_SIZE=154`, `HEADER_SIZE=9`, `LEGACY_SYSEX_SIZE=122`). Parameter names, offsets, types, ranges and CC/NRPN numbers are vendor data, taken verbatim. It is corroborated by a real 64-patch bank (`.monostationpack`) and the two default patches embedded in firmware 800 (see *The 136-byte bank/pack format* and *Reference data*).
 
-> **Why the PDF's "pseudo-MSB 0x40" bytes don't appear here:** the PDF read the raw 7-bit-packed payload without unpacking it. The real payload is a MIDI 7→8-bit bit stream (below). After unpacking, each parameter is a plain 8-bit byte; the `0x00`/`0x40` pattern the PDF saw was an artifact of the packing.
+**There are (at least) three distinct patch encodings.** They must not be conflated:
+
+1. **136-byte bank/pack** (`F0 00 20 29 01 61 …`) — the real-world storage format: firmware patch memory, `.monostationpack` files, and what the community PDF documents. Parameter values use the split "LSB + `0x00`/`0x40` MSB-flag" encoding. **Here the `0x40` bytes are real** — the PDF is correct.
+2. **154-byte modern wire** (protocol version 6) — Components' current-patch transfer. Its 144-byte payload is a 7→8-bit MIDI bit stream unpacking to 126 bytes, after which each parameter is a plain 8-bit byte (`kD` + `RX`/`UX`). The `0x40` pattern does **not** appear here; in this format it would be an artifact of not unpacking.
+3. **122-byte legacy wire** — up-converted to 154 by Components before parsing.
+
+The Mono Station **device id (bytes 4–5) is `01 61`** (`yte` validator: `t[4]===1 && t[5]===97`; confirmed by the bank and firmware). The original Novation **Circuit** uses `01 60` — do not confuse the two.
 
 ## Message framing (modern, protocol version 6)
 
@@ -11,16 +17,44 @@ The current-patch message is **154 bytes**:
 | Bytes | Field |
 |-------|-------|
 | 0–3 | `F0 00 20 29` — SysEx start + Novation manufacturer id |
-| 4–5 | device/model id |
+| 4–5 | device/model id = `01 61` |
 | 6 | protocol version = `6` |
 | 7 | message type |
 | 8 | patch slot / index |
 | 9–152 | 144-byte payload, 7-bit MIDI-packed |
 | 153 | `F7` |
 
-A **legacy 122-byte** message also exists (`LEGACY_SYSEX_SIZE=122`, `LEGACY_PATCH_SIZE=112`); Components up-converts it to 154 before parsing. Related short messages seen in the app: version inquiry `F0 00 20 29 00 70 F7` (reply carries the firmware version), and reboot-to-bootloader `F0 00 20 29 00 71 00 7F 00 00 F7`. A full bank/pack file is 64 × 136 bytes = **8704 bytes**.
+A **legacy 122-byte** message also exists (`LEGACY_SYSEX_SIZE=122`, `LEGACY_PATCH_SIZE=112`); Components up-converts it to 154 before parsing. Related short messages seen in the app: version inquiry `F0 00 20 29 00 70 F7` (reply carries the firmware version), and reboot-to-bootloader `F0 00 20 29 00 71 00 7F 00 00 F7`.
 
-*Still to confirm against hardware: bytes 4–5, and the set of message-type values at byte 7 (patch-dump, write-to-slot, request-dump).*
+## The 136-byte bank/pack format (device `01 61`)
+
+This is the format the hardware actually stores and the PDF documents. One patch = **136 bytes**; a full bank = 64 × 136 = **8704 bytes**. A `.monostationpack` file is a **ZIP** archive containing a single member `patches.syx` holding the 8704-byte bank. Components validates a bank as `8704===byteLength && yte(slice(0,136))` then splits on `F0…F7` (`JZ`); `yte` accepts message type (byte 6) `0` or `1`.
+
+Per 136-byte message:
+
+| Bytes | Field |
+|-------|-------|
+| 0–3 | `F0 00 20 29` |
+| 4–5 | `01 61` device id |
+| 6 | message type: `0` = current patch, `1` = slot write/dump |
+| 7 | slot index (0–63 in a bank) |
+| 8 | `00` |
+| 9–24 | patch name, 16 ASCII, space-padded |
+| 25 | category (observed: `1` = Bass, `3` = Drum/Percussion; full enum TBD) |
+| 26 | genre (`0` observed) |
+| 27–40 | reserved / unmapped (`00` in the init patch) |
+| 41–134 | parameters, in the split "LSB + `0x00`/`0x40`" encoding — offsets per the community PDF (osc1/osc2 from 41, mixer, filter, env, LFO, distortion, 93–133 mod matrix, 134 selected routing) |
+| 135 | `F7` |
+
+Components treats the 136-byte patch as an opaque blob mapping only `name`@9, `category`@25, `genre`@26 (its `kte`/`pR` model, mime `application/x-novation-circuit-monostation-patch+json`); it does **not** name the individual synth parameters in this format — the PDF offset table is the source for those, and the exact split-pairing (which offsets are 2-byte pairs vs single bytes) still needs to be reverse-engineered for a byte-exact value decode.
+
+### Request a patch
+`F0 00 20 29 01 61 40 <slot> 00 F7` — message type `0x40` requests a patch dump (seen on the Circuit path with its own id; expected to apply to Mono Station). Lets a bank be dumped from a connected unit by sweeping slots 0–63.
+
+## Reference data
+
+- `Roboo.monostationpack` (repo root) — a real 64-patch bank: slots 0–31 named (bass1–4, drum one-shots, pad1–4, key1–4, …), 32–63 = `Initial Patch`. Primary corroboration for the 136-byte layout above.
+- Firmware 800 embeds two defaults in its image: `Classic Mono` (`0x08028864`) and `Initial Patch` (`0x08028F6B`), each a 16-byte name followed by the same 136-byte body layout. (The firmware image contains **only** these templates, not a 64-slot factory bank — the shipped factory patches live in a separate data-flash region outside the app update image.)
 
 ## Payload packing (7 ↔ 8 bit)
 
