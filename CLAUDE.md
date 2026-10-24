@@ -28,15 +28,12 @@ Hardware: decoded image is a 129,824-byte Cortex-M4F app at load base `0x0800C00
 
 These are large (~500 MB total), untrusted vendor binaries. Never execute them. Extract each into its own fresh directory outside the repo root (e.g. scratchpad) with tools like `7z`, `innoextract`, `dmg2img`/`7z`, `asar extract`, and analyse statically.
 
-## Patch SysEx format (from the PDF)
+## Patch SysEx format
 
-Total message 136 bytes (offsets 0–135):
+**Authoritative spec: `docs/sysex-spec.md`** (extracted from Components 1.72.5), which supersedes the community PDF. The modern current-patch message is **154 bytes**: a 9-byte header (bytes 0–3 `F0 00 20 29`, 4–5 device id, 6 protocol version = 6, 7 message type, 8 slot), a 144-byte payload, then `F7`. The payload is a 7→8-bit MIDI bit stream that unpacks to **126 data bytes**; the 85 parameters live at bytes 7–99. The PDF's "pseudo-MSB `0x40`" bytes were an artifact of not unpacking — after unpacking each param is a plain 8-bit byte decoded by its type (`DT_U`/`DT_U8`/`DT_S`−64/`DT_S8`−128/`DT_B` bit/`DT_M` mask).
 
-- **0–8 header**: `F0 00 20 29 01 61 00 00 00` — F0 start, `00 20 29` Novation mfr ID, `01` product type (synth), `61` product (Circuit Mono Station), `00` command (replace current patch; other commands unexplored), `00` location (only one), `00` reserved.
-- **9–24 patch name**: 16 ASCII chars, space-padded (`0x20`).
-- **25–134 patch data**: offset 25 probably category; 27 env retrigger/legato; 41–59 osc1/osc2 (octave, waveform, PW, coarse, fine, range, sync); 61–72 mixer levels; 73–80 filter; 81–84 envelope; 85–90 LFO; 91–92 distortion; 93–133 mod matrix (env/lfo/seq/vel → osc1/2 pitch & PW, amp, cutoff, distortion, aux CV); 134 selected routing (0–31). Many offsets in 25–40 and 49, 58, 60 are unknown.
-- **135**: `F7` end.
+- Machine-readable schema: `tools/monostation_patch_params.tsv` (name, patchIndex, type, range, CC/NRPN per param).
+- Decode/encode: `python3 tools/patch.py decode patch.syx` and `python3 tools/patch.py selftest` (`tools/patch.py` codec matches Components' `OX` byte-exact).
+- Still open (need a hardware dump): byte-exact validation, the message-type enum at byte 7, header bytes 4–5, and the name/category split in bytes 100–125. The legacy 122-byte message and the 8704-byte bank (64×136) are noted in the spec.
 
-Non-obvious encoding: parameters with a 0–255 range are split into an "LSB" byte (0–127) followed by an "MSB" byte that is only `0x00` or `0x40` — not a true MSB. `0x40` marks values at/above centre (64). Bipolar params use `0x40` (64) as centre/zero. Offset 99 (env → amp) is a boolean despite sitting among 0–127 mod amounts.
-
-The PDF's init-patch values (hex/dec columns) are useful as a known-good reference vector for parsers/encoders.
+Extracting the schema: unpack `resources/app.asar` from Components (parse the 16-byte asar header for the JSON directory, then slice file data) and read `ember-dist/assets/main-*.js` — the Mono Station patch array is the `kD` literal; parse/pack helpers are `fromPatchSysex`/`RX`/`OX`/`LX`/`UX`.

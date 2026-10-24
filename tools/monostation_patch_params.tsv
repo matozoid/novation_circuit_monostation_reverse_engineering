@@ -1,0 +1,91 @@
+# Novation Circuit Mono Station patch parameter schema.
+# Extracted verbatim from Novation Components 1.72.5 (app.asar, main-*.js, array 'kD').
+# patchIndex/overlayIndex are byte positions in the 126-byte unpacked patch payload /
+# the pack-overlay map. dt: DT_U=0..127, DT_U8=0..255, DT_S=signed(center 64), DT_S8=signed(center 128),
+# DT_B=boolean at bit 'rs', DT_M=menu masked by 'min'. See docs/sysex-spec.md.
+name	patchIndex	overlayIndex	dt	signed	min	max	rs	type	cc	nrpnMsb	nrpnLsb
+voiceOscSync	7	1	DT_B	0	0	0	0	cc	110		
+osc1Wave	8	2	DT_M	0	3	3	0	nrpn		0	72
+osc1PulseWidth	9	3	DT_U	0	0	127	0	cc	74		
+osc1Octave	10	4	DT_S	1	-1	2	0	cc	70		
+osc1TuneCoarse	11	5	DT_S8	1	-128	127	0	cc8	27		
+osc1TuneFine	12	6	DT_S8	1	-101	100	0	cc8	26		
+osc2Wave	13	7	DT_M	0	3	3	0	nrpn		0	82
+osc2PulseWidth	14	8	DT_U	0	0	127	0	cc	79		
+osc2Octave	15	9	DT_S	1	-1	2	0	cc	75		
+osc2TuneCoarse	16	10	DT_S8	1	-128	127	0	cc8	30		
+osc2TuneFine	17	11	DT_S8	1	-101	100	0	cc8	29		
+oscSubWave	18	12	DT_M	0	3	3	0	nrpn		0	85
+oscSubMode	18	12	DT_B	0	0	0	2	nrpn		0	79
+oscSubPulseWidth	19	13	DT_U	0	0	127	0	nrpn		0	83
+oscSubOctave	20	14	DT_S	1	-2	3	0	nrpn		0	81
+oscSubTuneCoarse	21	15	DT_S8	1	-128	127	0	nrpn8		0	84
+oscSubTuneFine	22	16	DT_S8	1	-101	100	0	nrpn8		0	77
+oscSubWaveSubMode	23	17	DT_M	0	3	2	0	cc	80		
+oscSubOctaveSubMode	24	18	DT_S	1	-2	-1	0	cc	81		
+mixerOsc1	25	19	DT_U8	0	0	255	0	cc8	20		
+mixerOsc2	26	20	DT_U8	0	0	255	0	cc8	21		
+mixerOscSub	27	21	DT_U8	0	0	255	0	cc8	22		
+mixerNoise	28	22	DT_U8	0	0	255	0	cc8	23		
+mixerRingMod	29	23	DT_U8	0	0	255	0	cc8	24		
+mixerExternal	30	24	DT_U8	0	0	255	0	cc8	25		
+filterFrequency	31	25	DT_U8	0	0	255	0	cc8	16		
+filterResonance	32	26	DT_U	0	0	127	0	cc	82		
+filterOverdrive	33	27	DT_U	0	0	127	0	cc	114		
+filterShape	34	28	DT_M	0	3	2	0	cc	84		
+filterCircuit	34	28	DT_B	0	0	0	2	cc	83		
+filterSlope	34	28	DT_B	0	0	0	3	cc	106		
+envAmpVelocity	35	29	DT_S	1	-63	63	0	cc	112		
+envAmpAttack	36	30	DT_U	0	0	127	0	cc	90		
+envAmpDecay	37	31	DT_U	0	0	127	0	cc	91		
+envAmpSustain	38	32	DT_U	0	0	127	0	cc	92		
+envAmpRelease	39	33	DT_U	0	0	127	0	cc	93		
+envAmpTrigger	40	34	DT_M	0	3	2	0	nrpn		0	73
+envModVelocity	41	35	DT_S	1	-63	63	0	cc	113		
+envModAttack	42	36	DT_U	0	0	127	0	cc	102		
+envModDecay	43	37	DT_U	0	0	127	0	cc	103		
+envModSustain	44	38	DT_U	0	0	127	0	cc	104		
+envModRelease	45	39	DT_U	0	0	127	0	cc	105		
+envModTrigger	46	40	DT_M	0	3	2	0	nrpn		0	105
+lfo1Waveform	47	41	DT_U	0	0	3	0	cc	88		
+lfo1Delay	48	42	DT_U	0	0	127	0	cc	86		
+lfo1LfoSlew	49	43	DT_U	0	0	127	0	nrpn		0	86
+lfo1Speed	50	44	DT_U8	0	0	255	0	cc8	18		
+lfo1SpeedSync	51	45	DT_U	0	0	35	0	nrpn		0	87
+lfo1SpeedMode	52	46	DT_B	0	0	0	0	nrpn		0	88
+lfo1KeySync	52	46	DT_B	0	0	0	1	nrpn		0	89
+lfo2Waveform	53	47	DT_U	0	0	3	0	cc	89		
+lfo2Delay	54	48	DT_U	0	0	127	0	cc	87		
+lfo2LfoSlew	55	49	DT_U	0	0	127	0	nrpn		0	90
+lfo2Speed	56	50	DT_U8	0	0	255	0	cc8	19		
+lfo2SpeedSync	57	51	DT_U	0	0	35	0	nrpn		0	91
+lfo2SpeedMode	58	52	DT_B	0	0	0	0	nrpn		0	92
+lfo2KeySync	58	52	DT_B	0	0	0	1	nrpn		0	93
+modAftertouchFilterFreq	68	53	DT_S	1	-64	63	0	nrpn		0	74
+modAftertouchLfo1OscFreq	69	54	DT_S	1	-64	63	0	nrpn		0	75
+modAftertouchLfo2Speed	70	55	DT_S	1	-64	63	0	nrpn		0	76
+modLfo1Osc1Pitch	71	56	DT_S8	1	-128	127	0	cc8	28		
+modLfo1Osc2Pitch	72	57	DT_S8	1	-128	127	0	cc8	31		
+modLfo1OscSubPitch	73	58	DT_S8	1	-128	127	0	nrpn8		0	95
+modLfo2Osc1PW	74	59	DT_S	1	-64	63	0	cc	73		
+modLfo2Osc2PW	75	60	DT_S	1	-64	63	0	cc	78		
+modLfo2OscSubPW	76	61	DT_S	1	-64	63	0	nrpn		0	102
+modLfo2FilterFreq	77	62	DT_S8	1	-128	127	0	cc8	17		
+modEnv2Osc1Pitch	78	63	DT_S	1	-64	63	0	cc	71		
+modEnv2Osc2Pitch	79	64	DT_S	1	-64	63	0	cc	76		
+modEnv2OscSubPitch	80	65	DT_S	1	-64	63	0	nrpn		0	103
+modEnv2Osc1PW	81	66	DT_S	1	-64	63	0	cc	72		
+modEnv2Osc2PW	82	67	DT_S	1	-64	63	0	cc	77		
+modEnv2OscSubPW	83	68	DT_S	1	-64	63	0	nrpn		0	104
+modEnv2FilterFreq	84	69	DT_S	1	-64	63	0	cc	85		
+modOsc2FilterFreq	85	70	DT_U	0	0	127	0	cc	115		
+distortAmount	86	71	DT_U	0	0	127	0	cc	94		
+compressAmount	87	72	DT_U	0	0	127	0	cc	95		
+envAmpRetrigger	91	73	DT_U	0	0	1	0	nrpn		0	109
+envModRetrigger	92	74	DT_U	0	0	1	0	nrpn		0	110
+pitch	94	75	DT_U	0	0	7	0	nrpn		0	111
+outputLevel	95	76	DT_U	0	0	127	0	sysex			
+envAmpTimedSustain	96	77	DT_B	0	0	1	0	nrpn		0	114
+envModTimedSustain	97	78	DT_B	0	0	1	0	nrpn		0	115
+envAmpRetriggerCount	98	79	DT_U	0	0	16	0	nrpn		0	117
+envModRetriggerCount	99	80	DT_U	0	0	16	0	nrpn		0	118
