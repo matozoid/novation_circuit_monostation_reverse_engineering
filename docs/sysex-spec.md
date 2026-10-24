@@ -42,11 +42,24 @@ Per 136-byte message:
 | 9–24 | patch name, 16 ASCII, space-padded |
 | 25 | category (observed: `1` = Bass, `3` = Drum/Percussion; full enum TBD) |
 | 26 | genre (`0` observed) |
-| 27–40 | reserved / unmapped (`00` in the init patch) |
+| 27–40 | reserved / unmapped (`00` in the init patch; `27` = env retrigger/legato per the PDF) |
 | 41–134 | parameters, in the split "LSB + `0x00`/`0x40`" encoding — offsets per the community PDF (osc1/osc2 from 41, mixer, filter, env, LFO, distortion, 93–133 mod matrix, 134 selected routing) |
 | 135 | `F7` |
 
-Components treats the 136-byte patch as an opaque blob mapping only `name`@9, `category`@25, `genre`@26 (its `kte`/`pR` model, mime `application/x-novation-circuit-monostation-patch+json`); it does **not** name the individual synth parameters in this format — the PDF offset table is the source for those, and the exact split-pairing (which offsets are 2-byte pairs vs single bytes) still needs to be reverse-engineered for a byte-exact value decode.
+Components treats the 136-byte patch as an opaque blob mapping only `name`@9, `category`@25, `genre`@26 (its `kte`/`pR` model, mime `application/x-novation-circuit-monostation-patch+json`); it does **not** name the individual synth parameters in this format — the PDF offset table is the source for those.
+
+### Split-pair decode (resolved)
+
+The parameter region uses **two** kinds of two-byte value, both written as an LSB followed one byte later by the PDF's "MSB" flag (`0x00` or `0x40`). They decode differently — the PDF notes this but does not separate them:
+
+- **Genuine 0–255 value** (unsigned params that exceed 127: mixer levels, filter cutoff, LFO rate): `value = LSB + 128·(MSB == 0x40)`. E.g. the init/full mixer and cutoff store LSB `127`, flag `0x40` → `255`.
+- **Redundant sign flag** (bipolar mod-matrix pitch/cutoff depths, centred on 64): `value = LSB − 64`; the flag byte is just `0x40` when `LSB ≥ 64` and `0x00` otherwise, carrying no new information. Decoders must **ignore** it, not add 128.
+
+Single-byte params are plain: `u` 0–127, `enum`/`bool` raw, osc octave and the remaining mod depths bipolar as `raw − 64`.
+
+This is validated byte-exact against real packs — e.g. YBC "Acid": mixer noise `255`, filter overdrive `47` / reso `81`, env attack/decay/sustain `0`/`24`/`28`, and mod depths `seq→dist +24`, `vel→amp −3`, `vel→cutoff +22`. The full offset→name→kind map is `PARAMS` in `tools/patchbank.py`; decode a patch with `python3 tools/patchbank.py show <pack> <slot|name>`.
+
+**Caveat — editor display curves.** The Components GUI shows a few knobs through a perceptual/scaled mapping, so an on-screen number can differ from this raw, linear byte: filter cutoff and env release are shown on a curve, and the pitch/cutoff **mod** depths are shown at ≈2× the stored `raw − 64`. The raw decode is the ground truth; the editor's number is cosmetic.
 
 ### Request a patch
 `F0 00 20 29 01 61 40 <slot> 00 F7` — message type `0x40` requests a patch dump (seen on the Circuit path with its own id; expected to apply to Mono Station). Lets a bank be dumped from a connected unit by sweeping slots 0–63.
@@ -121,6 +134,7 @@ Unused payload bytes in 7–99: 59–67, 88–90, 93 (reserved / sequencer handl
 `overlayIndex` (1–80 in the TSV) is **not** a value MSB — it indexes a separate per-parameter *overlay* map used by packs to mark which parameters a pack overrides (`hasOverlay`, `clearOverlay`, `initOverlaysFromCurrentPatch` in Components). Irrelevant to decoding a single patch.
 
 ## Open items (need a hardware dump to close #12)
+- The 136-byte split-pair value decode is **resolved** (see *Split-pair decode* above), validated against vendor soundpack banks. Remaining per-param semantics still fuzzy: the exact centre/scale of osc coarse (≈ centre 128) and fine (centre 50), and the `category` enum (byte 25 values in real packs don't track patch names — see `issues.md` #12).
 - Byte-exact confirmation of a real 154-byte dump (decode a known patch, compare).
 - Header bytes 4–5 and the message-type enum at byte 7 (dump / write-slot / request).
 - The exact name/category layout in unpacked bytes 100–125.

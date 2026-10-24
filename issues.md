@@ -100,7 +100,11 @@ Method: compare the firmware SysEx handler (#10) with Components JS (patch edito
 
 **Resolved PDF/open unknowns:** device id (bytes 4–5) = **`01 61`** (`yte` validator; Circuit is `01 60`). Message type (byte 6/7): `0`=current patch, `1`=slot write/dump, `0x40`=request patch (`F0 00 20 29 01 61 40 <slot> 00 F7`). Offset 25 = category, 26 = genre.
 
-**Remaining for full close:** byte-exact per-parameter decode of the 136-byte split region (which offsets are 2-byte pairs), a real 154-byte dump to confirm that path, and the name/category split in the 154 format's bytes 100–125. See spec *Open items*.
+**136-byte split-pair decode — RESOLVED.** Cracked by correlating the YBC soundpack banks against the per-patch Components screenshots shipped in the pack. Two flag meanings, both LSB + `0x00`/`0x40` one byte later: (a) **genuine +128** for unsigned 0–255 params (mixer, cutoff, LFO rate) → `value = LSB + 128·(MSB==0x40)`; (b) **redundant sign flag** for bipolar mod-matrix pitch/cutoff depths → `value = LSB − 64`, flag mirrors the sign and must be ignored. Validated byte-exact (YBC "Acid" etc.). Implemented as `PARAMS` + `decode_params` in `tools/patchbank.py` (`show` subcommand); tests in `tests/test_patchbank.py`. Editor display curves (cutoff/release, ×2 pitch/cutoff mods) noted — cosmetic, not in the raw bytes.
+
+**Caveat found:** byte 25 (`category`) in the vendor soundpack banks does **not** track patch names (lead patches tagged Bass/Drum) — either the enum differs from the Roboo pack or packs don't set it meaningfully. Category enum still TBD.
+
+**Remaining for full close:** osc coarse/fine centre+scale semantics, a real 154-byte dump to confirm that path, and the name/category split in the 154 format's bytes 100–125. See spec *Open items*.
 
 ### #13 Document session format
 Decode the 90,112-byte `.monostationsession` layout: the sequencer patterns, step automation, 64 patches at a 512-byte stride, and global settings. Use `session_32.monostationsession` as the reference vector.

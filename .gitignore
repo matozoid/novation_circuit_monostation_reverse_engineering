@@ -11,3 +11,6 @@ __pycache__/
 
 # Ghidra project DB (regenerate with tools/ghidra/import_firmware.sh)
 ghidra-project/
+
+Roboo.monostationpack
+YBC-Flippin-Grooves-Circuit.zip
