@@ -16,7 +16,7 @@ Reverse-engineering project for the Novation Circuit Mono Station. Goal: reverse
 
 Firmware: Components bundles `monostation-firmware-800.syx` inside `app.asar` (Windows: installer → `Components-1.72.5-full.nupkg` → `lib/net45/resources/app.asar`; parse the asar JSON header to extract). It is 4059 SysEx msgs: `0x71` start, `0x72` data, `0x73` last data, `0x76` trailer.
 
-Hardware: decoded image is a 129,824-byte Cortex-M4F app at load base `0x0800C000`; MCU is STM32F405-class (likely STM32F405VG, LQFP100). Memory map, flash sectors and the protected bootloader region (`0x08000000`–`0x0800BFFF`, not in the file) are in `docs/hardware.md`. Disassemble: `python3 tools/disasm.py firmware/monostation-firmware-800.bin 0x08025e61` (needs `pip install capstone`). Ghidra import: `GHIDRA_HOME=/opt/ghidra tools/ghidra/import_firmware.sh` (`tools/ghidra/map_memory.py` lays out the memory map; DB is git-ignored).
+Hardware: decoded image is a 129,824-byte Cortex-M4F app at load base `0x0800C000`; MCU is STM32F405-class (likely STM32F405VG, LQFP100). Memory map, flash sectors and the protected bootloader region (`0x08000000`–`0x0800BFFF`, not in the file) are in `docs/hardware.md`. Disassemble: `python3 tools/disasm.py firmware/monostation-firmware-800.bin 0x08025e61` (needs `pip install capstone`). Ghidra import: `GHIDRA_HOME=/opt/ghidra tools/ghidra/import_firmware.sh` (`tools/ghidra/map_memory.py` lays out the memory map; DB is git-ignored). Subsystem map: `docs/firmware-map.md`, reproduced by `python3 tools/fwmap.py firmware/monostation-firmware-800.bin [xref_addr]` (vectors, peripheral literals, strings, literal-pool xrefs).
 
 ## Reference inputs (repo root)
 

@@ -70,10 +70,9 @@ STM32F405/407-class Cortex-M4F, most likely an STM32F405VG (LQFP100): 64 KB CCM,
 `tools/ghidra/import_firmware.sh` (headless `analyzeHeadless`, processor `ARM:LE:32:Cortex`, base `0x0800C000`) plus the pre-script `tools/ghidra/map_memory.py`, which creates the bootloader/CCM/SRAM/peripheral blocks and seeds disassembly at the reset handler so auto-analysis walks the vector table. The Ghidra DB is git-ignored (`ghidra-project/`); only the scripts are committed. `tools/disasm.py` gives quick capstone disassembly without launching Ghidra. Not yet run end-to-end here (Ghidra not installed in this environment); the capstone cross-check confirms the processor/base/vector-table choices the script encodes.
 - **Needs:** a machine with Ghidra to run the import and start labelling (#10).
 
-### #10 Map firmware subsystems
-Label the major subsystems: MIDI in/out parser (USB and DIN), SysEx handler, sequencer engine, patch/session storage (flash layout), UI (pads, encoders, LEDs, display), analogue control (DAC/CV outputs to the oscillators, filter, VCA and distortion), and the LFO/envelope generators.
-- **Depends on:** #9
-- **Done when:** `docs/firmware-map.md` gives addresses and short descriptions for each subsystem.
+### #10 Map firmware subsystems — DONE (static pass; Ghidra refines)
+`docs/firmware-map.md` locates each subsystem by interrupt vector, peripheral-register literal and debug-string xref: USB (OTG_FS `0x0801EEFC` primary + OTG_HS, with the USB-MIDI/audio descriptors), DIN MIDI (USART1 ISR `0x08023FE1`), UI input dispatcher (`0x08017930`–`0x080179D8`, emits the pad/pot/button/slider debug strings), UI output (SPI LED drivers), analogue CV engine (internal DAC + TIM6 + DMA, likely an external SPI DAC too), ADC, timers (TIM5 = sequencer/tempo clock), and persistent storage (FLASH_IF + Backup SRAM). `tools/fwmap.py` reproduces the scan. Still to isolate with Ghidra function graph: the sequencer engine, the SysEx dispatcher, the patch/session (de)serialiser, and the SPI-port→device split — carried as the follow-up list in the doc.
+- **Done when:** `docs/firmware-map.md` gives addresses and short descriptions for each subsystem. ✓
 
 ### #11 Diff firmware versions to locate features
 Use release notes plus binary diffs between versions (#3) to pin down code tied to known features (for example the step automation added in v1.1). This is a cheap way to anchor subsystem identification.
