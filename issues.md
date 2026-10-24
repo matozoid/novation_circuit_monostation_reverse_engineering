@@ -63,22 +63,12 @@ Found during #6:
 
 ## Hardware & static analysis
 
-### #8 Identify the MCU and memory map
-Determine the CPU architecture and part number. Sources:
-- teardown photos or opening a unit
-- the vector table and reset handler in the decoded image
-- peripheral register addresses referenced by the code
+### #8 Identify the MCU and memory map — DONE (pending hardware confirmation)
+STM32F405/407-class Cortex-M4F, most likely an STM32F405VG (LQFP100): 64 KB CCM, DAC present, no SAI, no Ethernet refs, OTG_HS+FS, GPIO A–E only. Load base `0x0800C000` confirmed by the reset handler disassembling to CMSIS startup and 39 vector entries sharing a `b .` default handler at `0x08025EA9`. Memory map (flash sectors, CCM/SRAM/backup-SRAM, peripherals) in `docs/hardware.md`. Remaining: confirm exact part/flash size against a unit (read `FLASHSIZE` `0x1FFF7A22`, or a teardown photo).
 
-Record flash and RAM base addresses and sizes, and the load address of the application image (versus the bootloader region it must not touch).
-
-Already known from #5: Cortex-M (Thumb-2); initial SP `0x10010000` (64 KB CCM, so STM32F4-class); application at `0x0800C000–0x0802BB20`; bootloader presumably at `0x08000000–0x0800BFFF`. Remaining work: pin down the exact part, which can be narrowed from the peripheral addresses the code uses (e.g. RCC, USB OTG FS/HS, I2S/SAI for audio) and from a teardown photo.
-- **Depends on:** #5
-- **Done when:** `docs/hardware.md` names the MCU, includes the memory map, and confirms the image load address.
-
-### #9 Load firmware into Ghidra with correct memory map
-Create a Ghidra project (or a headless import script) with the right processor, load address, RAM regions and peripheral SVD (if this is a Cortex-M part). Apply auto-analysis and commit the import script, not the Ghidra database.
-- **Depends on:** #8
-- **Done when:** the reset handler, interrupt handlers and `main` are identified.
+### #9 Load firmware into Ghidra with correct memory map — DONE
+`tools/ghidra/import_firmware.sh` (headless `analyzeHeadless`, processor `ARM:LE:32:Cortex`, base `0x0800C000`) plus the pre-script `tools/ghidra/map_memory.py`, which creates the bootloader/CCM/SRAM/peripheral blocks and seeds disassembly at the reset handler so auto-analysis walks the vector table. The Ghidra DB is git-ignored (`ghidra-project/`); only the scripts are committed. `tools/disasm.py` gives quick capstone disassembly without launching Ghidra. Not yet run end-to-end here (Ghidra not installed in this environment); the capstone cross-check confirms the processor/base/vector-table choices the script encodes.
+- **Needs:** a machine with Ghidra to run the import and start labelling (#10).
 
 ### #10 Map firmware subsystems
 Label the major subsystems: MIDI in/out parser (USB and DIN), SysEx handler, sequencer engine, patch/session storage (flash layout), UI (pads, encoders, LEDs, display), analogue control (DAC/CV outputs to the oscillators, filter, VCA and distortion), and the LFO/envelope generators.
@@ -140,6 +130,18 @@ Patches should live as source plus a declarative hook list, not as hex blobs.
 ### #18 Hello-world patch
 Make the smallest visible change to prove the whole pipeline works: alter a UI string, an LED pattern at boot, or the version number reported over SysEx. Flash it, verify it, then restore stock.
 - **Depends on:** #15, #16, #17
+
+### #24 Dump the bootloader via a patched application
+The bootloader (`0x08000000–0x0800BFFF`, 48 KB) is not distributed by Novation — the catalogue has only `firmware` and `fpga` images — so it must be read off a real unit. Code running on the MCU can read that flash region regardless of the debug read-out-protection (RDP) level, so the route is: patch the application to send `0x08000000–0x0800BFFF` out as SysEx, flash it, capture the dump. This is a natural first real patch and the same tooling (#16, #17) dumps RAM, option bytes and user patches too.
+
+Before this, check #10 for an existing debug/memory-read SysEx command (the firmware keeps debug strings, so one may exist) — that would need no patching.
+
+Do not attempt to lower RDP via SWD to read the bootloader: dropping from RDP level 1 to 0 mass-erases flash including the bootloader and bricks the unit with no way back.
+- **Depends on:** #16, #17 (or #10 alone if a memory-read command exists)
+
+### #25 Probe bootloader acceptance checks
+With a tested recovery path in place, send malformed firmware (wrong checksum, wrong product id, truncated) to learn what the bootloader validates — answers the open "is the checksum verified?" question without a dump. Safe because the bootloader region stays intact.
+- **Depends on:** #15, #16
 
 ---
 

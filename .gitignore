@@ -8,3 +8,6 @@ firmware/
 .idea/
 
 __pycache__/
+
+# Ghidra project DB (regenerate with tools/ghidra/import_firmware.sh)
+ghidra-project/
