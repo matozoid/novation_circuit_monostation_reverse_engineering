@@ -104,11 +104,33 @@ Method: compare the firmware SysEx handler (#10) with Components JS (patch edito
 
 **Caveat found:** byte 25 (`category`) in the vendor soundpack banks does **not** track patch names (lead patches tagged Bass/Drum) — either the enum differs from the Roboo pack or packs don't set it meaningfully. Category enum still TBD.
 
-**Remaining for full close:** osc coarse/fine centre+scale semantics, a real 154-byte dump to confirm that path, and the name/category split in the 154 format's bytes 100–125. See spec *Open items*.
+**Also in scope — pack overlays and soundpack bundles:** packs carry a per-parameter *overlay* map (`overlayIndex` 1–80 in the schema; `hasOverlay` / `clearOverlay` / `initOverlaysFromCurrentPatch` in Components) marking which parameters a pack overrides. Its storage format is undocumented. Vendor soundpacks (e.g. the YBC zip) bundle a `.monostationpack`, a raw `*Patches*.syx` bank and a `*Sessions*.syx` dump together; document where the overlay lives and how the bundle pieces relate.
+
+**Remaining for full close:** osc coarse/fine centre+scale semantics, the overlay format (above), a real 154-byte dump to confirm that path, and the name/category split in the 154 format's bytes 100–125. See spec *Open items*.
+
+### #26 Investigate what the 154-byte patch added over the 122-byte legacy
+Components up-converts the legacy **122-byte** wire message (`LEGACY_SYSEX_SIZE=122`, `LEGACY_PATCH_SIZE=112`) to the modern **154-byte** message (protocol version 6, 126 unpacked bytes) before parsing (`JX`). Work out the delta: which parameter(s) or bytes the newer format added, and how the up-converter maps/defaults them. This pins down what a firmware revision introduced and whether any parameter is modern-only.
+- **Approach:** read `JX` / the legacy path in Components' `main-*.js` (the `fromPatchSysex` neighbourhood), diff the legacy 112-byte payload layout against the 126-byte modern one, and cross-check against the 136-byte storage map.
+- **Depends on:** #12.
+
+### #28 Enumerate patch category and genre values
+Bytes 25 (category) and 26 (genre) of the 136-byte patch are identified but their value enums are not. Observed so far: category `1` = Bass and `3` = Drum/Percussion in `Roboo.monostationpack`, but in the YBC soundpack banks the values don't track patch names (leads tagged Bass/Drum), and genre is `0` everywhere.
+- **Approach:** find the category/genre name tables in Components' `main-*.js` (librarian filter UI) and/or the firmware's string table; confirm against packs whose category is set deliberately.
+- **Depends on:** #12.
 
 ### #13 Document session format
 Decode the 90,112-byte `.monostationsession` layout: the sequencer patterns, step automation, 64 patches at a 512-byte stride, and global settings. Use `session_32.monostationsession` as the reference vector.
 - **Depends on:** #12 (patch part)
+
+### #27 Document the session SysEx transport protocol
+Sessions travel over SysEx in a framing distinct from the on-device `.monostationsession` file (#13). Observed in the YBC `*Sessions*.syx` (3,484,838 bytes, 11,618 messages):
+- `F0 00 20 29 00 77 …` (23 bytes) — transfer header / metadata (`00 00 00 01 02 00 00 00 00 00 02 0D 06 00 …`).
+- `F0 00 20 29 00 79 <flag> …` (300 bytes, ×11,616) — body blocks; payload 7-bit clean. `<flag>` is mostly `00`, sometimes `01`/`08`/`10`/`18`/`7F` (meaning TBD, likely block/section markers). The first block's payload begins `55 53 45 52` ("USER"; the init file starts `INIT`).
+- `F0 00 20 29 00 7A …` (15 bytes) — trailer (`01 08 08 01 03 0C 05 01`).
+
+One `0x77`…`0x7A` transfer carries **all 32 sessions** (~2.9 MB unpacked ≈ 32 × 90,112). Plain Components `OX` 8→7 unpacking does **not** recover the `USER`/`INIT` magic, so the packing differs — try the firmware container's 37-septet→32-byte scheme (`docs/firmware-container.md`).
+- **Goals:** packing scheme, header/trailer fields, `<flag>` meaning, per-session boundaries; then a `tools/` reader that turns the dump into 32 `.monostationsession` images.
+- **Depends on:** #13 (to validate the unpacked images). Feeds #19.
 
 ### #14 Document full MIDI implementation (CC/NRPN)
 Cross-check the official MIDI parameter guide against the firmware's CC/NRPN dispatch tables. List parameters that are reachable by SysEx but not by CC; these are candidates for #20.
