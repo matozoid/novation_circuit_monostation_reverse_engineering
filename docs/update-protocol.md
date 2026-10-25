@@ -83,10 +83,28 @@ Mono Station update config (`o1` defaults overridden by the device class):
 - **Reboot.** The app accepts any `0x71` with `00 7F` at bytes 6–7 (or a bare `0x60`), writes `2` to backup SRAM and jumps to the bootloader without a system reset (`docs/sysex-handlers.md`). A patched image must keep that path to stay updatable without the manual entry (#29).
 - **Version digits.** The bootloader sees the `0x71` start message with the version digits. Whether it rejects versions it considers older or equal is unknown (#25). Components itself only offers an update when the running version is below 800. That version comes from the image header (`MAIN` + BCD at image offset `0x1B0`), not from the container digits. A modified image that reports a version of 800 or higher won't be "updated" by Components, which matters for restoring stock (#15).
 - **Pacing.** Wait for each ack: the 10-byte `0x72` reply with an increasing counter. Do not stream. Use a timeout of at least 10 s per packet.
+## Entering the bootloader by hand
+
+From the user guide (v1.2, appendix *Bootloader Mode*, p. 90):
+1. Turn the unit off.
+2. Hold **Scales**, **Note** and **Velocity**.
+3. Power it on.
+
+The guide's picture shows the buttons Osc 1, Osc 2, Mod Seq, Oct ↓, Oct ↑, Clear, Save and Sessions, with Osc 1 and Osc 2 lit. Pressing Osc 1 or Osc 2 shows a firmware element's version number as a binary pad pattern. **Play** exits and reboots into the application. The guide calls this an "engineering mode" for updating firmware, **and factory patches**, when a normal update fails. Novation's support article on bootloader mode gives the same combination.
+
+The application has no code for this. Its only jump to `0x08000000` is the SysEx reboot (`docs/sysex-handlers.md`). So the bootloader must read the buttons itself before it starts the app, and **the combination should work even when the application image is broken.** Inferred, not yet tried on hardware.
+
+The application has other power-on combinations, which are not bootloader entries:
+- **Shift:** System Settings;
+- **Shift + Save:** toggle save lock;
+- **Shift + Clear:** load the Init Patch instead of the last session.
+
+## Recovery
+
 - **Recovery path.** Components starts directly at step 3 when the bootloader port is already present, for example when the unit was booted into the bootloader by hand. A failed transfer can be retried that way, provided the bootloader region itself is untouched.
 
 ## Not yet known
 
-- How the bootloader is entered by hand (button combination). Components has no hint; the user manual should say.
+- Whether the bootloader's button check really runs before any check of the app image. This needs a test on hardware.
 - The exact ack timing and whether the counter equals the packet index, which needs a capture of a real update.
 - What the bootloader checks: product id, version, block count, checksum (#25).

@@ -178,7 +178,7 @@ Cross-check the official MIDI parameter guide against the firmware's CC/NRPN dis
 ## Safe flashing
 
 ### #15 Bootloader recovery procedure
-Before flashing anything modified, confirm the bootloader lives in a protected region that application updates never overwrite. Then confirm that a stock image can always be restored, using Components or our own tool (#16) from the bootloader button combo. Test this with stock firmware only.
+Before flashing anything modified, confirm the bootloader lives in a protected region that application updates never overwrite. Then confirm that a stock image can always be restored, using Components or our own tool (#16) from the bootloader button combo (Scales + Note + Velocity at power-on, #29). Test this with stock firmware only.
 - **Depends on:** #4, #8
 - **Done when:** `docs/recovery.md` describes a tested way to get back to stock firmware.
 
@@ -186,6 +186,12 @@ Before flashing anything modified, confirm the bootloader lives in a protected r
 Components has no hint of how to start the unit in its bootloader without the application's help; it only reboots a running unit with `0x71` (`docs/update-protocol.md`). Recovery from a modified image that won't boot, or won't answer `0x71`, needs a way in that doesn't depend on the application, probably a button combination held at power-on. Look in the user manual, Novation support articles, and the application's boot path (it may check a key before jumping to its own code, or the bootloader may check one before jumping to the app).
 - **Feeds:** #15
 - **Done when:** the entry method is documented and tried on a unit with stock firmware.
+- **Status:** documented, not yet tried.
+  - **Entry:** hold **Scales + Note + Velocity** while powering on (user guide v1.2 p. 90, and Novation support). The grid shows a reduced set of buttons; Osc 1 and Osc 2 show the firmware versions in binary; **Play** exits.
+  - The app has no code for this; its only jump to the bootloader is the SysEx reboot. So the bootloader reads the buttons itself, and the combination should survive a broken app image.
+  - Details are in `docs/update-protocol.md` → *Entering the bootloader by hand*.
+  - The guide also says the bootloader updates factory patches, which may explain where the factory bank lives (#8).
+- **Still open:** try it on a unit with stock firmware: enter the bootloader, read the version patterns, exit with Play. Check that the `Circuit Mono Station Bootloader` USB port appears.
 
 ### #30 Trace the application's update and version handlers
 Find the SysEx handlers in firmware 800 that serve the update protocol from the application side:
