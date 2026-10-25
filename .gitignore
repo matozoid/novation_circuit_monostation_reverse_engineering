@@ -1,6 +1,7 @@
 # Vendor binaries (large, redistributable only from vendor)
 *.exe
 *.dmg
+*.pdf
 
 # Extracted / decoded firmware blobs
 firmware/
