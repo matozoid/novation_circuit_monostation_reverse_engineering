@@ -1,7 +1,8 @@
 # Vendor binaries (large, redistributable only from vendor)
 *.exe
 *.dmg
-*.pdf
+circuit-mono-station-midi-parameters-v1.pdf
+circuit-mono-station-ug-en-v1-2.pdf
 
 # Extracted / decoded firmware blobs
 firmware/
