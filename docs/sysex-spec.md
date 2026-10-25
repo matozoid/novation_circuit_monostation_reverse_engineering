@@ -69,13 +69,21 @@ The parameter table at `0x0802A62A` (`docs/session-format.md`) gives each parame
 Checked three ways:
 - the firmware's `Initial Patch` stores coarse `40 00` and fine `32 00`, i.e. 128 and 100, the table's centres, and LFO rate `22 00` = 68, the PDF's default;
 - in every pack seen, fine tune never exceeds 200;
-- the YBC "Acid" screenshot shows osc 1 coarse −128, mixer 226/79/255, env → filter +13, seq → osc 2 pitch +127, seq → filter −51 and LFO rate 68, which are exactly the decoded values.
+- the 64 YBC "Patch Details" screenshots (see *Editor screenshots* below) agree with the decoded bank value for value, e.g. Adlib's ring mod 255, Kick 8's mixer 175/0/255/9, Noise Snare's cutoff 115, seq → filter −80 and fine −83, and Filter Snare's cutoff 234.
 
 `tests/test_patchbank.py` checks every kind and MIDI number in `PARAMS` against the firmware table and the PDF.
 
 An earlier decode, `LSB + 128·flag` with the flag ignored for mod depths, agreed only at 0 and 255. It made the editor seem to show some values at "about 2×" through a display curve. That curve doesn't exist. The full offset → name → kind map is `PARAMS` in `tools/patchbank.py`; decode a patch with `python3 tools/patchbank.py show <pack> <slot|name>`.
 
-**Display curve.** The Components editor still shows filter cutoff on a curve: Acid stores 32 and the editor shows 104. Env release is probably shown on one too.
+### Editor screenshots
+
+The YBC "Big City Flippin' Grooves" pack ships a `.syx` bank plus 64 "Patch Details" PNGs from a third-party editor. All 64 were compared with the decoded bank:
+- **62 agree** on every displayed value (raw decode, no display curves), apart from the two editor quirks below. `Chord Disto.PNG` repeats Reverse Filter and `Semi Chords.PNG` repeats Derek, so those two patches have no screenshot of their own.
+- **Acid and Italo were edited after export.** A handful of single values differ (Acid: cutoff 32 vs 104, release 39 vs 23, dist 127 vs 37; Italo: cutoff, res, dist, LFO rate, LFO → filter). Every other field matches, so the bank isn't misdecoded. An earlier "cutoff display curve" claim came from Acid and is wrong.
+- **Glide is always shown as 0**, even where the bank has non-zero glide (ARP Lead 4/1, Animals 51/59, PWM Lead 34/25, …). The editor doesn't read bytes 49/58. The firmware table puts osc 1/2 glide (CC 5/37, 0–127) there.
+- **Ext and Ringmod sliders are swapped.** The slider labelled Ext shows byte 71 and the one labelled Ringmod byte 69 (Adlib: 255 under Ext; Italo: 50 under Ringmod). The firmware table and the MIDI PDF put ring mod (CC 24) at 71 and audio in (CC 25) at 69, and 13 YBC patches use byte 71 against 1 for byte 69, so the editor mislabels.
+- Enum values seen match the MIDI PDF tables: osc wave 0–3 Sin/Tri/Saw/PW, range 0–3 16'/8'/4'/2', filter shape 0–2 LP/BP/HP, slope 0/1 12/24 dB, bypass 0 off / 1 Noise / 2 Osc / 3 both, dist type 0–2 I/II/III, LFO wave 0–3 Tri/Saw/Sq/S&H, sync rate (e.g. 8 "21 2/3 beats", 16 "8 beats", 19 "4 beats", 25 4th, 29 16th dotted, 31 16th, 34 32nd triplet). Selected routing = source × 8 + destination. Env → amp is a bool (the lit "Amp" button).
+- Unresolved: Animals stores env re-trigger (byte 27) = 1, but its Re-Trigger button looks unlit.
 
 ### Request a patch
 `F0 00 20 29 01 61 40 <slot> 00 F7` — message type `0x40` requests a patch dump (seen on the Circuit path with its own id; expected to apply to Mono Station). Lets a bank be dumped from a connected unit by sweeping slots 0–63.
@@ -83,7 +91,7 @@ An earlier decode, `LSB + 128·flag` with the flag ignored for mod depths, agree
 ## Reference data
 
 - `Roboo.monostationpack` (repo root) — a real 64-patch bank: slots 0–31 named (bass1–4, drum one-shots, pad1–4, key1–4, …), 32–63 = `Initial Patch`. Primary corroboration for the 136-byte layout above.
-- Firmware 800 embeds two defaults in its image: `Classic Mono` (`0x08028864`) and `Initial Patch` (`0x08028F6B`), each a bare 126-byte patch (the 136-byte message without its 9-byte header and `F7`), name first. (The firmware image contains **only** these templates, not a 64-slot factory bank — the shipped factory patches live in a separate data-flash region outside the app update image.)
+- Firmware 800 embeds two defaults in its image: `Classic Mono` (`0x08028868`) and `Initial Patch` (`0x08028F6B`), each a bare 126-byte patch (the 136-byte message without its 9-byte header and `F7`), name first. `Classic Mono` is the patch a blank session gets: `FUN_08018ca4` copies it to session offset `0x15F5C`. `Initial Patch` is the "empty slot" reference: at boot the firmware reads 128 stored patches from external flash (block `n/8 + 2`, offset `(n % 8) × 512`, i.e. from `0x2000`) and builds a bitmask of slots that differ from it, and `FUN_0801b4e0` updates that mask when a patch is saved. (The firmware image contains **only** these templates, not a 64-slot factory bank — the shipped factory patches live in a separate data-flash region outside the app update image.)
 
 ## Open items
 - The 136-byte split-pair value decode is **resolved** (see *Split-pair decode* above), from the firmware's store routine and checked against packs and editor screenshots.

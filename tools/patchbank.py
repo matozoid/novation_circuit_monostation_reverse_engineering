@@ -71,11 +71,11 @@ GENRES = ["None", "Classic", "D&B/Breaks", "House", "Industrial", "Jazz",
 # centre: 64 for the one-byte ones, 128 for coarse tune and the pitch / cutoff
 # mod depths, 100 for fine tune (range -100..100, MIDI 0..200).
 #
-# The Components editor shows filter cutoff and env release through a
-# perceptual curve, so its on-screen numbers can differ from these raw values.
+# Editors show these raw values unchanged (checked against 62 YBC screenshots;
+# see docs/sysex-spec.md, *Editor screenshots*).
 #
 # kind:  u      unsigned 0..127 (raw byte)
-#        enum   small enumeration (raw byte); see *_VALUES below
+#        enum   small enumeration (raw byte); value tables in the MIDI PDF
 #        bool   0/1 (raw byte)
 #        s      signed, value = raw - 64
 #        pair   unsigned 0..255, two bytes as above
@@ -89,7 +89,7 @@ PARAMS = [
     ("osc1_coarse",        44, "spair"),
     ("osc1_fine",          46, "fine"),
     ("osc1_range",         48, "enum"),    # 0..3 = 16'/8'/4'/2'
-    ("osc1_glide",         49, "enum"),    # CC 5; 0..15, see the MIDI PDF
+    ("osc1_glide",         49, "enum"),    # CC 5; 0..127 per the firmware table
     ("osc2_octave",        50, "s"),
     ("osc2_waveform",      51, "enum"),
     ("osc2_pw",            52, "s"),
@@ -110,7 +110,7 @@ PARAMS = [
     ("filter_cutoff",      75, "pair"),
     ("filter_shape",       77, "enum"),    # 0/1/2 = LP/BP/HP
     ("filter_slope",       78, "enum"),    # 0/1 = 12/24 dB
-    ("filter_bypass",      79, "enum"),    # 0 none / 1 noise / 2 osc2 / 3 both
+    ("filter_bypass",      79, "enum"),    # 0 off / 1 noise / 2 osc 2 / 3 both
     ("filter_key_track",   80, "u"),       # 0..7
     ("env_attack",         81, "u"),
     ("env_decay",          82, "u"),
