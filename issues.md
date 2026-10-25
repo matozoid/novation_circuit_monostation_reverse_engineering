@@ -111,17 +111,18 @@ Method: compare the firmware SysEx handler (#10) with Components JS (patch edito
 **Bytes 27–40 (2026-10-25):**
 - Byte 27 is the envelope Trigger: param id 2, NRPN 0:73, 0–1. The YBC editor never lights Re-Trigger, so the Animals puzzle is an editor quirk.
 - Bytes 28–40 have no param-table record (patch offsets 19–31) and are zero in every known patch, so they are unused.
+- **Trigger on hardware (2026-10-25): 1 = retrigger, 0 = legato.** It is the panel's Shift + PWM toggle (light on = 1), and NRPN 0:73 sets it too; both were checked by reading the current patch back. Test it with a pluck (attack 0, decay ~70, sustain 0). With sustain at maximum, both settings sound the same, which is why the first test looked like "no effect".
+- **`0x40` request on hardware:** only `40 00` answers. The reply is the **current working patch** as a type-0 message (`… 61 00 00 00` + patch), not slot 0's stored data. Slots 1, 40, 63, 64 and 127 get no reply, so the request can't dump slots; use the bootloader's `0x78` for that.
+- **Slot write on hardware:** a type-1 write to slot 64 stored the patch in flash (checked with `p 0x40` reads) and left slots 65–71 in the same 4 KiB sector untouched. It writes the whole 512-byte slot, and bytes 126–511 come from a RAM buffer (zeros and stale data, here an old `0x40` reply). Panel-saved slots 7, 8, 24 and 31 show the same. Only the first 126 bytes are read back.
 - Still open:
-  - what Trigger 0/1 does (a listening test with NRPN 0:73);
-  - coarse tune quantisation (±1 octave over −128…127);
-  - hardware checks of the `0x40` request and slot write.
+  - coarse tune quantisation (±1 octave over −128…127).
 - Components' `resources/mididata/factory-patches.syx` is **Circuit** (`01 60`), not Mono Station factory patches.
 
 **Caveat found:** byte 25 (`category`) in the vendor soundpack banks does **not** track patch names (lead patches tagged Bass/Drum) — either the enum differs from the Roboo pack or packs don't set it meaningfully. Category enum still TBD.
 
 **Also in scope — soundpack bundles:** (the "overlay" map once listed here is Bass Station II's AFX overlay, not a Mono Station feature.) Vendor soundpacks (e.g. the YBC zip) bundle a `.monostationpack`, a raw `*Patches*.syx` bank and a `*Sessions*.syx` dump together; document how the bundle pieces relate.
 
-**Remaining for full close:** coarse tune's unit (range −128…127; fine is −100…100), and hardware confirmation of the `0x40` request and a slot write. See spec *Open items*.
+**Remaining for full close:** coarse tune's unit (range −128…127; fine is −100…100). See spec *Open items*.
 
 ### #26 Investigate what the 154-byte patch added over the 122-byte legacy — DONE (not Mono Station)
 **Resolved:** neither format belongs to the Mono Station. Components keeps them in its Bass Station II modules:
@@ -279,13 +280,15 @@ The firmware's patch store has 128 slots (`0x2000`–`0x12000`, 512 bytes each).
   - dump `0x2000`/`0x10000` (cmd `0x78`) to see whether slots 64–127 hold data on a stock unit;
   - try a slot write, then a `0x40` request, to slot 64.
 - **Feature candidate:** patch the page setter, the Oct LED logic and pad rendering to allow 4 pages, giving 128 patches. Depends on #17.
-- **Program change 64–127 on the Osc 1 channel already selects these slots:** the firmware has no 0–63 clamp, despite the MIDI PDF (`docs/sysex-spec.md` *Patch store*). First hardware test: dump the region, then send PC 64.
+- **Program change 64–127 on the Osc 1 channel was expected to select these slots** (no 0–63 clamp found in the setter or the load handler; `docs/sysex-spec.md` *Patch store*). Hardware says otherwise: see test 4 below.
 - **Hardware results (2026-10-25, stock unit, bootloader 740 / firmware 800; tests 0–3 of the plan, `~/ms-dumps/report.json`):**
   - The `0x78` dumps are served by the **bootloader** only; the app ignores them. `tools/hwtest_slots.py` reboots with `0x71` first, like Components.
   - The bootloader accepts `0x2000`/`0x10000`: a full 128-slot dump, header echoing that range, CRC ok. Slots 0–63 match the 64-slot backup.
   - **Slots 64–127 all hold `Initial Patch`, byte for byte.** There is no hidden factory or test bank (#8), and no `FF` slots, so the boot scan counts them as unused.
-  - **PC 64 on ch 1 loads slot 64:** the sound changed to the init patch and no patch pad was lit. PC 63 (control) loaded slot 63 and lit page 2's last pad. So the panel is the only 64-slot limit.
-  - Not run (by user decision): the slot write (4) and the `0x40` request (5).
+  - ~~PC 64 on ch 1 loads slot 64~~ **Corrected by test 4:** PC 64 gave the init sound and lit no pad, but slot 64 held `Initial Patch` too, so that didn't prove where it loaded from. PC 63 (control) loaded slot 63 and lit page 2's last pad.
+  - **Test 4 (slot write, 2026-10-25):** a type-1 write put `Min 3rd` (a copy of slot 32) into flash slot 64, confirmed with `p 0x40` reads. Afterwards PC 64 still loaded `Initial Patch`, also after a power cycle, and so did PC 96, 104 and 127. PC 32 loaded `Min 3rd`, so the readback method works. **PC ≥ 64 loads the built-in `Initial Patch` template and doesn't read flash.** PC 96 and 104 rule out a wrap to 0–63 (slots 32 and 40 hold data). Slot 64 was restored to `Initial Patch` afterwards.
+  - Where the template comes from isn't traced. The load handler `FUN_08019AE4` reads flash for any slot `< 0x80` on its port `+0x18`, but its port `+0x34` copies `Initial Patch` with no slot argument. The setter `FUN_0801C842` posts the program through a port chain (`FUN_08014D2E`) that wasn't resolved statically. So hidden slots can be written and dumped, but not loaded without a patch (#17).
+  - Test 5: the `0x40` request answers only `40 00`, with the current patch (#12).
   - Second run: dumps of one slot, one session and `0x0`/`0x2000` all work, so the range is free-form. External flash above the sessions (`0x2E8000`–`0x1000000`) is all `FF`, so the factory patches aren't stored there (#8). The storage map is in `docs/session-transport.md`.
 
 ### #20 Expose SysEx-only parameters via CC/NRPN

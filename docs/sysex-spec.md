@@ -39,7 +39,7 @@ Per 136-byte message:
 | 26 | genre index: 0 None, 1 Classic, 2 D&B/Breaks, 3 House, 4 Industrial, 5 Jazz, 6 R&B/HHop, 7 Rock/Pop, 8 Techno, 9 Dubstep |
 
 The category and genre tables come from Components' Circuit-family librarian (modules `frontend/constants/circuit/patch-categories` and `patch-genres`, JS names `mP`/`gP`; the sidebar binds `categoryOptions=mP`, `genreOptions=gP`). The similar lists `kR`/`Wte` (`Motion`, `User 1`, `User 2`) belong to Peak, not the Circuit family. Real packs use the field loosely: Roboo tags its basses `1` (Arp) and its drums `3` (Bell), the YBC banks use only 0–3, and every genre seen is `0`. Treat the byte as a free user tag, not a reliable description of the sound.
-| 27 | envelope Trigger (`env_retrigger`): firmware param id 2, NRPN 0:73, 0–1, default 0. The MIDI PDF lists it as `Trigger`, 0–1, default 0, and the user guide doesn't mention it. On hardware (2026-10-25, amp attack at about half) NRPN 0:73 = 0 and = 1 both played legato: a second key held over the first didn't restart the envelope. Either the NRPN isn't applied, or the parameter does something else; not resolved. |
+| 27 | envelope Trigger (`env_retrigger`): firmware param id 2, NRPN 0:73, 0–1, default 0. The MIDI PDF lists it as `Trigger`, 0–1, default 0, and the user guide doesn't mention it. **On hardware (2026-10-25): 1 = retrigger, 0 = legato** (a second key held over the first replays the envelope only at 1). It is the panel's Shift + PWM toggle (light on = 1), and NRPN 0:73 sets it too, both checked by reading the current patch back. A first test with sustain at maximum couldn't hear the difference; use a pluck (attack 0, decay ~70, sustain 0). |
 | 28–40 | unused: there is no firmware param-table record for patch offsets 19–31. They are `00` in `Initial Patch`, `Classic Mono`, all 64 Roboo patches and all 64 YBC patches. |
 | 41–134 | parameters; 8-bit ones split over two bytes (high 7 bits, then the low bit as `0x00`/`0x40`, see below) — offsets per the community PDF (osc1/osc2 from 41, mixer, filter, env, LFO, distortion, 93–133 mod matrix, 134 selected routing) |
 | 135 | `F7` |
@@ -87,7 +87,7 @@ The YBC "Big City Flippin' Grooves" pack ships a `.syx` bank plus 64 "Patch Deta
 - **Re-Trigger is always shown unlit**: Animals (byte 27 = 1, the only YBC patch with it set) and 808 Cow (byte 27 = 0) look the same. Like glide, the editor doesn't read byte 27.
 
 ### Request a patch
-`F0 00 20 29 01 61 40 <slot> 00 F7` — message type `0x40` requests a patch dump (seen on the Circuit path with its own id; expected to apply to Mono Station). Lets a bank be dumped from a connected unit by sweeping slots 0–63.
+`F0 00 20 29 01 61 40 00 00 F7` — message type `0x40` requests the **current working patch**. On hardware (2026-10-25) the reply is a 136-byte type-0 message (`F0 00 20 29 01 61 00 00 00` + patch + `F7`) holding the current edit buffer, not slot 0's stored data. Other slot bytes (1, 40, 63, 64, 127) get no reply, so this can't sweep a bank; the bootloader's `0x78` dump does that (`docs/session-transport.md`). A type-1 slot write does work, including to slot 64 (#12).
 
 ## Reference data
 
@@ -103,7 +103,7 @@ The firmware's patch store has **128 slots** of 512 bytes at external-flash `0x2
 
 Only the panel stops at 64. The patch view (render `FUN_08013ac4`, pads `FUN_08014330`) shows 32 pads, and slot = page × 32 + pad. Oct ↓ / Oct ↑ (button events `0x14` / `0x15` in `FUN_08011FBC`) call `FUN_08022fdc(view, 0)` / `(view, 1)`, so the page is only ever 0 or 1. The render does mask the page with `& 7` and lights the Oct LEDs by `page == 0` vs `page != 0`.
 
-So slots 64–127 are probably dead space left over from a 4-page design, and the firmware would load, save and track them as normal. A 7-bit SysEx slot byte can address them, and so could a patched page setter (#31). Not tried on hardware.
+So slots 64–127 are probably dead space left over from a 4-page design, and the firmware would load, save and track them as normal. A 7-bit SysEx slot byte can address them, and so could a patched page setter (#31). On hardware, a type-1 slot write to slot 64 works, but program change doesn't load it (see below).
 
 **Program change already reaches them.** The MIDI PDF documents program change 0–63 on the Osc 1 channel, but the firmware doesn't clamp it:
 - The MIDI-in router at `0x080186B8` (missed by Ghidra; registered from the UI constructor `FUN_0800FB5C` via literal `DAT_0800FB04`) dispatches on `status & 0xF0`.
@@ -112,11 +112,12 @@ So slots 64–127 are probably dead space left over from a 4-page design, and th
   - base 0 → `set(0x50, program, 1)`, the patch-number setter `FUN_0801C842`, with no range check, so on to `FUN_08019AE4` (`< 0x80`);
   - base `0x20` → `FUN_08014D2E(obj + 0x2C, program)`, session select (PDF: 0–31 instant, 64–95 queued).
 
-So program change 64–127 on the Osc 1 channel should load slot 64–127 from `0xA000`–`0x12000`. What is stored there on a stock unit is unknown. If it is erased flash (`FF`), the synth gets a patch with every byte at `FF`. The boot scan would also count those slots as "used", since `FF…` differs from `Initial Patch`.
+So program change 64–127 on the Osc 1 channel was expected to load slot 64–127 from `0xA000`–`0x12000`. **Hardware says no (2026-10-25, #31):** with `Min 3rd` written to flash slot 64, PC 64, 96, 104 and 127 all loaded the built-in `Initial Patch`, also after a power cycle. The path that substitutes the template isn't traced: the load handler `FUN_08019AE4` has a port (`+0x34`) that copies `Initial Patch` with no slot argument, and the setter posts through a port chain (`FUN_08014D2E`) not yet resolved.
 
 ## Open items
 - The 136-byte split-pair value decode is **resolved** (see *Split-pair decode* above), from the firmware's store routine and checked against packs and editor screenshots.
 - Coarse tune spans −128…127. The user guide gives the range as ±1 octave (p. 18 control list and the oscillator section), so about 10.7 steps per semitone. Whether the engine quantises to semitones is not traced.
 - The `category`/`genre` enums are resolved (#28), although real packs don't set them consistently.
-- Request message (`0x40`) to be confirmed on hardware.
+- Request message (`0x40`): confirmed on hardware, current patch only (`40 00`).
+- Why program change ≥ 64 loads the `Initial Patch` template instead of the flash slot.
 - The in-session patch copy is covered by #13 (`docs/session-format.md`).

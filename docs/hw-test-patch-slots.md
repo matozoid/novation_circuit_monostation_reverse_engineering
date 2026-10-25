@@ -18,12 +18,12 @@ What the script does:
 5. It asks you to press Play to leave the bootloader, then waits for the app port.
 6. Back in the app, if the 128-slot dump failed, it falls back to `p 0x40` op 2 reads. It never sends op 0 or op 1.
 7. It classifies slots 64–127 and checks that slots 0–63 match the backup.
-8. It sets the envelope Trigger (patch byte 27, NRPN 0:73 on the Osc 1 channel) to 0 and then to 1. Each time it asks whether a second key, pressed while the first is still held, restarts the envelope. This changes only the current patch's working copy. Skip it with `--skip-trigger`.
+8. It sets the envelope Trigger (patch byte 27, NRPN 0:73 on the Osc 1 channel) to 0 and then to 1. Each time it asks whether a second key, pressed while the first is still held, restarts the envelope. Use a pluck envelope (attack 0, sustain 0): at full sustain both settings sound the same. This changes only the current patch's working copy. Skip it with `--skip-trigger`.
 9. It sends PC 63 and PC 64 on the Osc 1 channel, prompting for what you hear and see, then PC 0. The PC 0 also undoes the Trigger change.
 
 On Linux the dumps are read from the ALSA rawmidi device (`/dev/snd/midiC*D*`, found through `/proc/asound`), like `amidi`. Through the sequencer, a session dump lost blocks to input overruns. The script polls the device before sending each request, because rawmidi input starts only on the first poll or read. The dumps and `report.json` are written to the output directory. The manual steps below do the same with `amidi`.
 
-**Result of the first run (2026-10-25):** slots 64–127 all hold `Initial Patch`, and PC 64 loads slot 64. Details are in #31.
+**Results (2026-10-25):** slots 64–127 all hold `Initial Patch`. Test 4 showed that **PC ≥ 64 doesn't load the flash slot**: with `Min 3rd` written to slot 64, PC 64 still loaded the built-in `Initial Patch`. The first run's "PC 64 loads slot 64" was a false positive, because slot 64 held `Initial Patch` anyway. Test 5: only `40 00` answers, with the current patch. Trigger: 1 = retrigger, 0 = legato. Details are in #12 and #31.
 
 ## Setup
 
@@ -138,7 +138,7 @@ Record:
 
 Return to a normal patch with `C0 00` or a pad press. Loading a patch changes only the current session's working copy, so nothing is saved unless you press Save. **Don't save while slot 64 is loaded.**
 
-Expected from the firmware: PC 64 loads slot 64 (#31). If nothing happens, the clamp is somewhere not yet traced. Note this in #31.
+Expected from the firmware: PC 64 loads slot 64 (#31). **Result:** it loads the built-in `Initial Patch` instead (shown by test 4). Since slot 64 holds `Initial Patch` on a stock unit, this test alone can't tell the two apart; check the current patch with `40 00` after writing a different patch to slot 64.
 
 ## 4. Optional: write slot 64 over SysEx
 
@@ -163,7 +163,7 @@ Then rerun test 1 or 2 and check that slot 64 now matches slot 0. Then send `C0 
 amidi -p $P -S 'F0 00 20 29 01 61 40 40 00 F7' -r ~/ms-dumps/req-slot64.syx -t 2
 ```
 
-The type-`0x40` request isn't confirmed on hardware for any slot (#12), so run `40 00` (slot 0) first as a control. A 136-byte reply for slot 64 that matches slot 0 means the request path also accepts the hidden slots.
+Run `40 00` (slot 0) first as a control. **Result:** `40 00` returns the current working patch as a type-0 message; every other slot byte, including 64, gets no reply (#12).
 
 ## Undo
 
