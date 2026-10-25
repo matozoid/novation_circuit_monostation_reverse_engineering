@@ -16,7 +16,8 @@ builds in FUN_08018CA4, then 4 bytes of 0xFF. Layout:
     0x15F5C  the session's patch: 126 bytes = bytes 9..134 of a 136-byte patch
 
 Pattern = 16 steps x 8 bytes + 12-byte footer: footer[0] = start step << 4 |
-end step, footer[1] = sync rate index (RATE_TICKS), footer[2] = direction.
+end step, footer[1] = sync rate index (RATE_TICKS), footer[2] = direction,
+footer[3] = smooth (mod sequence: glide between step values).
 Automation lane = 12-byte mask (bit i, LSB first, = micro-step i recorded)
 followed by 96 values (16 steps x 6 micro-steps).
 
@@ -145,6 +146,7 @@ def pattern(image, track, index):
         "length": pattern_length(footer[0]),
         "rate": footer[1],
         "direction": footer[2],
+        "smooth": footer[3],
     }
 
 

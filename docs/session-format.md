@@ -67,7 +67,7 @@ Footer:
 - Byte 2 is the play direction: 0 forward, 1 reverse, 2 ping-pong, 3 random. Always 0 in the YBC sessions.
 
 The song-position routine `FUN_0801B698` reads bytes 0–2. It sums each chained pattern's length as `ticks[byte 1] × steps(byte 0)`, doubled for ping-pong. It then takes the clock modulo that total and walks the chain to the current step: up from start for forward, down from end for reverse, both ways for ping-pong, and through a random generator for random. Playback `FUN_080234AC` uses the same table for gate timing.
-- Byte 3 was `01` once, on track 2. The pattern byte at `+0x83` switches `FUN_08023998` to an interpolated value path.
+- Byte 3 is the mod-sequence smooth flag (0 off, 1 on); the UI toggles it on button event `0x13` (`FUN_08011FBC`). The mod-sequence output `FUN_08023998` reads it. When it is off, the mod value jumps to each step's byte 1 at the step start. When it is on, the value crossfades linearly from the current step's byte 1 to the next step's on every clock tick: `(wA × current + wB × next) / 48 | 0x80`. The weights come from a table at `0x0802A286` with one 24-pair row per sync rate (`48/0, 24/24` at 2 ticks per step; `48/0, 32/16, 16/32` at 3; …). The YBC sessions set it once, on a track 2 pattern.
 - The rest is 0.
 
 Step byte 4 in detail: the setter `FUN_0801C842` treats id `0x50` apart from the patch parameters. It compares the value with the current patch number (an observable at controller `+0x64`) and, if it differs, posts it to a port of the session controller (vtable `0x08027068`; handler `FUN_08019AE4`, missed by Ghidra). For a value below `0x80` the handler reads 126 bytes from the patch store at `0x2000 + value × 0x200` (`FUN_0801AEF4(sector = (value >> 3) + 2, offset = (value & 7) << 9, …)`, the `MS_ALL_PATCHES` area) into the session's patch at `0x15F5C`, loads it into the synth engine, and stores the new patch number.
@@ -108,5 +108,5 @@ The firmware CC numbers differ from the Components `kD` schema in places. For ex
 ## Open
 
 - Patch bytes 27, 49, 58 and 60 (ids 2, 9, 16, 18: NRPN 0:73, CC 5, CC 37, CC 7): not named by the PDF.
-- Footer byte 3, header byte `0x42`, and the 7 bytes at `0x155D8`.
+- Header byte `0x42`, and the 7 bytes at `0x155D8`.
 - The CC differences between firmware and Components `kD`.
