@@ -126,7 +126,16 @@ Original note: bytes 25 (category) and 26 (genre) of the 136-byte patch are iden
 - **Three tracks:** 16, 8 and 8 patterns of 140 bytes each (16 × 8-byte steps plus a 12-byte footer).
 - Automation lanes are 108 bytes: a 96-bit mask plus 96 values (16 steps × 6 micro-steps). Track 0 has 42 lanes per pattern at `0x918`, track 1 has 12 at `0x128F8`, and track 2 has none.
 - **One** 126-byte patch per session at `0x15F5C`; every YBC session's patch matches its bank. The "64 patches at a 512-byte stride" idea is the separate patch store `MS_ALL_PATCHES`, not part of the session.
-- Still open: what each track is, the step byte meanings (only the defaults are certain), the lane-to-parameter map, footer bytes 1 and 3, `0x42`, and the 7 globals at `0x155D8`.
+- **Tracks:** 0 = synth/osc 1, 1 = osc 2, 2 = mod sequence.
+- **Step bytes**, from the playback routine `FUN_080234AC`:
+  - 0 = note (0 = empty);
+  - 1 = velocity (0 plays as 96); on track 2 it carries the mod value;
+  - 2 = gate in 1/6-step units, clamped 1–96;
+  - 3 = value for a per-track parameter id (`0x09`/`0x10`/`0x4C`);
+  - 4 = patch change: slot 0–63, sent as id `0x50`; the session controller (`FUN_08019AE4`) loads it from the patch store at `0x2000 + slot × 0x200`.
+- **Lane → parameter map:** resolved from the firmware tables `0x08027588` and `0x0802775C` plus the 76-entry parameter-id table at `0x0802A62A`, which gives each id's patch offset, range and CC/NRPN. In `tools/session.py` these are `LANE_IDS`, `PARAM_OFFSETS` and `lane_param`, checked against the firmware by `FirmwareTablesTest`.
+- Footer byte 1 is very likely the sync rate (ticks-per-step table `[2,3,4,6,8,12,16,24]`; default 3 = 1/16).
+- Still open: patch bytes 27/49/58/60; footer byte 3; `0x42`; the 7 globals at `0x155D8`; and the firmware-vs-Components CC differences (`docs/session-format.md`).
 
 Original note: decode the 90,112-byte `.monostationsession` layout: the sequencer patterns, step automation, 64 patches at a 512-byte stride, and global settings. Use `session_32.monostationsession` as the reference vector.
 - **New data (#27):** `tools/sessionsyx.py split <Sessions.syx> outdir/` yields 32 populated `USER` session images per YBC dump (sessions 0–15 differ between the main and Alt packs), giving real, non-init vectors to diff against `session_32`. The init image is sparse: `INIT` magic, the name at `0x20`, repeating `00 60 00 ff` 16-byte step records at `0x800` and `0x12800`, and patch data around `0x15800` (`Classic Mono` at `0x15F5C`). Only one patch name appears in the init image, so the "64 patches at 512-byte stride" assumption is unverified.

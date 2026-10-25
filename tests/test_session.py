@@ -87,6 +87,52 @@ class SyntheticTest(unittest.TestCase):
             session.header(bytes(session.SESSION_SIZE))
 
 
+class LaneMapTest(unittest.TestCase):
+    def test_lane_counts_match_layout(self):
+        for t, (_, _, _, lanes) in enumerate(session.TRACKS):
+            self.assertEqual(len(session.LANE_IDS[t]), lanes)
+
+    def test_lanes_name_patch_fields(self):
+        names = {name for name, _, _ in patchbank.PARAMS}
+        for t, ids in enumerate(session.LANE_IDS):
+            for n in range(len(ids)):
+                self.assertIn(session.lane_param(t, n)[1], names)
+        self.assertEqual(session.lane_param(0, 10), (0x1B, "filter_cutoff"))
+        self.assertEqual(session.lane_param(1, 3), (0x14, "mix_osc2"))
+
+    def test_tracks_split_the_mod_matrix(self):
+        # Osc 2 destinations go to track 1, every other routing to track 0.
+        mod = set(range(0x2B, 0x4B))
+        osc2 = {i for i in mod if "osc2" in session.param_name(i)}
+        self.assertEqual(mod & set(session.LANE_IDS[1]), osc2)
+        self.assertEqual(mod & set(session.LANE_IDS[0]), mod - osc2)
+
+
+FIRMWARE_BIN = ROOT / "firmware" / "monostation-firmware-800.bin"
+FW_BASE = 0x0800C000
+
+
+@unittest.skipUnless(FIRMWARE_BIN.exists(), "monostation-firmware-800.bin absent")
+class FirmwareTablesTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.fw = FIRMWARE_BIN.read_bytes()
+
+    def u16s(self, addr, count):
+        off = addr - FW_BASE
+        return tuple(int.from_bytes(self.fw[off + 2 * i:off + 2 * i + 2], "little")
+                     for i in range(count))
+
+    def test_lane_tables(self):
+        self.assertEqual(self.u16s(0x08027588, 42), session.LANE_IDS[0])
+        self.assertEqual(self.u16s(0x0802775C, 12), session.LANE_IDS[1])
+
+    def test_param_id_table(self):
+        off = 0x0802A62A - FW_BASE
+        body = tuple(self.fw[off + 8 * i] + 9 for i in range(len(session.PARAM_OFFSETS)))
+        self.assertEqual(body, session.PARAM_OFFSETS)
+
+
 @unittest.skipUnless(SESSION_32.exists(), "session_32.monostationsession absent")
 class InitImageTest(unittest.TestCase):
     def setUp(self):

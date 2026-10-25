@@ -24,11 +24,11 @@ All 370 automation lanes that hold data in the YBC sessions fit the lane format 
 | `0x00042` | 1 | `3` everywhere seen (meaning TBD) |
 | `0x00043` | 9 | 0 everywhere seen |
 | `0x0004C` | 3 × 4 | per-track pattern chain: byte 0 = first pattern, byte 1 = last pattern, then 2 bytes that are always 0. One group each for tracks 0, 1 and 2, at `0x4C`, `0x50` and `0x54`. |
-| `0x00058` | 16 × 140 | track 0 patterns |
+| `0x00058` | 16 × 140 | track 0 (synth / osc 1) patterns |
 | `0x00918` | 16 × 42 × 108 | track 0 automation (42 lanes per pattern) |
-| `0x12498` | 8 × 140 | track 1 patterns |
+| `0x12498` | 8 × 140 | track 1 (osc 2) patterns |
 | `0x128F8` | 8 × 12 × 108 | track 1 automation (12 lanes per pattern) |
-| `0x15178` | 8 × 140 | track 2 patterns (no automation) |
+| `0x15178` | 8 × 140 | track 2 (mod sequence) patterns, no automation |
 | `0x155D8` | 7 | further globals. The firmware initialises them to `00 00 00 00 00 00 40`. In real sessions byte 2 varies from 0 to 0x3A, byte 3 is 0 or 1, and bytes 0–1 are rarely set. Meaning TBD. |
 | `0x155DF` | 0x97D | zero |
 | `0x15F5C` | 126 | the session's patch: bytes 9–134 of the 136-byte bank format (name, category, genre, params) |
@@ -48,30 +48,62 @@ The firmware's initialiser reads its defaults from these templates:
 
 The 16 steps are 8 bytes each, followed by a 12-byte footer.
 
-Step bytes, as the firmware initialises them, and what the data suggests:
+The tracks, from the parameters their automation lanes drive (below): **track 0** is the synth with oscillator 1, **track 1** is oscillator 2, and **track 2** is the mod sequence. The playback routine `FUN_080234AC`, which Ghidra had not defined as a function, reads the steps like this:
 
-| byte | init | observation |
-|------|------|-------------|
-| 0 | `00` | note number, with 0 meaning an empty step. Seen 0x1F–0x7A. |
-| 1 | `60` (tracks 0, 1), `00` (track 2) | velocity on tracks 0/1, default 96. On track 2 this byte carries a 0–127 value centred on `0x40`, even on steps with no note. |
-| 2 | `00` | gate length. 6 is common, and values up to `0x20` look like ties. Probably counts micro-steps of 1/6 step. |
-| 3 | `FF` | always `FF` |
-| 4 | `FF` | `FF`, or a second value 0x11–0x3A on track 0 only (possibly the paraphonic second note) |
+| byte | init | meaning |
+|------|------|---------|
+| 0 | `00` | note number; 0 = empty step. Sent with byte 1 as a note-on. |
+| 1 | `60` (tracks 0, 1), `00` (track 2) | velocity; 0 plays as 96. On track 2 this is the mod-sequence value (centred on `0x40`). |
+| 2 | `00` | gate in micro-steps (1/6 step), clamped to 1–96; 6 = one step, above 6 ties into later steps. Played as `gate × ticks_per_step / 6`. |
+| 3 | `FF` | value for the track's step parameter: id `0x09` (patch byte 49, CC 5) on track 0, id `0x10` (patch byte 58, CC 37) on track 1, id `0x4C` on track 2. `FF` = none. All YBC sessions leave it `FF`. |
+| 4 | `FF` | **patch change**: patch slot 0–63 to load when the step plays, sent as id `0x50`. `FF` = none. In the YBC sessions it is set only on track 0 note steps, values 0–60. |
 | 5–7 | `00` | always 0 |
 
-Footer: byte 0 = last step index (init `0F`; `07` seen for an 8-step pattern). Byte 1 is `03` by default, with `04` and `06` also seen (possibly a sync rate). Byte 3 was `01` once, on track 2. The rest is 0.
+Byte offsets here are in the 136-byte patch message (see `tools/patchbank.py`). Bytes 49 and 58 sit at the end of the osc 1 and osc 2 groups and are not in the community PDF. CC 5 and CC 37 suggest per-oscillator glide.
+
+Footer:
+- Byte 0 is the last step index (init `0F`; `07` seen for an 8-step pattern).
+- Byte 1 is very likely the sync rate. The playback scales time by a rate index 0–7 through the ticks-per-step table `[2, 3, 4, 6, 8, 12, 16, 24]` (24 PPQN) at `0x08029F6C`. The default index 3 is 6 ticks, i.e. 1/16, which matches the default `03`. The values `04` and `06` (1/8T, 1/4T) also occur. The link from this byte to that index is not traced yet.
+- Byte 3 was `01` once, on track 2. The pattern byte at `+0x83` switches `FUN_08023998` to an interpolated value path.
+- The rest is 0.
+
+Step byte 4 in detail: the setter `FUN_0801C842` treats id `0x50` apart from the patch parameters. It compares the value with the current patch number (an observable at controller `+0x64`) and, if it differs, posts it to a port of the session controller (vtable `0x08027068`; handler `FUN_08019AE4`, missed by Ghidra). For a value below `0x80` the handler reads 126 bytes from the patch store at `0x2000 + value × 0x200` (`FUN_0801AEF4(sector = (value >> 3) + 2, offset = (value & 7) << 9, …)`, the `MS_ALL_PATCHES` area) into the session's patch at `0x15F5C`, loads it into the synth engine, and stores the new patch number.
 
 The Components `INIT` file stores step byte 4 as `00`, where the firmware and all real sessions use `FF`.
 
 ## Automation lane (108 bytes)
 
-A lane has a 12-byte mask followed by 96 values, one per micro-step: 16 steps × 6 micro-steps. Mask bit *i* (LSB first, little-endian) marks micro-step *i* as recorded. Values outside the mask are always 0. The firmware clears each lane through `FUN_0802323c(lane, step, micro)`.
+A lane has a 12-byte mask followed by 96 values, one per micro-step: 16 steps × 6 micro-steps. Mask bit *i* (LSB first, little-endian) marks micro-step *i* as recorded. Values outside the mask are always 0. The firmware clears each lane through `FUN_0802323c(lane, step, micro)` and records through `FUN_08017248`, which interpolates between micro-steps.
 
-Which parameter each lane automates is not mapped yet. The most-used track-0 lanes in the YBC sessions are 9, 10, 16 and 17; on track 1 it is lane 3.
+### Lane → parameter
+
+The sequencer track constructor `FUN_08020EA0` gets one table of firmware parameter ids per track. Track 0 uses 42 u16 ids at `0x08027588`, track 1 uses 12 at `0x0802775C`, and track 2 has no table. During playback, lane *n* sends its value to `set(table[n], value)`. `tools/session.py` holds these tables as `LANE_IDS`, and `lane_param(track, lane)` names them.
+
+The ids index the firmware parameter table at `0x0802A62A`, which has 76 records of 8 bytes:
+
+| byte | content |
+|------|---------|
+| 0 | patch body offset (+9 = 136-byte message offset) |
+| 1 | 0 |
+| 2 | kind: 0 enum, 1 unsigned, 2 signed, 5 bool |
+| 3 | centre |
+| 4 | min |
+| 5 | max |
+| 6 | MIDI: `FF` = plain CC, `FC` = CC plus a +32 LSB CC, other values = NRPN MSB |
+| 7 | CC number or NRPN LSB |
+
+The MIDI-out encoder `FUN_08018B90` reads bytes 6–7. Ids 0 and 1 are category (max 14) and genre (max 9), which confirms the offset column. In order, the ids cover the 136-byte fields at offsets 25–134, and `tools/session.py` keeps them as `PARAM_OFFSETS`.
+
+Track 0 lanes 0–41: osc1 coarse, fine, pw; mix osc1, sub, noise, audio in, ring mod; filter overdrive, reso, cutoff; dist amount; lfo rate, lfo sync rate; env attack, decay, sustain, release; then every mod-matrix routing (env, lfo, seq and vel sources) that does not target osc 2.
+
+Track 1 lanes 0–11: osc2 coarse, fine, pw; mix osc2; then the osc 2 pitch and pw routings for env, lfo, seq and vel.
+
+This fits the YBC data. The most-automated parameters there are filter cutoff (79 lanes), reso (78), env release (40) and sustain (38), mix sub, mix osc1 and osc 2 level.
+
+The firmware CC numbers differ from the Components `kD` schema in places. For example, filter reso is CC 71 here but CC 82 in `kD`, and osc1 pw is CC 39 here but CC 74 in `kD`. Check this against hardware MIDI output before relying on either.
 
 ## Open
 
-- Which instrument or function each of tracks 0, 1 and 2 is. Track 0 has 16 patterns with 42 automation lanes, track 1 has 8 patterns with 12 lanes, and track 2 has 8 patterns with no automation, holding a value per step.
-- The step byte semantics above, apart from the defaults. Confirm them in the sequencer code.
-- The mapping from lane index to parameter. Compare against the 154-byte patch parameter order and the CC table.
-- Footer bytes 1 and 3, header byte `0x42`, and the 7 bytes at `0x155D8`.
+- Patch bytes 27, 49, 58 and 60 (ids 2, 9, 16, 18: NRPN 0:73, CC 5, CC 37, CC 7): not named by the PDF.
+- Confirm footer byte 1 as the sync rate. Footer byte 3, header byte `0x42`, and the 7 bytes at `0x155D8`.
+- The CC differences between firmware and Components `kD`.

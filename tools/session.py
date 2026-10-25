@@ -19,6 +19,11 @@ Pattern = 16 steps x 8 bytes + 12-byte footer (footer[0] = last step index).
 Automation lane = 12-byte mask (bit i, LSB first, = micro-step i recorded)
 followed by 96 values (16 steps x 6 micro-steps).
 
+Track 0 is the synth/osc 1 track, track 1 the osc 2 track, track 2 the mod
+sequence. Each automation lane drives one firmware parameter id (LANE_IDS,
+from the firmware tables at 0x08027588 / 0x0802775C); a parameter id names a
+byte of the patch (PARAM_OFFSETS, from the id table at 0x0802A62A).
+
 Usage:
     python3 tools/session.py info session.bin
 """
@@ -55,6 +60,37 @@ TRACKS = (
     (0x12498, 8, 0x128F8, 12),
     (0x15178, 8, None, 0),
 )
+
+# Firmware parameter id -> offset of its byte in the 136-byte patch message
+# (= patch body offset + 9).  Id table at 0x0802A62A, 8 bytes per id: body
+# offset, 0, kind, centre, min, max, NRPN MSB (0xFF = CC, 0xFC = CC + LSB CC),
+# CC/NRPN LSB.  76 ids; the setter FUN_0801C842 also takes 0x4C, 0x4D and
+# 0x50 (STEP_PATCH_ID).
+PARAM_OFFSETS = (
+    25, 26, 27, 41, 42, 43, 44, 46, 48, 49, 50, 51, 52, 53, 55, 57,
+    58, 59, 60, 61, 63, 65, 67, 69, 71, 73, 74, 75, 77, 78, 79, 80,
+    81, 82, 83, 84, 85, 86, 88, 89, 90, 91, 92, 93, 95, 96, 98, 99,
+    100, 102, 103, 104, 106, 107, 109, 110, 111, 113, 114, 115, 117, 118, 120, 121,
+    122, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134,
+)
+
+# Parameter id driven by each automation lane, per track (FUN_08020EA0 args).
+LANE_IDS = (
+    (0x06, 0x07, 0x05, 0x13, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x29,
+     0x25, 0x26, 0x20, 0x21, 0x22, 0x23, 0x2B, 0x2C, 0x2F, 0x30, 0x31, 0x32,
+     0x33, 0x34, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3F, 0x40, 0x41, 0x42,
+     0x43, 0x44, 0x47, 0x48, 0x49, 0x4A),
+    (0x0D, 0x0E, 0x0C, 0x14, 0x2D, 0x2E, 0x35, 0x36, 0x3D, 0x3E, 0x45, 0x46),
+    (),
+)
+
+# Parameter id that step byte 3 drives on each track (0xFF in the step = none).
+STEP_PARAM_IDS = (0x09, 0x10, 0x4C)
+
+# Step byte 4 is sent as this id: patch change to slot 0..63 (0xFF = none).
+# The session controller loads the slot from the patch store at
+# 0x2000 + slot * 0x200 into the session's patch (handler FUN_08019AE4).
+STEP_PATCH_ID = 0x50
 
 GLOBALS2_OFF = 0x155D8
 GLOBALS2_LEN = 7
@@ -112,6 +148,23 @@ def automated_lanes(image, track, index):
     return [n for n in range(lanes) if lane(image, track, index, n)[0]]
 
 
+_PARAM_NAMES = {off: name for name, off, _ in patchbank.PARAMS}
+
+
+def param_name(param_id):
+    """Name a firmware parameter id after its 136-byte patch field."""
+    if param_id < len(PARAM_OFFSETS):
+        off = PARAM_OFFSETS[param_id]
+        return _PARAM_NAMES.get(off, f"patch[{off}]")
+    return f"id 0x{param_id:02x}"
+
+
+def lane_param(track, lane_no):
+    """Return (param id, name) of the parameter an automation lane drives."""
+    param_id = LANE_IDS[track][lane_no]
+    return param_id, param_name(param_id)
+
+
 def patch_message(image, slot=0):
     """Wrap the session's patch as a 136-byte bank message for patchbank."""
     body = image[PATCH_OFF:PATCH_OFF + PATCH_LEN]
@@ -134,7 +187,8 @@ def main(argv):
             for i in range(count):
                 auto = automated_lanes(image, t, i) if TRACKS[t][2] else []
                 if auto:
-                    print(f"  pattern {i:2d} automated lanes {auto}")
+                    names = ", ".join(lane_param(t, n)[1] for n in auto)
+                    print(f"  pattern {i:2d} automated: {names}")
         return
     sys.exit(__doc__)
 
