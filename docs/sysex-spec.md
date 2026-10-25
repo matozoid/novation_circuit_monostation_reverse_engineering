@@ -102,7 +102,16 @@ The firmware's patch store has **128 slots** of 512 bytes at external-flash `0x2
 
 Only the panel stops at 64. The patch view (render `FUN_08013ac4`, pads `FUN_08014330`) shows 32 pads, and slot = page × 32 + pad. Oct ↓ / Oct ↑ (button events `0x14` / `0x15` in `FUN_08011FBC`) call `FUN_08022fdc(view, 0)` / `(view, 1)`, so the page is only ever 0 or 1. The render does mask the page with `& 7` and lights the Oct LEDs by `page == 0` vs `page != 0`.
 
-So slots 64–127 are probably dead space left over from a 4-page design, and the firmware would load, save and track them as normal. A 7-bit SysEx slot byte can address them, and so could a patched page setter (#31). Not tried on hardware. Program change has not been traced; the MIDI PDF documents 0–63.
+So slots 64–127 are probably dead space left over from a 4-page design, and the firmware would load, save and track them as normal. A 7-bit SysEx slot byte can address them, and so could a patched page setter (#31). Not tried on hardware.
+
+**Program change already reaches them.** The MIDI PDF documents program change 0–63 on the Osc 1 channel, but the firmware doesn't clamp it:
+- The MIDI-in router at `0x080186B8` (missed by Ghidra; registered from the UI constructor `FUN_0800FB5C` via literal `DAT_0800FB04`) dispatches on `status & 0xF0`.
+- For `0xC0` it calls slot 3 of the MIDI target's vtable `0x08026FE4` with a base of `0` when the channel matches context byte `+0xB` (Osc 1 channel, default 0 = ch 1), or `0x20` when it matches byte `+0xC` (default 15 = ch 16).
+- Slot 3, `0x0801C626`, sends:
+  - base 0 → `set(0x50, program, 1)`, the patch-number setter `FUN_0801C842`, with no range check, so on to `FUN_08019AE4` (`< 0x80`);
+  - base `0x20` → `FUN_08014D2E(obj + 0x2C, program)`, session select (PDF: 0–31 instant, 64–95 queued).
+
+So program change 64–127 on the Osc 1 channel should load slot 64–127 from `0xA000`–`0x12000`. What is stored there on a stock unit is unknown. If it is erased flash (`FF`), the synth gets a patch with every byte at `FF`. The boot scan would also count those slots as "used", since `FF…` differs from `Initial Patch`.
 
 ## Open items
 - The 136-byte split-pair value decode is **resolved** (see *Split-pair decode* above), from the firmware's store routine and checked against packs and editor screenshots.
