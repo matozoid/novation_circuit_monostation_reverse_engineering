@@ -73,7 +73,7 @@ Found during #6:
 ## Hardware & static analysis
 
 ### #8 Identify the MCU and memory map — DONE (pending hardware confirmation)
-STM32F405/407-class Cortex-M4F, most likely an STM32F405VG (LQFP100): 64 KB CCM, DAC present, no SAI, no Ethernet refs, OTG_HS+FS, GPIO A–E only. Load base `0x0800C000` confirmed by the reset handler disassembling to CMSIS startup and 39 vector entries sharing a `b .` default handler at `0x08025EA9`. Memory map (flash sectors, CCM/SRAM/backup-SRAM, peripherals) in `docs/hardware.md`. Remaining: confirm exact part/flash size against a unit (read `FLASHSIZE` `0x1FFF7A22`, or a teardown photo).
+**Read from a unit (2026-10-25, memread v803): STM32F42x/43x**, `DBGMCU_IDCODE` DEV_ID `0x419`, REV_ID `0x2001`, 512 KB `FLASHSIZE`, 192 KB SRAM (SRAM3 in use). This replaces the earlier static guess of an STM32F405VG, which was based on 64 KB CCM, DAC, no SAI, no Ethernet references, OTG_HS+FS and GPIO A–E only. Load base `0x0800C000` confirmed by the reset handler disassembling to CMSIS startup and 39 vector entries sharing a `b .` default handler at `0x08025EA9`. Memory map (flash sectors, CCM/SRAM/backup-SRAM, peripherals) in `docs/hardware.md`. Remaining: the exact part and package (a teardown photo).
 
 ### #9 Load firmware into Ghidra with correct memory map — DONE
 `tools/ghidra/import_firmware.sh` (headless `analyzeHeadless`, processor `ARM:LE:32:Cortex`, base `0x0800C000`) plus the pre-script `MapMemory.java`, which creates the bootloader/CCM/SRAM/peripheral blocks and seeds disassembly at the reset handler so auto-analysis walks the vector table. `ExportMap.java` dumps the function listing (`docs/ghidra-functions.txt`); `DecompileFunc.java <addr>` prints decompiled C. The Ghidra DB is git-ignored (`ghidra-project/`); only the scripts + listing are committed. **Run end-to-end on Ghidra 12.2 / Java 25: 467 functions, memory map applied, decompiler working.** Scripts are Java, not Jython/Python — Ghidra 12.x headless dropped the bundled Jython and PyGhidra needs a separate Python env.
@@ -248,7 +248,7 @@ Build tooling to apply code patches to the decoded image:
 Patches should live as source plus a declarative hook list, not as hex blobs.
 - **Decided (2026-10-25):** injected code is assembly only, with GNU binutils (`binutils-arm-none-eabi`) and no C toolchain.
 - **Built (2026-10-25):** `tools/fwpatch.py`, spec in `docs/patching.md`, tests in `tests/test_fwpatch.py`. Patch code is linked at the first 32-byte boundary after the stock image (`0x0802BB20`), up to `0x08080000` (raised from `0x08040000` after the bootloader analysis, #25). Hooks are `bl`, `b`, `word` and `bytes`; each one checks the stock bytes it replaces. An optional `version` sets the image header and the `.syx` start message. Branch encoding is checked against the stock image and `ld` output.
-- **Open:** the bootloader's maximum image size (#25); free RAM for patch state (the linker rejects `.data`/`.bss`); the patch hasn't run on hardware yet (#18).
+- **Open:** the bootloader's maximum image size (#25); free RAM for patch state is **found (2026-10-25)**: CCM `0x10000000`+ (no static data, stack ~1.1 KB at the top) and SRAM3 `0x200235B8`–`0x2002FFFF` (past the heap's `_sbrk` limit; the heap ends at `0x20020DFC`). SRAM1+2 is full (`docs/hardware.md` *Free RAM*). Still open: a stack high-water mark after heavy use; the patch hasn't run on hardware yet (#18).
 - **Depends on:** #7, #9
 
 ### #18 Hello-world patch

@@ -1,4 +1,4 @@
-// Ghidra pre-script: lay out the STM32F405 memory map around the imported
+// Ghidra pre-script: lay out the STM32F42x memory map around the imported
 // application image, so pointers into RAM, peripherals and the bootloader
 // resolve. Run via import_firmware.sh. See docs/hardware.md for the addresses.
 // (Java rather than Python: Ghidra 12.x headless has no bundled Jython, and
@@ -36,7 +36,7 @@ public class MapMemory extends GhidraScript {
         block("bootloader", 0x08000000L, 0x0000C000L, true, false, true);
         // RAM.
         block("ccm", 0x10000000L, 0x00010000L, true, true, false);
-        block("sram", 0x20000000L, 0x00020000L, true, true, false);
+        block("sram", 0x20000000L, 0x00030000L, true, true, false);
         block("backup_sram", 0x40024000L, 0x00001000L, true, true, false);
         // Peripheral spaces (volatile; not analysed as code).
         block("periph_apb1", 0x40000000L, 0x00008000L, true, true, false);
