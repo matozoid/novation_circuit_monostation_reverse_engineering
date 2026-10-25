@@ -98,12 +98,9 @@ The community PDF (rev. 2020-06-30) leaves gaps:
 Method: compare the firmware SysEx handler (#10) with Components JS (patch editor/librarian code) and confirm against live hardware by changing one parameter and diffing dumps. Produce `docs/sysex-spec.md` as the repo's authoritative spec, superseding the PDF, covering every command, every offset, value ranges, encodings and the init values.
 - **Done when:** no patch byte is undocumented, all commands the firmware accepts are listed, and a parser/encoder in `tools/` round-trips real dumps.
 
-**Mostly DONE (vendor-sourced; hardware validation pending).** Extracted the authoritative schema from Components 1.72.5 (`app.asar` array `kD`): the modern message is **154 bytes** (9-byte header incl. protocol version 6 / message type / slot; 144-byte payload; `F7`), not the PDF's 136. The payload is a 7→8-bit MIDI bit stream (`RX`/`OX`) unpacking to 126 data bytes; parameters sit at bytes 7–99. `docs/sysex-spec.md` documents framing, the 7↔8 codec, the value types (`UX`), and all **85 parameters** with names/offsets/ranges/CC+NRPN — closing every PDF unknown (25–30 mixer, 31–34 filter, 35–46 env, 47–58 LFO, etc.). In the 154-byte wire the "pseudo-MSB 0x40" was an artifact of not unpacking. `tools/monostation_patch_params.tsv` is the machine-readable schema; `tools/patch.py` decodes/encodes with a codec that matches Components' `OX` byte-exact (tests in `tests/test_patch.py`).
+**Mostly DONE (hardware validation pending).** The Mono Station has one patch format, the **136-byte** message (`F0 00 20 29 01 61 …`), used on the wire, in `.monostationpack` files and in firmware memory. `.monostationpack` is a ZIP holding `patches.syx`, a 64 × 136 = 8704-byte bank. Name@9, category@25 / genre@26 (enums resolved in #28), params@41 in the split LSB+`0x00`/`0x40` encoding, where the `0x40` bytes are **real** (the PDF is correct). `tools/patchbank.py` reads packs and banks (tests in `tests/test_patchbank.py`). Corroborated by the real bank `Roboo.monostationpack`, the two firmware-embedded defaults (`Classic Mono`@`0x08028864`, `Initial Patch`@`0x08028F6B`) and Components' Mono Station init patch, which equals `Initial Patch` byte for byte.
 
-**Format landscape clarified (3 encodings).** There are three distinct patch encodings — do not conflate (see spec):
-- **136-byte bank/pack** (`F0 00 20 29 01 61 …`): the real-world storage format (firmware memory, `.monostationpack`, the PDF). `.monostationpack` = a ZIP holding `patches.syx`; a full bank = 64 × 136 = 8704 bytes. Name@9, category@25 / genre@26 (enums resolved in #28), params@41 in the split LSB+`0x00`/`0x40` encoding — here the `0x40` bytes are **real** (PDF correct). `tools/patchbank.py` reads packs/banks (framing, name, category, genre, slot; tests `tests/test_patchbank.py`). Corroborated by the real bank `Roboo.monostationpack` and two firmware-embedded defaults (`Classic Mono`@`0x08028864`, `Initial Patch`@`0x08028F6B`).
-- **154-byte modern wire** (above).
-- **122-byte legacy wire** (up-converted to 154 by Components).
+**Correction (#26):** an earlier status here called a **154-byte** packed message (with `kD`, `RX`/`OX`, a 122-byte legacy form) the "modern" Mono Station format and said it closed every PDF unknown. All of that is Components' **Bass Station II** code. It now lives in `docs/bass-station-ii.md` and `tools/bassstation2_patch.py`. The PDF unknowns were closed instead from the firmware's own tables (#13: offsets 27, 49, 58, 60).
 
 **Resolved PDF/open unknowns:** device id (bytes 4–5) = **`01 61`** (`yte` validator; Circuit is `01 60`). Message type (byte 6/7): `0`=current patch, `1`=slot write/dump, `0x40`=request patch (`F0 00 20 29 01 61 40 <slot> 00 F7`). Offset 25 = category, 26 = genre.
 
@@ -111,14 +108,22 @@ Method: compare the firmware SysEx handler (#10) with Components JS (patch edito
 
 **Caveat found:** byte 25 (`category`) in the vendor soundpack banks does **not** track patch names (lead patches tagged Bass/Drum) — either the enum differs from the Roboo pack or packs don't set it meaningfully. Category enum still TBD.
 
-**Also in scope — pack overlays and soundpack bundles:** packs carry a per-parameter *overlay* map (`overlayIndex` 1–80 in the schema; `hasOverlay` / `clearOverlay` / `initOverlaysFromCurrentPatch` in Components) marking which parameters a pack overrides. Its storage format is undocumented. Vendor soundpacks (e.g. the YBC zip) bundle a `.monostationpack`, a raw `*Patches*.syx` bank and a `*Sessions*.syx` dump together; document where the overlay lives and how the bundle pieces relate.
+**Also in scope — soundpack bundles:** (the "overlay" map once listed here is Bass Station II's AFX overlay, not a Mono Station feature.) Vendor soundpacks (e.g. the YBC zip) bundle a `.monostationpack`, a raw `*Patches*.syx` bank and a `*Sessions*.syx` dump together; document how the bundle pieces relate.
 
-**Remaining for full close:** osc coarse/fine centre+scale semantics, the overlay format (above), a real 154-byte dump to confirm that path, and the name/category split in the 154 format's bytes 100–125. See spec *Open items*.
+**Remaining for full close:** osc coarse/fine centre+scale semantics, and hardware confirmation of the `0x40` request and a slot write. See spec *Open items*.
 
-### #26 Investigate what the 154-byte patch added over the 122-byte legacy
-Components up-converts the legacy **122-byte** wire message (`LEGACY_SYSEX_SIZE=122`, `LEGACY_PATCH_SIZE=112`) to the modern **154-byte** message (protocol version 6, 126 unpacked bytes) before parsing (`JX`). Work out the delta: which parameter(s) or bytes the newer format added, and how the up-converter maps/defaults them. This pins down what a firmware revision introduced and whether any parameter is modern-only.
-- **Approach:** read `JX` / the legacy path in Components' `main-*.js` (the `fromPatchSysex` neighbourhood), diff the legacy 112-byte payload layout against the 126-byte modern one, and cross-check against the 136-byte storage map.
-- **Depends on:** #12.
+### #26 Investigate what the 154-byte patch added over the 122-byte legacy — DONE (not Mono Station)
+**Resolved:** neither format belongs to the Mono Station. Components keeps them in its Bass Station II modules:
+- the 154/122 constants are `frontend/constants/bass-station-ii/content-transfer`;
+- `JX` is `frontend/utils/bass-station-ii/convert-legacy-patch` (its errors are `errors.bass-station-ii.*`);
+- `kD` is `frontend/constants/bass-station-ii/afx-overlay-midi-config`;
+- the device is product id `00 33`.
+
+`JX` copies the 122-byte message into a zeroed 154-byte buffer, writes `NO NAME` at `length − 17` and ends it with `F7`. So the legacy form is the same layout without the name.
+
+The Mono Station's patch validator accepts only 136 bytes. The old spec's "protocol version = 6" was a misread too: 6 is the byte's index, and its value is `0`.
+
+The material was moved to `docs/bass-station-ii.md`, `tools/bassstation2_patch.py`, `tools/bassstation2_params.tsv` and `tests/test_bassstation2_patch.py`. `docs/sysex-spec.md` now covers only the 136-byte format.
 
 ### #28 Enumerate patch category and genre values — DONE
 **Resolved:** Components' Circuit-family librarian supplies the tables (`mP`/`gP`; the Mono Station model `kte` maps category@16 and genre@17 after the name, which are bytes 25/26). Category: 0 None, 1 Arp, 2 Bass, 3 Bell, 4 Classic, 5 Drum, 6 Keyboard, 7 Lead, 8 Movement, 9 Pad, 10 Poly, 11 SFX, 12 String, 13 User, 14 Voc/Tune. Genre: 0 None, 1 Classic, 2 D&B/Breaks, 3 House, 4 Industrial, 5 Jazz, 6 R&B/HHop, 7 Rock/Pop, 8 Techno, 9 Dubstep. These are `patchbank.CATEGORIES`/`GENRES`, and the details are in `docs/sysex-spec.md`. The earlier guesses `1` = Bass and `3` = Drum were wrong: Roboo's author tagged basses Arp and drums Bell. Real packs treat the byte as a loose user tag. Not checked: whether the firmware itself reads these bytes, for example for on-device filtering (a quick look found no category strings).
@@ -144,7 +149,7 @@ Original note: bytes 25 (category) and 26 (genre) of the 136-byte patch are iden
 - Footer: byte 0 = start step << 4 | end step (may wrap), byte 1 = sync rate index into ticks-per-step `[2,3,4,6,8,12,16,24]` (3 = 1/16), byte 2 = direction (forward/reverse/ping-pong/random); from song position `FUN_0801B698`. Byte 3 = mod-sequence smooth (linear crossfade between step values, `FUN_08023998`).
 - Patch bytes the PDF leaves out, named from the setter's parameter groups, MIDI numbers and the YBC screenshots: 27 amp-env re-trigger (NRPN 0:73), 49/58 osc 1/2 glide (CC 5/37; so step byte 3 on the note tracks is per-step glide), 60 patch level (CC 7). These are in `tools/patchbank.py` `PARAMS`.
 - `0x155DA` is the current patch slot (`session.header()["patch_slot"]`), confirmed against every YBC session whose patch is in its pack. `0x155DD`/`0x155DE` are slots 6/0 of a third parameter group (ids `0x4C`/`0x4D`).
-- The CC differences with Components are explained: `kD` describes a different parameter set (sub osc, LFO 2, mod env, aftertouch) and matches firmware 800 only on a subset of CCs.
+- The CC differences with Components are explained: `kD` is Bass Station II's parameter array (#26), so it matches firmware 800 only on Novation's shared CCs.
 - Still open: `0x42` (third field of the tempo/swing observable), `0x155D8`/`0x155D9`, `0x155DB`/`0x155DC`, and what ids `0x4C`/`0x4D` control (`docs/session-format.md`).
 
 Original note: decode the 90,112-byte `.monostationsession` layout: the sequencer patterns, step automation, 64 patches at a 512-byte stride, and global settings. Use `session_32.monostationsession` as the reference vector.

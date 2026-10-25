@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Read a Circuit Mono Station 136-byte patch / bank / .monostationpack.
 
-This is the format the hardware stores and the community PDF documents (device
-id 01 61), distinct from Components' 154-byte packed wire (see tools/patch.py
-and docs/sysex-spec.md). One patch message is 136 bytes:
+This is the only Mono Station patch format: the hardware stores it, Components
+sends and validates it, and the community PDF documents it (device id 01 61).
+The 154-byte packed format in tools/bassstation2_patch.py is Bass Station II's,
+not this product's (docs/sysex-spec.md). One patch message is 136 bytes:
 
     [0..3]  F0 00 20 29
     [4..5]  01 61            device id (Mono Station)

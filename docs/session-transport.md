@@ -16,7 +16,7 @@ Unlike the firmware container's `0x76` trailer, there is no `00` byte or name be
 
 ## Data block encoding
 
-The 293 septets form groups of 8. The first septet of each group holds the high bits of the following 7 bytes: bit *i* is bit 7 of byte *i*. 293 = 36 × 8 + 5, so the last group is a high-bit septet plus 4 bytes, and a block carries 36 × 7 + 4 = **256 bytes**. This is a different scheme from both the firmware container (37-septet big-endian bitstream) and the 154-byte patch (`OX` bitstream).
+The 293 septets form groups of 8. The first septet of each group holds the high bits of the following 7 bytes: bit *i* is bit 7 of byte *i*. 293 = 36 × 8 + 5, so the last group is a high-bit septet plus 4 bytes, and a block carries 36 × 7 + 4 = **256 bytes**. This is a different scheme from both the firmware container (37-septet big-endian bitstream) and Bass Station II's 154-byte patch (`OX` bitstream, `docs/bass-station-ii.md`).
 
 The byte after the `0x79` command is therefore the first high-bit septet, not a flag. It's usually `00` because most session bytes are below `0x80`.
 

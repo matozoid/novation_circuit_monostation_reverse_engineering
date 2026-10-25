@@ -1,8 +1,9 @@
-# Novation Circuit Mono Station patch parameter schema.
-# Extracted verbatim from Novation Components 1.72.5 (app.asar, main-*.js, array 'kD').
+# Novation Bass Station II patch parameter schema (NOT Circuit Mono Station).
+# Extracted verbatim from Novation Components 1.72.5 (app.asar, main-*.js, array 'kD',
+# module frontend/constants/bass-station-ii/afx-overlay-midi-config).
 # patchIndex/overlayIndex are byte positions in the 126-byte unpacked patch payload /
 # the pack-overlay map. dt: DT_U=0..127, DT_U8=0..255, DT_S=signed(center 64), DT_S8=signed(center 128),
-# DT_B=boolean at bit 'rs', DT_M=menu masked by 'min'. See docs/sysex-spec.md.
+# DT_B=boolean at bit 'rs', DT_M=menu masked by 'min'. See docs/bass-station-ii.md.
 name	patchIndex	overlayIndex	dt	signed	min	max	rs	type	cc	nrpnMsb	nrpnLsb
 voiceOscSync	7	1	DT_B	0	0	0	0	cc	110		
 osc1Wave	8	2	DT_M	0	3	3	0	nrpn		0	72

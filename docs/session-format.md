@@ -121,7 +121,7 @@ The parameter setter `FUN_0801C842` writes each id into a slot of a parameter gr
 
 ## Firmware vs Components `kD`
 
-The firmware 800 CC numbers differ from the Components `kD` schema in places. For example, filter reso is CC 71 here but CC 82 in `kD`, and osc1 pw is CC 39 here but CC 74 in `kD`. The two do not describe the same parameter set. `kD` has a sub oscillator, a second LFO, a mod envelope and aftertouch routings. Firmware 800 has one envelope, one LFO and the PDF's layout. They agree by CC only on a subset:
+`kD` is Bass Station II's parameter array, not the Mono Station's (#26, `docs/bass-station-ii.md`), so differences are expected. The firmware 800 CC numbers differ from `kD` in places. For example, filter reso is CC 71 here but CC 82 in `kD`, and osc1 pw is CC 39 here but CC 74 in `kD`. The two do not describe the same parameter set. `kD` has a sub oscillator, a second LFO, a mod envelope and aftertouch routings. Firmware 800 has one envelope, one LFO and the PDF's layout. They agree by CC only on a subset:
 - mixer CC 20–25 (+32);
 - cutoff CC 16, overdrive CC 114, filter shape CC 84;
 - amp envelope CC 90–93;
@@ -129,7 +129,7 @@ The firmware 800 CC numbers differ from the Components `kD` schema in places. Fo
 - osc coarse/fine CC 27/26 and 30/29;
 - sync CC 110, distortion CC 94.
 
-So `kD` most likely describes a different or newer parameter set, and the firmware tables are the reference for firmware 800. Check this against hardware MIDI output.
+The shared CCs reflect Novation's common CC layout across synths. The firmware tables are the reference for the Mono Station. Check them against hardware MIDI output.
 
 ## Open
 

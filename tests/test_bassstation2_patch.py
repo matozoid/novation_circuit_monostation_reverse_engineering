@@ -1,11 +1,11 @@
-"""Tests for tools/patch.py: the 7<->8 bit codec and the patch schema."""
+"""Tests for tools/bassstation2_patch.py: the Bass Station II 7<->8 bit codec and schema."""
 import os
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-import patch  # noqa: E402
+import bassstation2_patch as patch  # noqa: E402
 
 
 def ox(e):
