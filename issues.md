@@ -254,7 +254,7 @@ Original note: if the firmware does not already support it (see #12), add a comm
 
 ### #31 Patch slots 64–127
 The firmware's patch store has 128 slots (`0x2000`–`0x12000`, 512 bytes each). The boot scan, the save path, the load handler and the "used slot" mask all accept `< 0x80`. Only the patch view limits slots to 64: Oct ↓/↑ set page 0/1 via `FUN_08022fdc`. Details: `docs/sysex-spec.md` *Patch store*.
-- **Hardware checks:**
+- **Hardware checks** (step-by-step plan: `docs/hw-test-patch-slots.md`):
   - dump `0x2000`/`0x10000` (cmd `0x78`) to see whether slots 64–127 hold data on a stock unit;
   - try a slot write, then a `0x40` request, to slot 64.
 - **Feature candidate:** patch the page setter, the Oct LED logic and pad rendering to allow 4 pages, giving 128 patches. Depends on #17.
