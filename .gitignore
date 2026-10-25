@@ -19,3 +19,6 @@ YBC-Flippin-Grooves-Circuit.zip
 
 # Python venv for device tools (mido + python-rtmidi)
 .venv/
+
+# Generated firmware source (tools/fwsrc.py generate): Novation's code, never check in
+build/
