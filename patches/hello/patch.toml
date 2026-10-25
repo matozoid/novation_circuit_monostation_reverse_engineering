@@ -1,0 +1,15 @@
+# #18 hello world: report version 801 and route the call to main through patch code.
+# If the device boots and answers 0x70 with 801, the header edit, the code injection
+# and the branch hook all work.
+base = 800
+version = 801
+sources = ["hello.s"]
+
+[functions]
+fw_main = 0x0800C2D0         # called last by the reset handler
+
+[[hook]]
+at = 0x08025E8E              # reset handler: bl fw_main
+kind = "bl"
+target = "hello_main"
+expect = "e6 f7 1f fa"

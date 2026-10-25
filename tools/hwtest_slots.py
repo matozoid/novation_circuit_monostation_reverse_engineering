@@ -209,6 +209,10 @@ class Device:
                 return bytes([0xF0, *m.data, 0xF7])
         return None
 
+    def next_sysex(self, timeout):
+        """The next received SysEx (F0..F7 bytes), or None after `timeout` seconds."""
+        return self._next_mido(timeout)
+
     def receive(self, accept, idle, stop=lambda m: False, first_wait=None):
         return collect(self._next_mido, accept, idle, stop, first_wait)
 

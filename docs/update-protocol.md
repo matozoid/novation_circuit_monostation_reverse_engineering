@@ -53,7 +53,7 @@ Mono Station update config (`o1` defaults overridden by the device class):
 
    **Acknowledgement:** a SysEx from the bootloader that starts `F0 00 20 29` with byte 5 = `0x72`.
    - **10-byte form** `F0 00 20 29 00 72 a b c F7`: counter = `a + (b << 7) + (c << 14)`.
-   - **15-byte form:** counter = `n[2] + (n[1] << 4) + (n[0] << 8)` over the 8 bytes at 6–13. This looks like a nibble encoding used by other products.
+   - **15-byte form:** counter = `b[13] + (b[12] << 4) + (b[11] << 8)`, three nibbles at the end of the 8 bytes at 6–13. This looks like a nibble encoding used by other products. Only the short form accepts a counter of 0 after a higher one.
 
    Components sends the next packet only when the counter is greater than the last one it accepted, or is 0. It starts from −1, so the first ack may be 0. Duplicate or stale acks are ignored, and a missing ack ends the update with a timeout. So the bootloader paces the transfer, presumably acknowledging each packet once it has been written or buffered.
 
@@ -83,6 +83,20 @@ Mono Station update config (`o1` defaults overridden by the device class):
 - **Reboot.** The app accepts any `0x71` with `00 7F` at bytes 6–7 (or a bare `0x60`), writes `2` to backup SRAM and jumps to the bootloader without a system reset (`docs/sysex-handlers.md`). A patched image must keep that path to stay updatable without the manual entry (#29).
 - **Version digits.** The bootloader sees the `0x71` start message with the version digits. Whether it rejects versions it considers older or equal is unknown (#25). Components itself only offers an update when the running version is below 800. That version comes from the image header (`MAIN` + BCD at image offset `0x1B0`), not from the container digits. A modified image that reports a version of 800 or higher won't be "updated" by Components, which matters for restoring stock (#15).
 - **Pacing.** Wait for each ack: the 10-byte `0x72` reply with an increasing counter. Do not stream. Use a timeout of at least 10 s per packet.
+## Our flasher (`tools/flash.py`, #16)
+
+`python3 tools/flash.py <firmware.syx> [--port NAME] [--yes]` implements the sequence above. It needs mido + python-rtmidi.
+1. It decodes and checks the file first: message order (`0x71`, `0x72`…, one `0x73`, `0x76`), 44-byte data messages, product id `00 7F`, the trailer checksum, the `MAIN` header version, an image end at or below `0x08040000`, and a vector table with the stack in RAM and a Thumb reset vector inside the image.
+2. It asks you to enter the bootloader by hand and waits up to 10 minutes for its port. It never sends the `0x71` reboot.
+3. It sends `0x70`, then asks for confirmation unless `--yes` is given.
+4. It sends every packet up to and including `0x73`, each one after the previous ack. The timeout is 10 s per ack, and status codes 16/124/126 abort.
+5. It waits up to 20 s for the application port and checks that its `0x70` firmware version equals the image header version.
+
+The packet order (0x71 once to the bootloader, then one packet per ack) follows the updater's `#Ui`/`#$i` methods. **On hardware (2026-10-25):** stock 800 was flashed over 800 with bootloader 740:
+- the bootloader answers `0x70` with both versions, (740, 800);
+- it acked every packet, and 4,058 packets took 7 s;
+- after `0x73` the app started by itself and reported 800, so no `0x76` trailer is needed and reflashing the same version is accepted.
+
 ## Entering the bootloader by hand
 
 From the user guide (v1.2, appendix *Bootloader Mode*, p. 90):
@@ -90,7 +104,7 @@ From the user guide (v1.2, appendix *Bootloader Mode*, p. 90):
 2. Hold **Scales**, **Note** and **Velocity**.
 3. Power it on.
 
-The guide's picture shows the buttons Osc 1, Osc 2, Mod Seq, Oct ↓, Oct ↑, Clear, Save and Sessions, with Osc 1 and Osc 2 lit. Pressing Osc 1 or Osc 2 shows a firmware element's version number as a binary pad pattern. **Play** exits and reboots into the application. The guide calls this an "engineering mode" for updating firmware, **and factory patches**, when a normal update fails. Novation's support article on bootloader mode gives the same combination.
+The guide's picture shows the buttons Osc 1, Osc 2, Mod Seq, Oct ↓, Oct ↑, Clear, Save and Sessions, with Osc 1 and Osc 2 lit. Pressing Osc 1 or Osc 2 shows a firmware element's version number as a binary pad pattern. **Observed (2026-10-25), with patch `hello` (version 801) flashed:** Osc 2 lit four pad rows as `00001000`, `00000001`, `00000000`, `00000000`. That is the app's header version, BCD `0x0801` from image offset `0x1B0`, high byte first. So the bootloader reads the app's `MAIN` header itself. Rows 3–4 are probably the next two header bytes (`0x1B2`–`0x1B3`, `00 00`), but that isn't tested. Osc 1 shows `00000111 01000000`: the bootloader's version 740 (BCD `0x0740`) in the same format, presumably from its own header at `0x080001AC`. **Play** exits and reboots into the application. The guide calls this an "engineering mode" for updating firmware, **and factory patches**, when a normal update fails. Novation's support article on bootloader mode gives the same combination.
 
 The application has no code for this. Its only jump to `0x08000000` is the SysEx reboot (`docs/sysex-handlers.md`). So the bootloader must read the buttons itself before it starts the app, and **the combination should work even when the application image is broken.** Inferred, not yet tried on hardware.
 

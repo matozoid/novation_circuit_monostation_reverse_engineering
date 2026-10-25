@@ -230,6 +230,8 @@ Implement the update protocol (#4) on a host MIDI library so that flashing does 
   - Bootloader entry: manual only. The tool asks the user to hold Scales + Note + Velocity at power-on and waits for the bootloader; it does not send the `0x71` reboot.
   - Checks: before sending, decode the `.syx` and verify its structure (message types and order, block count, checksum, product id). After the `0x73` block, poll `0x70` and compare with the expected version.
 - Follow `docs/update-protocol.md`: wait for each `0x72` ack, stop after the `0x73` block, then poll `0x70` for the new version.
+- **Built (2026-10-25):** `tools/flash.py`, tests in `tests/test_flash.py`. A dry run against a fake bootloader passes.
+- **Hardware (2026-10-25): works.** Stock 800 flashed onto a unit running 800 (bootloader 740). Entry was manual. The bootloader answered `0x70` with (740, 800) and acked all 4,058 packets, which took 7 s. After the `0x73` packet the app came back by itself and reported 800. So the bootloader accepts the same version again and doesn't need the `0x76` trailer.
 - **Depends on:** #4, #15
 
 ---
@@ -244,11 +246,16 @@ Build tooling to apply code patches to the decoded image:
 - re-pack with #7
 
 Patches should live as source plus a declarative hook list, not as hex blobs.
-- **Decided (2026-10-25):** injected code is assembly only (`arm-none-eabi-as` or keystone), with no C toolchain.
+- **Decided (2026-10-25):** injected code is assembly only, with GNU binutils (`binutils-arm-none-eabi`) and no C toolchain.
+- **Built (2026-10-25):** `tools/fwpatch.py`, spec in `docs/patching.md`, tests in `tests/test_fwpatch.py`. Patch code is linked at the first 32-byte boundary after the stock image (`0x0802BB20`), up to `0x08040000`. Hooks are `bl`, `b`, `word` and `bytes`; each one checks the stock bytes it replaces. An optional `version` sets the image header and the `.syx` start message. Branch encoding is checked against the stock image and `ld` output.
+- **Open:** the bootloader's maximum image size (#25); free RAM for patch state (the linker rejects `.data`/`.bss`); the patch hasn't run on hardware yet (#18).
 - **Depends on:** #7, #9
 
 ### #18 Hello-world patch
 Make the smallest visible change to prove the whole pipeline works: alter a UI string, an LED pattern at boot, or the version number reported over SysEx. Flash it, verify it, then restore stock.
+- **Built and flashed (2026-10-25):** `patches/hello/` (`patch.toml` + `hello.s`) sets the version to 801 and sends the reset handler's call to main (`0x08025E8E`) through 4 bytes of injected code at `0x0802BB20`, which tail-calls the stock main. `tools/flash.py firmware/hello-801.syx` sent 4,059 packets in 7 s, and the app came back reporting (740, 801). So the bootloader accepts an image 32 bytes longer than stock (the trailer and its checksum are never sent), and the injected code runs at boot.
+- In the bootloader, Osc 2 shows `00001000 00000001 00000000 00000000`: the patched header version `0x0801`, high byte first. So the panel can tell which build is flashed (`docs/update-protocol.md`). Osc 1 shows `00000111 01000000`, the bootloader's 740 in the same format.
+- **Done (2026-10-25):** the unit worked normally on 801 (sound, pads, patch change). Stock 800 was then restored with `tools/flash.py`. The whole pipeline (#17 build → #16 flash → verify → restore) works.
 - **Depends on:** #15, #16, #17
 
 ### #24 Dump the bootloader via a patched application
