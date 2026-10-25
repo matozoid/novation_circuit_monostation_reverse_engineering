@@ -21,7 +21,7 @@ What the script does:
 8. It sets the envelope Trigger (patch byte 27, NRPN 0:73 on the Osc 1 channel) to 0 and then to 1. Each time it asks whether a second key, pressed while the first is still held, restarts the envelope. This changes only the current patch's working copy. Skip it with `--skip-trigger`.
 9. It sends PC 63 and PC 64 on the Osc 1 channel, prompting for what you hear and see, then PC 0. The PC 0 also undoes the Trigger change.
 
-On Linux the dumps are read from the ALSA rawmidi device (`/dev/snd/midiC*D*`, found through `/proc/asound`), like `amidi`. Through the sequencer, a session dump lost blocks to input overruns. The dumps and `report.json` are written to the output directory. The manual steps below do the same with `amidi`.
+On Linux the dumps are read from the ALSA rawmidi device (`/dev/snd/midiC*D*`, found through `/proc/asound`), like `amidi`. Through the sequencer, a session dump lost blocks to input overruns. The script polls the device before sending each request, because rawmidi input starts only on the first poll or read. The dumps and `report.json` are written to the output directory. The manual steps below do the same with `amidi`.
 
 **Result of the first run (2026-10-25):** slots 64–127 all hold `Initial Patch`, and PC 64 loads slot 64. Details are in #31.
 

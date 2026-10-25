@@ -203,7 +203,8 @@ Components has no hint of how to start the unit in its bootloader without the ap
   - Details are in `docs/update-protocol.md` → *Entering the bootloader by hand*.
   - The guide also says the bootloader updates factory patches, which may explain where the factory bank lives (#8).
 - **Still open:** try the button combo on a unit with stock firmware and read the version patterns.
-- **Tried 2026-10-25 via the `0x71` reboot (not the buttons):** the bootloader's USB-MIDI port is named **`Circuit Mono Station BL`** (ALSA `Circuit Mono Station BL MIDI 1`), not `…Bootloader`; Components' check accepts both. It answers `0x70`, serves the `0x78` dumps, and **Play** returns to the app. The app's `0x70` reply reports bootloader **740**, firmware 800.
+- **Button combo tried 2026-10-25 on stock firmware: works.** The bootloader grid appeared and the same `Circuit Mono Station BL` port came up. Its `0x70` reply is identical to the app's: bootloader 740, firmware 800, `30 01`. Version lights as reported, in four groups of 8 pads: Osc 1 = `00000111 01000000 00000000 00000000`, Osc 2 = `00001000 00000000 00000000 00000000`. Osc 2 reads 8,0,0,0 (800), and Osc 1's first group reads 7. The second group is 64 if read MSB-left, where 4 was expected; recheck. The open item above is done apart from that.
+- **Also tried 2026-10-25 via the `0x71` reboot:** the bootloader's USB-MIDI port is named **`Circuit Mono Station BL`** (ALSA `Circuit Mono Station BL MIDI 1`), not `…Bootloader`; Components' check accepts both. It answers `0x70`, serves the `0x78` dumps, and **Play** returns to the app. The app's `0x70` reply reports bootloader **740**, firmware 800.
 
 ### #30 Trace the application's update and version handlers
 Find the SysEx handlers in firmware 800 that serve the update protocol from the application side:
@@ -251,6 +252,8 @@ Make the smallest visible change to prove the whole pipeline works: alter a UI s
 ### #24 Dump the bootloader via a patched application
 The bootloader (`0x08000000–0x0800BFFF`, 48 KB) is not distributed by Novation — the catalogue has only `firmware` and `fpga` images — so it must be read off a real unit. Code running on the MCU can read that flash region regardless of the debug read-out-protection (RDP) level, so the route is: patch the application to send `0x08000000–0x0800BFFF` out as SysEx, flash it, capture the dump. This is a natural first real patch and the same tooling (#16, #17) dumps RAM, option bytes and user patches too.
 
+**Tried 2026-10-25 (no):** the bootloader's `0x78` dump doesn't reach MCU memory. Requests at `0x08000000`, `0x0800C000` (control), option bytes, OTP, system memory, SRAM, CCM and backup SRAM all return `00`s (`docs/session-transport.md` *Storage map*). The app's `p 0x40` read is external flash only and stops at `0x800000`.
+
 Before this, check #10 for an existing debug/memory-read SysEx command (the firmware keeps debug strings, so one may exist) — that would need no patching.
 
 Do not attempt to lower RDP via SWD to read the bootloader: dropping from RDP level 1 to 0 mass-erases flash including the bootloader and bricks the unit with no way back.
@@ -282,6 +285,7 @@ The firmware's patch store has 128 slots (`0x2000`–`0x12000`, 512 bytes each).
   - **Slots 64–127 all hold `Initial Patch`, byte for byte.** There is no hidden factory or test bank (#8), and no `FF` slots, so the boot scan counts them as unused.
   - **PC 64 on ch 1 loads slot 64:** the sound changed to the init patch and no patch pad was lit. PC 63 (control) loaded slot 63 and lit page 2's last pad. So the panel is the only 64-slot limit.
   - Not run (by user decision): the slot write (4) and the `0x40` request (5).
+  - Second run: dumps of one slot, one session and `0x0`/`0x2000` all work, so the range is free-form. External flash above the sessions (`0x2E8000`–`0x1000000`) is all `FF`, so the factory patches aren't stored there (#8). The storage map is in `docs/session-transport.md`.
 
 ### #20 Expose SysEx-only parameters via CC/NRPN
 Map parameters missing from the CC table (#14) to free CC or NRPN numbers.

@@ -41,6 +41,22 @@ The header names a region of the device's storage, not a type:
 | `MS_ALL_SESSIONS` | `0x12000` | `0x2D6000` | 33 × 90,112-byte session images (`chunkMonostationSessions`) |
 | `MS_ONE_SESSION` | `0x12000` | `0x16000` | one image. Components only uses this to export a single session to a file (`make-session-file`), not to talk to the device. |
 
+## Storage map (read on hardware, 2026-10-25)
+
+From `0x78` dumps of a stock unit (bootloader 740, firmware 800), cross-checked with `p 0x40` op 2 reads in the app:
+
+| range | content |
+|-------|---------|
+| `0x0000`–`0x0043` | 32 little-endian u16 values (100, 131, 131, 131, 124, 134, …, mostly near 128), then their **zlib CRC-32** (LE) at `0x40`. Probably a per-unit calibration or trim table. **Never erase or overwrite it**; back it up first. |
+| `0x0044`–`0x0FFF` | `FF` |
+| `0x1000`–`0x1017` | a small record: `08 00 00 00 00 00 00 00 2E 02 00 00 00 00 00 00 01 00 00 00 FF 00 00 00`. Maybe global settings; not decoded. |
+| `0x1018`–`0x1FFF` | `FF` |
+| `0x2000`–`0x12000` | 128 patch slots × 512 bytes. On this unit, slots 64–127 all hold `Initial Patch`. |
+| `0x12000`–`0x2E8000` | 33 session images |
+| `0x2E8000`–`0x1000000` | all `FF` (scanned completely). There is no factory bank in external flash (#8). |
+
+The bootloader returned `FF` at `0x1000000`, `0x2000000` and `0x7FFFF000`, so the read doesn't wrap at 16 MiB. **It doesn't map MCU memory:** `0x0800C000` (the app's vector table, the control), `0x08000000` (bootloader), `0x1FFF0000`, `0x1FFF7800`, `0x1FFFC000`, `0x10000000`, `0x20000000` and `0x40024000` all came back as valid transfers full of `00`. Why these give `00` and the others `FF` is unknown. The app's `p 0x40` read stops at `0x800000` (see `docs/sysex-handlers.md`), which suggests an 8 MiB (64 Mbit) chip.
+
 ## Requesting and sending (Components `k0`, `decode-worker-*.js`)
 
 These transfers are handled by the **bootloader**, not the app. The app's `F0 00 20 29 00` dispatcher handles only `0x60`/`0x61`/`0x70`/`0x71` and contains no `0x77`/`0x78`/`0x79` code; on firmware 800 hardware a `0x78` sent to the app gets no reply. Components' Mono Station packs page (`frontend/routes/monostation/packs/index`, `deviceMode="bootloader"`) reboots the device into the bootloader first with `F0 00 20 29 00 71 00 7F 00 00 F7` (`docs/update-protocol.md`). Play returns to the app.
@@ -51,6 +67,6 @@ These transfers are handled by the **bootloader**, not the app. The app's `F0 00
 
 ## Open
 
-- Whether the device accepts other start/length values, such as `0x12000 + n × 0x16000` for one session, or a single patch slot. At least one non-Components range works: on hardware the bootloader answered `0x2000`/`0x10000` (all 128 patch slots) with a matching header and a valid CRC.
-- What lives at `0x0`–`0x2000`. The region `0xA000`–`0x12000` is patch slots 64–127 (`docs/sysex-spec.md`, *Patch store*); on a stock unit every one of them holds `Initial Patch`.
-- On Linux, receive big dumps from the ALSA rawmidi device (`amidi`, or `/dev/snd/midiC*D*`). Through the ALSA sequencer (rtmidi/mido) a 3 MB session dump lost 16 blocks to input overruns.
+- **Resolved (hardware): the bootloader takes any start and length.** Each of these came back with a matching header and a valid CRC: one slot (`0x2000`/`0x200`), one session (`0x12000`/`0x16000`), all 128 slots (`0x2000`/`0x10000`), `0x0`/`0x2000`, and 4 KiB to 1 MiB reads anywhere up to `0x7FFFF000`.
+- What the `0x0`–`0x2000` data means (see *Storage map*).
+- On Linux, receive big dumps from the ALSA rawmidi device (`amidi`, or `/dev/snd/midiC*D*`). Through the ALSA sequencer (rtmidi/mido) a 3 MB session dump lost 16 blocks to input overruns. Poll the rawmidi device before sending the request: input starts on the first poll or read, and the fast `0x77` header was lost once when the request went out first.

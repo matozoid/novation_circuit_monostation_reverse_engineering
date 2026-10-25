@@ -240,6 +240,11 @@ class Device:
                 pending.extend(split.feed(os.read(fd, 65536)))
             return pending.pop(0)
         try:
+            # Linux starts rawmidi input on the first poll or read; start it
+            # (and drop stale bytes) before the request, or the reply's first
+            # message can be lost.
+            while select.select([fd], [], [], 0.05)[0]:
+                os.read(fd, 65536)
             os.write(fd, request)
             msgs = collect(next_raw, accept, idle, stop, first_wait)
         finally:
