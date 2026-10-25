@@ -189,6 +189,12 @@ Find the SysEx handlers in firmware 800 that serve the update protocol from the 
 
 This tells us what a patched image must keep intact so that Components and our flasher can still reboot it into the bootloader. It also shows where the reported version lives, which matters because Components only offers a restore when the version is below 800.
 - **Feeds:** #15, #16, #18
+- **Status:** traced statically, see `docs/sysex-handlers.md`.
+  - `0x71` checks only `00 7F` at bytes 6–7; bare `0x60` does the same.
+  - Handover: USB soft-disconnect, a delay, `2` → backup SRAM `0x40024000`, then a direct jump to `0x08000000` (no reset).
+  - `0x70` reports the BCD version from the image header at offset `0x1AC` (`MAIN 00 08`). The bootloader version comes from the same header at `0x080001AC`.
+  - A side find: `F0 00 20 29 01 61 70 40` reads, writes and erases the external SPI flash (patches and sessions), not MCU flash.
+- **Still open:** confirm on hardware (send `0x70` and check the reply bytes).
 
 ### #16 Command-line firmware flasher
 Implement the update protocol (#4) on a host MIDI library so that flashing does not depend on Components. First test: flash stock 800 and confirm the version shown on the device.

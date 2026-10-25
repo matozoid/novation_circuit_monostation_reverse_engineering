@@ -96,6 +96,12 @@ class Firmware800Test(ContainerChecks, unittest.TestCase):
         self.assertEqual(initial_sp, 0x10010000)
         self.assertEqual(reset, 0x08025E61)
 
+    def test_image_header(self):
+        # Tag and BCD version that the app reports in its 0x70 reply (docs/sysex-handlers.md).
+        self.assertEqual(self.image[0x1AC:0x1B0], b"MAIN")
+        version = int.from_bytes(self.image[0x1B0:0x1B2], "little")
+        self.assertEqual(f"{version:04x}", f"{self.version:04d}")
+
     def test_data_messages_reencode_exactly(self):
         for message in self.messages:
             if fwsyx.command(message) in (fwsyx.CMD_DATA, fwsyx.CMD_DATA_FIRST):

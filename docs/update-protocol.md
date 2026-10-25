@@ -12,6 +12,8 @@ Sources, all in `app.asar` → `ember-dist/assets/`:
 
 All of this is the host side, read statically. The bootloader's side has not been observed. It is inferred from what the host waits for.
 
+The application's side (how firmware 800 handles `0x70` and `0x71`) is in `docs/sysex-handlers.md`.
+
 ## Ports and device state
 
 Components tells the application from the bootloader by the MIDI port name:
@@ -78,7 +80,8 @@ Mono Station update config (`o1` defaults overridden by the device class):
 
 - **The `0x76` trailer is never sent.** The loop stops at the `0x73` packet, and in the stock 800 file that packet is the second to last, followed by `0x76`. So the bootloader must finish the update on `0x73`, the vector-table block at offset 0. It then reboots, since Components next waits for the new version to be reported. As far as Components is concerned, the checksum in the trailer is unused. The bootloader could still compute its own check, which #25 would answer. `tools/bin2syx.py` should keep writing a correct trailer anyway.
 - **The `0x73` block must come last.** A flasher must not send anything after it, or must at least expect the device to have left the bootloader.
-- **Version digits.** The bootloader sees the `0x71` start message with the version digits. Whether it rejects versions it considers older or equal is unknown (#25). Components itself only offers an update when the running version is below 800. A modified image that reports a version of 800 or higher won't be "updated" by Components, which matters for restoring stock (#15).
+- **Reboot.** The app accepts any `0x71` with `00 7F` at bytes 6–7 (or a bare `0x60`), writes `2` to backup SRAM and jumps to the bootloader without a system reset (`docs/sysex-handlers.md`). A patched image must keep that path to stay updatable without the manual entry (#29).
+- **Version digits.** The bootloader sees the `0x71` start message with the version digits. Whether it rejects versions it considers older or equal is unknown (#25). Components itself only offers an update when the running version is below 800. That version comes from the image header (`MAIN` + BCD at image offset `0x1B0`), not from the container digits. A modified image that reports a version of 800 or higher won't be "updated" by Components, which matters for restoring stock (#15).
 - **Pacing.** Wait for each ack: the 10-byte `0x72` reply with an increasing counter. Do not stream. Use a timeout of at least 10 s per packet.
 - **Recovery path.** Components starts directly at step 3 when the bootloader port is already present, for example when the unit was booted into the bootloader by hand. A failed transfer can be retried that way, provided the bootloader region itself is untouched.
 
