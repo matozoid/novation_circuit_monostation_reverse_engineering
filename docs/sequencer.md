@@ -7,9 +7,10 @@ TIM5 ch3 (1 ms) ──► main loop soft-timer table 0x20003230
                          │ timer 0, callback 0x08017F1C (clock engine)
                          ▼
      clock state: tempo/swing/sync source, 24 PPQN tick, step/micro-step
-                         │ listener vtable [0] once per tick
+                         │ commits tick cell +0x18 once per tick
+                         │ (and sends MIDI clock out through +0x08)
                          ▼
-     transport, vtable 0x08027208 [0] FUN_08016E78 (clock tick)
+     transport, vtable 0x08027208 [0] FUN_08016E78 (tick-cell observer)
                          │ per track: FUN_0801BA36 (next step / pattern)
                          ▼
      observable cells (step, pattern, tick)  ──commit──►  observers
@@ -58,8 +59,9 @@ Clock-state fields used:
 
 | Offset | Meaning |
 |--------|---------|
-| `+0x08` | listener (the transport); `vtable[0]` is called once per tick |
-| `+0x0C` | settings cell; byte 1 & 7 = sync-out rate |
+| `+0x08` | MIDI clock out: the MIDI-out object's clock interface (vtable `0x080270E0`, `[0] FUN_08018A5C` sends `F8`); called once per tick, except with MIDI clock as source, where the `F8` handler forwards each incoming clock instead |
+| `+0x0C` | MIDI settings cell (*MIDI settings* below); byte 1 & 7 = sync-out rate |
+| `+0x18` | tick cell: committed once per tick; the transport and the track players observe it |
 | `+0x14` | tempo cell: field 0 = BPM, field 1 = swing (copied to `+0x4F`), another field = swing sync rate (`+0x50`) |
 | `+0x20` | tick within the bar, 0–95 |
 | `+0x28`/`+0x2C` | 64-bit phase accumulator |
@@ -67,8 +69,9 @@ Clock-state fields used:
 | `+0x34` | tick countdown accumulator |
 | `+0x48` | clock-source cell: 0 internal, 1 MIDI clock, 2 analogue sync in |
 | `+0x4C` | detected-source bits: bit 1 = MIDI clock seen, bit 2 = analogue pulses seen (interval < 1000 ms) |
-| `+0x4E` | sync-mode setting 0–4 (the case switch; 4 = auto with hysteresis `0x25A` ms) |
+| `+0x4E` | run state: 0 stopped, 1 start pending (internal), 2 start pending (MIDI, waits for the first `F8`), 3 start pending (analogue), 4 running. `FUN_08021790` (first tick after a start) sets 4. The engine trusts the external tempo estimate only once state 4 has lasted `0x25A` ms (MIDI) or 1000 ms (analogue). |
 | `+0x54`, `+0x5C` | incoming MIDI clock / analogue pulse counts since the last call |
+| `+0x58` | external ticks still to play |
 | `+0x60` | ms timestamp |
 | `+0x68`/`+0x6C` | timestamp rings (`FUN_08023306` pushes); `FUN_0802328C` fits a least-squares slope to estimate the external tempo |
 | `+0x80`/`+0x84` | phase increment and its kind (0 BPM byte, 1 measured MIDI, 2 measured analogue ×12) |
@@ -77,23 +80,23 @@ Clock-state fields used:
 
 **Swing.** Each tick's threshold is `swing_table[s]` (64-bit entries at `0x080283E0`, entry `s` = `s/50 × 2^32`), where `s` = swing for even swing periods and `100 − swing` for odd ones. The period is `tick / ticks_per_step[swing_rate]` (table `0x08029F6C`). Swing therefore stretches and shrinks alternate ticks; the total over two periods stays constant.
 
-**External sync.** With MIDI clock (source 1) the transport is not ticked from here; presumably the MIDI clock handler ticks it directly. With analogue sync in (source 2) every pulse adds 12 ticks (the first one `6 − micro + 6×(step even)` to realign), i.e. **2 PPQN** in, and the tick rate follows the measured pulse period. `FUN_0801AECC` publishes the measured tempo (×2500 fixed point) for display.
+**External sync.** With MIDI clock (source 1) each `F8` counted in `+0x54` adds one tick to `+0x58`, and the engine plays them out as ticks (*MIDI clock and transport* below). With analogue sync in (source 2) every pulse adds 12 ticks (the first one `6 − micro + 6×(step even)` to realign), i.e. **2 PPQN** in, and the tick rate follows the measured pulse period. `FUN_0801AECC` publishes the measured tempo (×2500 fixed point) for display.
 
 **Sync out.** On each tick, if the sync-out setting (settings cell byte 1 & 7) is non-zero and bit `(micro + (step & 3) × 6)` of mask table `0x08029F48[setting − 1]` is set, TIM2 (`0x40000000`) fires a one-shot pulse (CNT = 0, ARR = 20, CEN). Masks: `0x1` (1 PPQN), `0x1001` (2), `0x41041` (4), `0x249249` (8), `0xFFFFFF` (24), `0x80810` (6th setting, uneven — unknown), `0` (end). The main loop polls TIM2 SR for the pulse end.
 
 ## Transport (vtable `0x08027208`)
 
-The transport object holds the sequencer state (`+0x0C` = clock state, `+0x10` = listener for Start/Continue/Stop/SPP events). Secondary vtables at `0x0802722C` (`this − 4`) and `0x08027240` (`this − 8`) are thunks for its other base classes; `0x08027248` = `FUN_08016E6E`, the clock-state observer (source change / stop).
+The transport object holds the sequencer state (`+0x0C` = clock state, `+0x10` = MIDI transport out, `+0x14` = MIDI settings cell). Secondary vtables at `0x0802722C` (`this − 4`) and `0x08027240` (`this − 8`) are thunks for its other base classes. The `this + 8` interface (`0x08027240`) is the transport-event input: `[0]` Start, `[1]` Continue, `[2]` Stop, `[3]` SPP, `[4]` Song Select, each with a source argument (*MIDI clock and transport* below).
 
 | Slot | Function | Meaning |
 |------|----------|---------|
-| 0 | `FUN_08016E78(this, src)` | **clock tick**: increments the clock cell `+0x44`, advances each of the 3 tracks via `FUN_0801BA36`, handles pattern-chain switching / count-in (`+0x51`/`+0x52`/`+0x54`) |
+| 0 | `FUN_08016E78(this, cell)` | cell observer. On the clock state's tick cell (`+0x18`) it is the **clock tick**: increments the clock cell `+0x44`, advances each of the 3 tracks via `FUN_0801BA36`, handles pattern-chain switching / count-in (`+0x51`/`+0x52`/`+0x54`) |
 | 1 | `FUN_08016B52(this, id, on)` | button / flag ids at `+0x60`/`+0x64`/`+0x68` |
-| 2 | `FUN_08016C5E(this, ext)` | **Start** (reset to 0) |
+| 2 | `FUN_08016C5E(this, src)` | **Start** (reset to 0) |
 | 3 | `FUN_08016BD6` | **Continue** |
 | 4 | `FUN_08016D1C` | **Stop**; recomputes the clock source and tempo |
 | 5 | `FUN_08016AD2(this, spp, ext)` | **Song Position Pointer**: clock = spp × 6; step = spp, micro = 0 |
-| 6 | `FUN_08016A8E` | forwards to the listener |
+| 6 | `FUN_08016A8E(this, song, src)` | **Song Select**: forwards to MIDI out (`+0x10` `[4]`) |
 
 Sequencer fields:
 
@@ -121,6 +124,58 @@ Called by the tick for each track when its step is due. With the pattern footer 
 It writes the new pattern/step through the cells and returns 1 when the pattern changed.
 
 **Random source:** `FUN_0801AB9C` reads the **hardware RNG** (`0x50060800`, waits for DRDY, rejects repeats). Usable as-is for probability / mutation features (#35, #39).
+
+## MIDI clock and transport
+
+All objects are built in `FUN_0800E1F8`.
+
+**MIDI settings cell** (clock `+0x0C` = transport `+0x14`), holds bytes `0x08`/`0x09` of the System Settings record (`docs/session-transport.md` *Settings record*). Its readers (`FUN_0801CA18`, `FUN_08017EA8`, the transport handlers) agree with the bits mapped on hardware. Byte 0:
+
+| Bit | Meaning |
+|-----|---------|
+| 2 | note Tx on |
+| 3 | note Rx on |
+| 4 | clock Rx **off** (incoming `F8` and transport messages are ignored) |
+| 5 | clock Tx **off** |
+| 6 | CC Tx off |
+| 7 | CC Rx off |
+
+Byte 1 & 7 is the analogue clock-out rate 1–5 (pads 17–21 = 1, 2, 4, 8, 24 PPQN; see *Sync out*). `FUN_0801CA18` copies these bits into the MIDI-in filter (`+0x0D`: bit 0 notes, bit 1 CCs, bit 2 realtime, always set) and into the MIDI-out flags (`+0x18`: bit 0 notes, bit 1 CCs, bit 2 clock and transport). It also copies the Osc 1/Osc 2 channels into both.
+
+**MIDI in.** `FUN_080186B8(?, msg, ctx)` parses each incoming message. Its pointer is stored at `0x20002658`, and `ctx` is a 16-byte filter: `+0` = the MIDI controller, `+4` = the NRPN parser, `+8`/`+9` = the Osc 1/Osc 2 note channels, `+0x0B`/`+0x0C` = program-change channels, and `+0x0D` = the filter bits. The controller is a 0x84-byte object with vtable `0x08026FE4`, which has interfaces at `+4`, `+8`, `+0x0C` and `+0x10`. The parser routes:
+
+| Message | Handler | Goes to |
+|---------|---------|---------|
+| `F8` clock | controller `+0x0C` `[0] FUN_0801C610` | clock state `vtable[0]` = `FUN_08017EA8` |
+| `FA` / `FB` / `FC` / `F2` | controller `+8` `[0..3]` | `+0x24`: a source adapter (vtable `0x08027190`, id 0), which calls the transport's event interface (`this + 8`) with source 0 |
+| `F3` song select | controller `[12] FUN_0801C658` | writes cell `+0x2C`, then the transport's Song Select |
+| `9n`/`8n` on the Osc channels | controller `[0] FUN_08018618` / `[1] FUN_080185E8` | `+0x1C`: a source adapter (vtable `0x080271AC`) into the note router (source 2, router channels 6–7). It also keeps a held-note bitmap at `+0x48`. Velocity 0 counts as a note-off. |
+| CC, NRPN | controller `[7] FUN_080185A8` etc. | parameter object `+0x20` |
+
+`FUN_08017EA8` (clock in) does nothing while clock Rx is off. In run state 2 (MIDI Start received, waiting) the first `F8` resets the timestamp rings and counters, re-arms the 1 ms timer and calls `FUN_08021790`, which plays tick 0, sets state 4 and sends the first `F8` out. After that, each `F8` increments `+0x54`. When the clock source is MIDI, the handler also forwards the `F8` to MIDI out (`+0x08`), so in slave mode clock out is a **thru** of the incoming clock. Every ms the engine turns `+0x54` into pending ticks (`+0x58`), timestamps them for the least-squares tempo estimate (`+0x68`/`+0x6C`, published with `FUN_0801AECC`) and plays the ticks.
+
+**Transport events** (`this + 8` interface; source 0 = MIDI in, 1 = the second adapter at transport `+0x5C`, presumably the panel):
+
+- With source 0, all events are ignored while clock Rx is off. Start is also ignored while the clock source is analogue.
+- **Start** while already running is only forwarded to MIDI out, and only when slaved to MIDI.
+- A MIDI **Start** sends `FA` out, sets the clock source to 1 (MIDI) and the run state to 2. A local Start sends `FA` and goes to run state 1 (internal) or 3 (analogue).
+- **SPP** while stopped sets step = `spp & 15`, tick = step × 6, and clock = `spp × 6` (`FUN_0801B8B8`).
+- **Song Select** is forwarded to MIDI out while stopped or slaved.
+
+**MIDI out** (0x1C-byte object, vtable `0x0802709C`, channel table at `+0x0C`, flags at `+0x18`, all via `FUN_0801AEE8(3, msg, …)`):
+
+| Slot | Function | Sends | Gate |
+|------|----------|-------|------|
+| 0 | `FUN_08018B48` | `9n` note on (`n` = channel[track]) | flags bit 0 |
+| 1 | `FUN_08018B20` | `8n` note off | flags bit 0 |
+| 2 | `FUN_08018AF2` | `FA` Start | flags bit 2 |
+| 3 | `FUN_08018A08` | `FB` Continue | flags bit 2 |
+| 4 | `FUN_08018AC4` | `FC` Stop | flags bit 2 |
+| 5 | `FUN_08018A92` | `F2` SPP | flags bit 2 |
+| 6 | `FUN_08018A64` | `F3` Song Select | flags bit 2 |
+| 7 | `FUN_08018A36` | `F8` clock | flags bit 2 |
+
+The `this + 4` interface (vtable `0x080270C4`, slots 2–6) is the transport's `+0x10`. The `this + 8` interface (`0x080270E0`, slot 7) is the clock state's `+0x08`.
 
 ## Track player (vtable `0x08029FA4`)
 
@@ -187,6 +242,7 @@ So the mod track (2) never reaches MIDI out. Sequencer playback is not recorded 
 
 - Inside the synth engine `FUN_080226BC` (Osc 1/Osc 2 voice assignment), and the merge stages' note priority.
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
-- MIDI clock in → transport tick path (USB / DIN parsers), MIDI clock out.
+- Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
+- What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
 - Real-time record (#33): the per-track recorders behind `FUN_0802345C` (`0x288`-byte objects from `FUN_08021128`). Step entry (#34): which UI handlers write step cells.
-- Meaning of sync mode `+0x4E` values 0–4 against the user guide's clock settings, and the 6th sync-out mask.
+- The 6th sync-out mask `0x80810` (the guide lists only 5 rates). Bits 0–1 of the MIDI settings byte: no reader found yet.

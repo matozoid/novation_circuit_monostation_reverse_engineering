@@ -64,7 +64,7 @@ TIM5 (32-bit, ISR `0x0801F545`, 10 kHz) is the system time base: its 1 ms channe
 On-chip flash program/erase (FLASH_IF, 2 refs at `0x0801A930`, `0x08028890`) saves patches/sessions; Backup SRAM (7 refs) holds state across power cycles. Default blobs `"Initial Patch"`, `"Classic Mono"`, `"Initial Session"`, `"User Session"` are referenced from `0x0800EEF8`–`0x0801B5C0` (patch/session init + storage layer).
 
 ## Still to isolate (needs Ghidra function graph — #9/#10 follow-up)
-- **Sequencer engine**: mapped in `docs/sequencer.md` (clock engine, transport, step advance, track players). Still open there: the note engine behind the players, MIDI clock in/out, record paths.
+- **Sequencer engine**: mapped in `docs/sequencer.md` (clock engine, transport, step advance, track players). Also mapped there: note routing (router, per-track mergers, MIDI note out, synth engine entry) and MIDI clock/transport in and out. Still open: the synth engine internals, the record paths, and which USB/DIN parser feeds the MIDI-in parser `FUN_080186B8`.
 - **SysEx parser/dispatcher**: shared by USB-MIDI and USART paths; locate the `F0 00 20 29` header match and the per-command (`0x00` patch replace, firmware `0x71`/`0x72`/`0x73`/`0x76`) jump.
 - **Patch/session (de)serialiser**: the 136-byte patch and `.monostationsession` layout handlers (#12/#13) live in the storage region above.
 - **SPI device assignment**: which SPI port drives LEDs vs an external DAC.

@@ -352,7 +352,7 @@ Per-step trigger probability, plus Launchpad Pro-style mutation of a pattern's n
 The user guide documents no arpeggiator. Needs:
 - a held-note buffer;
 - arp modes (up, down, up/down, random, as played) and an octave range;
-- a rate synced to the sequencer clock;
+- a rate synced to the sequencer clock (24 PPQN tick cell, internal or MIDI-slaved: `docs/sequencer.md` *MIDI clock and transport*);
 - a UI entry point (a Shift combination or a free button) and a home for its settings, in the patch's reserved bytes 27–40 or in the session.
 
 ### #37 Roll / looper performance effect
