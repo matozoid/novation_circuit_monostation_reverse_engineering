@@ -15,7 +15,8 @@ builds in FUN_08018CA4, then 4 bytes of 0xFF. Layout:
     0x155D8  7 bytes of further globals (meaning TBD)
     0x15F5C  the session's patch: 126 bytes = bytes 9..134 of a 136-byte patch
 
-Pattern = 16 steps x 8 bytes + 12-byte footer (footer[0] = last step index).
+Pattern = 16 steps x 8 bytes + 12-byte footer: footer[0] = start step << 4 |
+end step, footer[1] = sync rate index (RATE_TICKS), footer[2] = direction.
 Automation lane = 12-byte mask (bit i, LSB first, = micro-step i recorded)
 followed by 96 values (16 steps x 6 micro-steps).
 
@@ -49,6 +50,13 @@ CHAIN_OFFS = (0x4C, 0x50, 0x54)       # (start, end) pattern index per track
 STEPS = 16
 STEP_SIZE = 8
 PATTERN_SIZE = STEPS * STEP_SIZE + 12   # 140
+
+# Footer byte 1 indexes this ticks-per-step table (24 PPQN; firmware table at
+# 0x08029F6C, read by playback FUN_080234AC and song position FUN_0801B698).
+RATE_TICKS = (2, 3, 4, 6, 8, 12, 16, 24)
+RATE_NAMES = ("1/32T", "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4T", "1/4")
+# Footer byte 2; ping-pong doubles the pattern's length in FUN_0801B698.
+DIRECTIONS = ("forward", "reverse", "ping-pong", "random")
 
 MICRO_STEPS = 6
 LANE_MASK_SIZE = STEPS * MICRO_STEPS // 8   # 12
@@ -120,7 +128,10 @@ def header(image):
 
 
 def pattern(image, track, index):
-    """Return {'steps': [8-byte step records], 'footer': 12 bytes, 'last_step': n}."""
+    """Return the steps (8-byte records), raw footer and decoded footer fields.
+
+    start_step..end_step is the played range; end < start wraps past step 15.
+    """
     base, count, _, _ = TRACKS[track]
     if not 0 <= index < count:
         raise IndexError(f"track {track} has {count} patterns")
@@ -129,8 +140,18 @@ def pattern(image, track, index):
     return {
         "steps": [rec[i * STEP_SIZE:(i + 1) * STEP_SIZE] for i in range(STEPS)],
         "footer": footer,
-        "last_step": footer[0],
+        "start_step": footer[0] >> 4,
+        "end_step": footer[0] & 0x0F,
+        "length": pattern_length(footer[0]),
+        "rate": footer[1],
+        "direction": footer[2],
     }
+
+
+def pattern_length(start_end):
+    """Steps played for a footer[0] byte (firmware FUN_08016A5A)."""
+    start, end = start_end >> 4, start_end & 0x0F
+    return end + 1 - start + (STEPS if end < start else 0)
 
 
 def lane(image, track, index, lane_no):

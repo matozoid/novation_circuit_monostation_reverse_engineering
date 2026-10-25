@@ -134,7 +134,7 @@ Original note: bytes 25 (category) and 26 (genre) of the 136-byte patch are iden
   - 3 = value for a per-track parameter id (`0x09`/`0x10`/`0x4C`);
   - 4 = patch change: slot 0–63, sent as id `0x50`; the session controller (`FUN_08019AE4`) loads it from the patch store at `0x2000 + slot × 0x200`.
 - **Lane → parameter map:** resolved from the firmware tables `0x08027588` and `0x0802775C` plus the 76-entry parameter-id table at `0x0802A62A`, which gives each id's patch offset, range and CC/NRPN. In `tools/session.py` these are `LANE_IDS`, `PARAM_OFFSETS` and `lane_param`, checked against the firmware by `FirmwareTablesTest`.
-- Footer byte 1 is very likely the sync rate (ticks-per-step table `[2,3,4,6,8,12,16,24]`; default 3 = 1/16).
+- Footer: byte 0 = start step << 4 | end step (may wrap), byte 1 = sync rate index into ticks-per-step `[2,3,4,6,8,12,16,24]` (3 = 1/16), byte 2 = direction (forward/reverse/ping-pong/random); from song position `FUN_0801B698`.
 - Still open: patch bytes 27/49/58/60; footer byte 3; `0x42`; the 7 globals at `0x155D8`; and the firmware-vs-Components CC differences (`docs/session-format.md`).
 
 Original note: decode the 90,112-byte `.monostationsession` layout: the sequencer patterns, step automation, 64 patches at a 512-byte stride, and global settings. Use `session_32.monostationsession` as the reference vector.

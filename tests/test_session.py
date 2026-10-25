@@ -51,10 +51,11 @@ class SyntheticTest(unittest.TestCase):
         image = make_image()
         base = session.TRACKS[1][0] + 2 * session.PATTERN_SIZE
         image[base + 3 * 8:base + 4 * 8] = bytes.fromhex("3c6006ffff000000")
-        image[base + 128] = 7
+        image[base + 128:base + 131] = bytes([0x27, 4, 2])
         p = session.pattern(bytes(image), 1, 2)
         self.assertEqual(p["steps"][3], bytes.fromhex("3c6006ffff000000"))
-        self.assertEqual(p["last_step"], 7)
+        self.assertEqual((p["start_step"], p["end_step"], p["length"]), (2, 7, 6))
+        self.assertEqual((p["rate"], p["direction"]), (4, 2))
         with self.assertRaises(IndexError):
             session.pattern(bytes(image), 1, 8)
 
@@ -79,6 +80,11 @@ class SyntheticTest(unittest.TestCase):
         self.assertEqual(len(msg), patchbank.MSG_SIZE)
         d = patchbank.decode_meta(msg)
         self.assertEqual((d["name"], d["slot"]), ("Kick 5", 4))
+
+    def test_pattern_length_wraps(self):
+        self.assertEqual(session.pattern_length(0x0F), 16)
+        self.assertEqual(session.pattern_length(0xC3), 8)     # steps 12..15, 0..3
+        self.assertEqual(session.pattern_length(0x55), 1)
 
     def test_rejects_bad_image(self):
         with self.assertRaises(ValueError):
@@ -132,6 +138,12 @@ class FirmwareTablesTest(unittest.TestCase):
         body = tuple(self.fw[off + 8 * i] + 9 for i in range(len(session.PARAM_OFFSETS)))
         self.assertEqual(body, session.PARAM_OFFSETS)
 
+    def test_rate_table(self):
+        off = 0x08029F6C - FW_BASE
+        ticks = tuple(int.from_bytes(self.fw[off + 4 * i:off + 4 * i + 4], "little")
+                      for i in range(8))
+        self.assertEqual(ticks, session.RATE_TICKS)
+
 
 @unittest.skipUnless(SESSION_32.exists(), "session_32.monostationsession absent")
 class InitImageTest(unittest.TestCase):
@@ -149,7 +161,8 @@ class InitImageTest(unittest.TestCase):
         for t, (_, count, auto, _) in enumerate(session.TRACKS):
             for i in range(count):
                 p = session.pattern(self.image, t, i)
-                self.assertEqual(p["last_step"], 15)
+                self.assertEqual((p["start_step"], p["end_step"]), (0, 15))
+                self.assertEqual((p["rate"], p["direction"]), (3, 0))
                 self.assertTrue(all(s[0] == 0 for s in p["steps"]))
                 if auto is not None:
                     self.assertEqual(session.automated_lanes(self.image, t, i), [])

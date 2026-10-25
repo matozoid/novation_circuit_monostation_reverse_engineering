@@ -39,7 +39,7 @@ The firmware's initialiser reads its defaults from these templates:
 - magic and size: literal pool `0x08018E80`;
 - name `Initial Session`: `0x08028D70`;
 - globals `78 32 03 00 …` and pattern counts `10 08 08`: `0x08026D98`;
-- default last step `0F`: `0x08029E9C`;
+- default step range `0F` (steps 0–15): `0x08029E9C`;
 - `Classic Mono` patch body: `0x08028868`.
 
 **Each session holds one patch, not 64.** The 64 × 512-byte patch store is a separate flash area. Components calls it `MS_ALL_PATCHES` (start `0x2000`, length `0x8000`, 512 bytes per slot, 126 bytes used).
@@ -62,8 +62,11 @@ The tracks, from the parameters their automation lanes drive (below): **track 0*
 Byte offsets here are in the 136-byte patch message (see `tools/patchbank.py`). Bytes 49 and 58 sit at the end of the osc 1 and osc 2 groups and are not in the community PDF. CC 5 and CC 37 suggest per-oscillator glide.
 
 Footer:
-- Byte 0 is the last step index (init `0F`; `07` seen for an 8-step pattern).
-- Byte 1 is very likely the sync rate. The playback scales time by a rate index 0–7 through the ticks-per-step table `[2, 3, 4, 6, 8, 12, 16, 24]` (24 PPQN) at `0x08029F6C`. The default index 3 is 6 ticks, i.e. 1/16, which matches the default `03`. The values `04` and `06` (1/8T, 1/4T) also occur. The link from this byte to that index is not traced yet.
+- Byte 0 is the played step range: start step in the high nibble, end step in the low nibble (init `0F` = steps 0–15). The length is `end + 1 − start`, plus 16 when end < start, so the range can wrap past step 15 (`FUN_08016A5A`). The YBC sessions only use `0F` and `07`.
+- Byte 1 is the sync rate: an index 0–7 into the ticks-per-step table `[2, 3, 4, 6, 8, 12, 16, 24]` (24 PPQN) at `0x08029F6C`, i.e. 1/32T, 1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4T, 1/4. Init `03` = 1/16. The YBC sessions also use `04` and `06`.
+- Byte 2 is the play direction: 0 forward, 1 reverse, 2 ping-pong, 3 random. Always 0 in the YBC sessions.
+
+The song-position routine `FUN_0801B698` reads bytes 0–2. It sums each chained pattern's length as `ticks[byte 1] × steps(byte 0)`, doubled for ping-pong. It then takes the clock modulo that total and walks the chain to the current step: up from start for forward, down from end for reverse, both ways for ping-pong, and through a random generator for random. Playback `FUN_080234AC` uses the same table for gate timing.
 - Byte 3 was `01` once, on track 2. The pattern byte at `+0x83` switches `FUN_08023998` to an interpolated value path.
 - The rest is 0.
 
@@ -105,5 +108,5 @@ The firmware CC numbers differ from the Components `kD` schema in places. For ex
 ## Open
 
 - Patch bytes 27, 49, 58 and 60 (ids 2, 9, 16, 18: NRPN 0:73, CC 5, CC 37, CC 7): not named by the PDF.
-- Confirm footer byte 1 as the sync rate. Footer byte 3, header byte `0x42`, and the 7 bytes at `0x155D8`.
+- Footer byte 3, header byte `0x42`, and the 7 bytes at `0x155D8`.
 - The CC differences between firmware and Components `kD`.
