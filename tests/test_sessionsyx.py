@@ -43,10 +43,10 @@ class TransferTest(unittest.TestCase):
 
     def test_round_trip(self):
         syx = sessionsyx.encode_transfer(self.stream)
-        unknown, stream = sessionsyx.decode_transfer(syx)
+        start, stream = sessionsyx.decode_transfer(syx)
         self.assertEqual(stream, self.stream)
-        self.assertEqual(unknown, sessionsyx.HEADER_UNKNOWN)
-        self.assertEqual(sessionsyx.encode_transfer(stream, unknown), syx)
+        self.assertEqual(start, sessionsyx.SESSIONS_START)
+        self.assertEqual(sessionsyx.encode_transfer(stream, start), syx)
 
     def test_framing(self):
         msgs = sessionsyx.split_messages(sessionsyx.encode_transfer(self.stream))
@@ -54,6 +54,13 @@ class TransferTest(unittest.TestCase):
         self.assertEqual(len(msgs[-1]), 15)
         self.assertTrue(all(len(m) == 300 for m in msgs[1:-1]))
         self.assertEqual(sessionsyx.from_nibbles(msgs[-1][6:-1]), zlib.crc32(self.stream))
+
+    def test_request(self):
+        msg = sessionsyx.request()
+        self.assertEqual(msg[:6], bytes.fromhex("f000202900") + bytes([0x78]))
+        self.assertEqual(len(msg), 23)
+        self.assertEqual(sessionsyx.from_nibbles(msg[6:14]), 0x12000)
+        self.assertEqual(sessionsyx.from_nibbles(msg[14:22]), 2973696)
 
     def test_crc_mismatch_rejected(self):
         syx = bytearray(sessionsyx.encode_transfer(self.stream))

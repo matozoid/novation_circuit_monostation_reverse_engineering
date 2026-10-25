@@ -4,7 +4,8 @@
 A session dump is one transfer of three message kinds, all
 `F0 00 20 29 00 <cmd> <body…> F7`:
 
-    0x77  header   16 nibbles: unknown field (0x00012000), then total length
+    0x78  request  16 nibbles: start address, length (host -> device)
+    0x77  header   16 nibbles: start address (0x00012000), then total length
     0x79  data     293 septets -> 256 bytes, in order, no address
     0x7A  trailer  8 nibbles: CRC-32 (zlib) of the whole unpacked stream
 
@@ -27,11 +28,14 @@ from pathlib import Path
 
 NOVATION_HEADER = bytes([0xF0, 0x00, 0x20, 0x29, 0x00])
 
+CMD_REQUEST = 0x78
 CMD_HEADER = 0x77
 CMD_DATA = 0x79
 CMD_TRAILER = 0x7A
 
-HEADER_UNKNOWN = 0x00012000   # constant in every dump seen; meaning TBD
+SESSIONS_START = 0x00012000   # storage address of session 0 (Components MS_ALL_SESSIONS)
+PATCHES_START = 0x00002000    # 64 x 512-byte patch slots (MS_ALL_PATCHES)
+PATCHES_LENGTH = 0x8000
 NIBBLES = 8
 
 BLOCK_BYTES = 256
@@ -40,7 +44,7 @@ GROUP = 7                     # data bytes per high-bit septet
 
 SESSION_SIZE = 90112
 SESSION_NAME_OFF = 0x20
-SESSION_NAME_LEN = 20
+SESSION_NAME_LEN = 32
 
 
 def split_messages(data):
@@ -99,24 +103,24 @@ def encode_block(payload):
 
 
 def decode_transfer(data):
-    """Return (unknown_field, stream) from a session .syx; checks length and CRC."""
+    """Return (start_address, stream) from a session .syx; checks length and CRC."""
     messages = split_messages(data)
     cmds = [command(m) for m in messages]
     if cmds[0] != CMD_HEADER or cmds[-1] != CMD_TRAILER or \
             any(c != CMD_DATA for c in cmds[1:-1]):
         raise ValueError("expected one 0x77 header, 0x79 data blocks, one 0x7A trailer")
     body = messages[0][len(NOVATION_HEADER) + 1:-1]
-    unknown, length = from_nibbles(body[:NIBBLES]), from_nibbles(body[NIBBLES:])
+    start, length = from_nibbles(body[:NIBBLES]), from_nibbles(body[NIBBLES:])
     stream = b"".join(decode_block(m[len(NOVATION_HEADER) + 1:-1]) for m in messages[1:-1])
     if len(stream) != length:
         raise ValueError(f"header length {length} != unpacked {len(stream)}")
     crc = from_nibbles(messages[-1][len(NOVATION_HEADER) + 1:-1])
     if crc != zlib.crc32(stream):
         raise ValueError(f"CRC mismatch: trailer {crc:08x}, stream {zlib.crc32(stream):08x}")
-    return unknown, stream
+    return start, stream
 
 
-def encode_transfer(stream, unknown=HEADER_UNKNOWN):
+def encode_transfer(stream, start=SESSIONS_START):
     """Build a session .syx from an unpacked stream (inverse of decode_transfer)."""
     if len(stream) % BLOCK_BYTES:
         raise ValueError(f"stream length {len(stream)} is not a multiple of {BLOCK_BYTES}")
@@ -124,11 +128,16 @@ def encode_transfer(stream, unknown=HEADER_UNKNOWN):
     def message(cmd, body):
         return NOVATION_HEADER + bytes([cmd]) + body + b"\xF7"
 
-    out = [message(CMD_HEADER, to_nibbles(unknown) + to_nibbles(len(stream)))]
+    out = [message(CMD_HEADER, to_nibbles(start) + to_nibbles(len(stream)))]
     out += [message(CMD_DATA, encode_block(stream[i:i + BLOCK_BYTES]))
             for i in range(0, len(stream), BLOCK_BYTES)]
     out.append(message(CMD_TRAILER, to_nibbles(zlib.crc32(stream))))
     return b"".join(out)
+
+
+def request(start=SESSIONS_START, length=SESSION_SIZE * 33):
+    """Host -> device dump request (Components k0.startDownload)."""
+    return NOVATION_HEADER + bytes([CMD_REQUEST]) + to_nibbles(start) + to_nibbles(length) + b"\xF7"
 
 
 def split_sessions(stream):
@@ -143,10 +152,10 @@ def session_name(image):
 
 def main(argv):
     if len(argv) == 3 and argv[1] == "list":
-        unknown, stream = decode_transfer(Path(argv[2]).read_bytes())
+        start, stream = decode_transfer(Path(argv[2]).read_bytes())
         sessions = split_sessions(stream)
         print(f"{len(sessions)} session(s), {len(stream)} bytes, "
-              f"header field 0x{unknown:08x}, CRC-32 ok")
+              f"start 0x{start:08x}, CRC-32 ok")
         for i, s in enumerate(sessions):
             print(f"  {i:2d}  {s[:4].decode('latin1')}  {session_name(s)}")
         return

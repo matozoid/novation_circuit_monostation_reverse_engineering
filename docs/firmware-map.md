@@ -80,7 +80,7 @@ Auto-analysis finds **467 functions**. Confirmed so far:
 | `FUN_08025E60` | Reset handler (CMSIS startup) |
 | `FUN_08025F3C` | `memset(dst, val, len)` |
 | `FUN_08026752` | `memcpy(dst, src, len)` |
-| `FUN_08018CA4` | **Session initialiser** — builds the "Initial Session" struct in RAM out to offset `0x155DE` (≈87.9 KB, matching the 90,112-byte `.monostationsession`); drives #13. |
+| `FUN_08018CA4` | **Session initialiser** — builds the "Initial Session" struct in RAM out to offset `0x155DE` (≈87.9 KB, matching the 90,112-byte `.monostationsession`); layout decoded in `docs/session-format.md` (#13). |
 | `FUN_0800E1F8`, `FUN_0801B4E0` | reference the "Initial Patch" default — patch load/init; drive #12. |
 | `FUN_0800C2D0` (7142 B), `FUN_0800FB5C` (6288 B) | largest routines — likely the main loop / scan or the sequencer; not yet identified. |
 

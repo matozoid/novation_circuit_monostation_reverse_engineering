@@ -120,13 +120,20 @@ Original note: bytes 25 (category) and 26 (genre) of the 136-byte patch are iden
 - **Approach:** find the category/genre name tables in Components' `main-*.js` (librarian filter UI) and/or the firmware's string table; confirm against packs whose category is set deliberately.
 - **Depends on:** #12.
 
-### #13 Document session format
-Decode the 90,112-byte `.monostationsession` layout: the sequencer patterns, step automation, 64 patches at a 512-byte stride, and global settings. Use `session_32.monostationsession` as the reference vector.
+### #13 Document session format — MOSTLY DONE
+**Resolved** (`docs/session-format.md`, `tools/session.py`, `tests/test_session.py`). The layout comes from the firmware initialiser `FUN_08018CA4` and is checked against 48 real YBC sessions.
+- Header: magic, struct size `0x15FFC`, flags, pad colour, 32-byte name. Globals: tempo, swing, per-track chain start/end.
+- **Three tracks:** 16, 8 and 8 patterns of 140 bytes each (16 × 8-byte steps plus a 12-byte footer).
+- Automation lanes are 108 bytes: a 96-bit mask plus 96 values (16 steps × 6 micro-steps). Track 0 has 42 lanes per pattern at `0x918`, track 1 has 12 at `0x128F8`, and track 2 has none.
+- **One** 126-byte patch per session at `0x15F5C`; every YBC session's patch matches its bank. The "64 patches at a 512-byte stride" idea is the separate patch store `MS_ALL_PATCHES`, not part of the session.
+- Still open: what each track is, the step byte meanings (only the defaults are certain), the lane-to-parameter map, footer bytes 1 and 3, `0x42`, and the 7 globals at `0x155D8`.
+
+Original note: decode the 90,112-byte `.monostationsession` layout: the sequencer patterns, step automation, 64 patches at a 512-byte stride, and global settings. Use `session_32.monostationsession` as the reference vector.
 - **New data (#27):** `tools/sessionsyx.py split <Sessions.syx> outdir/` yields 32 populated `USER` session images per YBC dump (sessions 0–15 differ between the main and Alt packs), giving real, non-init vectors to diff against `session_32`. The init image is sparse: `INIT` magic, the name at `0x20`, repeating `00 60 00 ff` 16-byte step records at `0x800` and `0x12800`, and patch data around `0x15800` (`Classic Mono` at `0x15F5C`). Only one patch name appears in the init image, so the "64 patches at 512-byte stride" assumption is unverified.
 - **Depends on:** #12 (patch part)
 
-### #27 Document the session SysEx transport protocol — MOSTLY DONE
-**Resolved** (`docs/session-transport.md`, `tools/sessionsyx.py`, `tests/test_sessionsyx.py`). Each `0x79` body is 293 septets in groups of 8: a high-bit septet (bit *i* → byte *i*) followed by 7 bytes, giving 256 bytes per block. The supposed "flag" byte is just the first high-bit septet. The header carries an unknown field `0x00012000` and the stream length as 8 nibbles each. The trailer is the **CRC-32 (zlib)** of the unpacked stream. A full dump holds 33 × 90,112-byte images: 32 `USER` sessions plus an `INIT` image that's byte-identical to `session_32.monostationsession`. Both YBC dumps re-encode byte-exact. Still open: what the header's `0x12000` field means, partial or single-session transfers, and how to request a dump.
+### #27 Document the session SysEx transport protocol — DONE
+**Resolved** (`docs/session-transport.md`, `tools/sessionsyx.py`, `tests/test_sessionsyx.py`). Each `0x79` body is 293 septets in groups of 8: a high-bit septet (bit *i* → byte *i*) followed by 7 bytes, giving 256 bytes per block. The supposed "flag" byte is just the first high-bit septet. The header carries an unknown field `0x00012000` and the stream length as 8 nibbles each. The trailer is the **CRC-32 (zlib)** of the unpacked stream. A full dump holds 33 × 90,112-byte images: 32 `USER` sessions plus an `INIT` image that's byte-identical to `session_32.monostationsession`. Both YBC dumps re-encode byte-exact. **Update (Components `k0` + decode worker):** the header's `0x12000` is the **storage start address**; patches are at `0x2000`, 64 slots of 512 bytes. A dump is requested with `F0 00 20 29 00 78 <start> <length> F7`. An upload is flow-controlled: the device sends `0x7B` or `0x75` to ask for each block, then `0x7A` with its CRC. See `docs/session-transport.md`. Remaining hardware test: whether the device accepts other start/length values, such as a single session.
 
 Original notes:
 Sessions travel over SysEx in a framing distinct from the on-device `.monostationsession` file (#13). Observed in the YBC `*Sessions*.syx` (3,484,838 bytes, 11,618 messages):
@@ -190,7 +197,9 @@ With a tested recovery path in place, send malformed firmware (wrong checksum, w
 ## New features (candidates — scope after #10)
 
 ### #19 Patch dump request / bulk backup over SysEx
-If the firmware does not already support it (see #12), add a command that dumps the current patch or session on request, so editors can sync without Components.
+**Existing support found (#27):** the stock firmware already serves bulk dumps on request: `F0 00 20 29 00 78 <start: 8 nibbles> <length: 8 nibbles> F7`. All sessions are `0x12000`/`0x2D6000` and all patches are `0x2000`/`0x8000` (`sessionsyx.request()`). The current-patch request is message type `0x40` (#12). What remains here is anything finer-grained, such as a single session, if the firmware refuses arbitrary ranges.
+
+Original note: if the firmware does not already support it (see #12), add a command that dumps the current patch or session on request, so editors can sync without Components.
 
 ### #20 Expose SysEx-only parameters via CC/NRPN
 Map parameters missing from the CC table (#14) to free CC or NRPN numbers.
