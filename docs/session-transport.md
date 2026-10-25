@@ -43,11 +43,14 @@ The header names a region of the device's storage, not a type:
 
 ## Requesting and sending (Components `k0`, `decode-worker-*.js`)
 
+These transfers are handled by the **bootloader**, not the app. The app's `F0 00 20 29 00` dispatcher handles only `0x60`/`0x61`/`0x70`/`0x71` and contains no `0x77`/`0x78`/`0x79` code; on firmware 800 hardware a `0x78` sent to the app gets no reply. Components' Mono Station packs page (`frontend/routes/monostation/packs/index`, `deviceMode="bootloader"`) reboots the device into the bootloader first with `F0 00 20 29 00 71 00 7F 00 00 F7` (`docs/update-protocol.md`). Play returns to the app.
+
 - **Download:** the host sends `F0 00 20 29 00 78 <start: 8 nibbles> <length: 8 nibbles> F7` (command 120). The device answers with a `0x77` header that echoes the start and length; Components rejects any other values. The `0x79` blocks and the `0x7A` CRC trailer follow.
 - **Upload:** the host sends the `0x77` header, then one `0x79` block each time the device sends a flow-control message. That message is either `0x7B` (8-nibble counter at bytes 6–13) or `0x75` (16-bit counter at bytes 7–8); a repeated counter value is ignored. At the end the device sends `0x7A` with its own CRC-32, and the host compares it with the CRC of what it sent.
 - A patch-bank upload pads each 126-byte patch to 512 bytes (`patchLength`) before framing.
 
 ## Open
 
-- Whether the device accepts any other start/length, such as `0x12000 + n × 0x16000` for one session, or a single patch slot. Components never asks for one, so test this on hardware.
-- What lives at `0x0`–`0x2000`. The region `0xA000`–`0x12000` is patch slots 64–127: the firmware's patch store has 128 × 512-byte slots from `0x2000`, but the panel only reaches 64 (`docs/sysex-spec.md`, *Patch store*). Whether units ship with data there is unknown. A dump of `0x2000`/`0x10000` would show it.
+- Whether the device accepts other start/length values, such as `0x12000 + n × 0x16000` for one session, or a single patch slot. At least one non-Components range works: on hardware the bootloader answered `0x2000`/`0x10000` (all 128 patch slots) with a matching header and a valid CRC.
+- What lives at `0x0`–`0x2000`. The region `0xA000`–`0x12000` is patch slots 64–127 (`docs/sysex-spec.md`, *Patch store*); on a stock unit every one of them holds `Initial Patch`.
+- On Linux, receive big dumps from the ALSA rawmidi device (`amidi`, or `/dev/snd/midiC*D*`). Through the ALSA sequencer (rtmidi/mido) a 3 MB session dump lost 16 blocks to input overruns.

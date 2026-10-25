@@ -16,3 +16,6 @@ ghidra-project/
 
 Roboo.monostationpack
 YBC-Flippin-Grooves-Circuit.zip
+
+# Python venv for device tools (mido + python-rtmidi)
+.venv/

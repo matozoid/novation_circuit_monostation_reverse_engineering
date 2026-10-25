@@ -12,18 +12,24 @@ python3 tools/hwtest_slots.py ~/ms-dumps            # --port NAME, --channel N, 
 
 What the script does:
 1. It checks the version with `0x70`.
-2. It backs up the patches and the sessions. If a backup fails, it stops before running anything else.
-3. It tries the 128-slot dump, then falls back to `p 0x40` op 2 reads. It never sends op 0 or op 1.
-4. It classifies slots 64–127 and checks that slots 0–63 match the backup.
-5. It sets the envelope Trigger (patch byte 27, NRPN 0:73 on the Osc 1 channel) to 0 and then to 1. Each time it asks whether a second key, pressed while the first is still held, restarts the envelope. This changes only the current patch's working copy. Skip it with `--skip-trigger`.
-6. It sends PC 63 and PC 64 on the Osc 1 channel, prompting for what you hear and see, then PC 0. The PC 0 also undoes the Trigger change.
+2. It reboots into the bootloader with `F0 00 20 29 00 71 00 7F 00 00 F7` and waits up to 8 s for the bootloader port. The `0x78` storage dumps are served only by the bootloader; the app ignores them (it has no `0x77`/`0x78`/`0x79` code), and Components also switches to the bootloader before a backup.
+3. In the bootloader, it backs up the patches and the sessions. If a backup fails, it stops before running anything else.
+4. It tries the 128-slot dump.
+5. It asks you to press Play to leave the bootloader, then waits for the app port.
+6. Back in the app, if the 128-slot dump failed, it falls back to `p 0x40` op 2 reads. It never sends op 0 or op 1.
+7. It classifies slots 64–127 and checks that slots 0–63 match the backup.
+8. It sets the envelope Trigger (patch byte 27, NRPN 0:73 on the Osc 1 channel) to 0 and then to 1. Each time it asks whether a second key, pressed while the first is still held, restarts the envelope. This changes only the current patch's working copy. Skip it with `--skip-trigger`.
+9. It sends PC 63 and PC 64 on the Osc 1 channel, prompting for what you hear and see, then PC 0. The PC 0 also undoes the Trigger change.
 
-The dumps and `report.json` are written to the output directory. The manual steps below do the same with `amidi`.
+On Linux the dumps are read from the ALSA rawmidi device (`/dev/snd/midiC*D*`, found through `/proc/asound`), like `amidi`. Through the sequencer, a session dump lost blocks to input overruns. The dumps and `report.json` are written to the output directory. The manual steps below do the same with `amidi`.
+
+**Result of the first run (2026-10-25):** slots 64–127 all hold `Initial Patch`, and PC 64 loads slot 64. Details are in #31.
 
 ## Setup
 
 - Linux with `alsa-utils` (`amidi`). Connect the Mono Station over USB, running stock firmware 800.
 - Find the port: `amidi -l`. Below it is called `$P` (e.g. `P=hw:2,0,0`).
+- Tests 0 and 1 need the **bootloader**: send `amidi -p $P -S 'F0 00 20 29 00 71 00 7F 00 00 F7'` (or hold Scales + Note + Velocity at power-on), run `amidi -l` again for the bootloader port (its name contains `Bootloader` or `BL`) and use that as `$P`. Press Play to return to the app before tests 2–5.
 - Turn the output volume down before test 3. A slot full of `FF` would set every parameter to its maximum.
 - Run the decode snippets from the repo root. Keep the dumps outside the repo, e.g. in `~/ms-dumps/`.
 

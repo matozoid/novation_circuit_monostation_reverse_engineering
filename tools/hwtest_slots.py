@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Automated hardware test for patch slots 64-127 (#31, docs/hw-test-patch-slots.md).
 
-Runs the read-only tests 0-3 of the plan against a connected Mono Station:
+Runs the read-only tests 0-3 of the plan against a connected Mono Station.
+The storage dumps (0x78) are served by the bootloader, not the app, so the
+script reboots into it with the short 0x71 message (as Components' device page
+does), runs tests 0-1 there, then asks you to press Play to return to the app:
 
     0  back up the 64 visible patches (0x2000/0x8000) and all sessions
     1  request all 128 slots in one 0x78 dump (0x2000/0x10000)
-    2  fallback if test 1 fails: read 0xA000-0x12000 with 'p' 0x40 op 2
+    2  fallback if test 1 fails (in the app): read 0xA000-0x12000 with 'p' 0x40 op 2
     -  classify every slot (erased FF / Initial Patch / data)
     T  envelope Trigger (patch byte 27, NRPN 0:73) set to 0 then 1, asking
        what you hear; changes only the working copy of the current patch
@@ -16,7 +19,10 @@ Nothing is written to the device's flash. The only 'p' 0x40 operation sent is
 op 2 (read). Dumps and report.json go to the output directory.
 
 MIDI I/O uses mido + python-rtmidi (the #16 exception to stdlib-only); the
-helpers above main() are stdlib-only and unit-tested.
+helpers above main() are stdlib-only and unit-tested. On Linux the 0x78 dumps
+bypass mido and read the ALSA rawmidi device (/dev/snd/midiCcDd), as amidi
+does: through the ALSA sequencer, a 3 MB session dump loses blocks to input
+overruns.
 
 Usage:
     python3 tools/hwtest_slots.py ~/ms-dumps [--port NAME] [--channel 1]
@@ -24,6 +30,8 @@ Usage:
 """
 import argparse
 import json
+import os
+import select
 import sys
 import time
 from pathlib import Path
@@ -49,6 +57,8 @@ P40_READ = 2
 P40_READ_BYTES = 256
 P40_REPLY_LEN = 10 + 2 * P40_READ_BYTES + 1                            # 523
 VERSION_REQUEST = bytes([0xF0, 0x00, 0x20, 0x29, 0x00, 0x70, 0xF7])
+REBOOT_TO_BOOTLOADER = bytes([0xF0, 0x00, 0x20, 0x29, 0x00, 0x71, 0x00, 0x7F, 0x00, 0x00, 0xF7])
+BOOTLOADER_WAIT = 8         # seconds; Components' maxWaitForResetTimeout
 TRIGGER_NRPN = (0, 73)                                                  # param id 2
 
 
@@ -105,11 +115,74 @@ def is_transfer_message(msg):
 
 # --- MIDI I/O (mido) --------------------------------------------------------
 
+def raw_midi_path(port_name, proc=Path("/proc/asound")):
+    """The ALSA rawmidi device behind a sequencer port, or None.
+
+    A port is named "<client>:<port> <c>:<p>"; the client is the card's MIDI
+    device name, the first line of /proc/asound/cardN/midiD."""
+    client = port_name.split(":")[0]
+    for f in sorted(proc.glob("card[0-9]*/midi[0-9]*")):
+        try:
+            name = f.read_text().splitlines()[0].strip()
+        except (OSError, IndexError):
+            continue
+        if name == client:
+            return Path("/dev/snd") / f"midiC{f.parent.name[4:]}D{f.name[4:]}"
+    return None
+
+
+class SysexSplitter:
+    """Cuts a raw MIDI byte stream into complete F0..F7 messages."""
+    def __init__(self):
+        self.buf = None
+
+    def feed(self, data):
+        out = []
+        for b in data:
+            if b >= 0xF8:                   # real-time bytes may interleave
+                continue
+            if b == 0xF0:
+                self.buf = bytearray([b])
+            elif self.buf is not None:
+                if b & 0x80 and b != 0xF7:  # any other status aborts the message
+                    self.buf = None
+                    continue
+                self.buf.append(b)
+                if b == 0xF7:
+                    out.append(bytes(self.buf))
+                    self.buf = None
+        return out
+
+
+def collect(next_msg, accept, idle, stop=lambda m: False, first_wait=None):
+    """Collect SysEx messages (full F0..F7 bytes) that accept() keeps.
+
+    next_msg(timeout) returns one message or None. Ends when stop(msg) is
+    true, or after `idle` seconds without an accepted message (`first_wait`
+    for the first one)."""
+    got = []
+    deadline = time.monotonic() + (first_wait if first_wait is not None else idle)
+    while (left := deadline - time.monotonic()) > 0:
+        raw = next_msg(left)
+        if raw is None or not accept(raw):
+            continue
+        got.append(raw)
+        if stop(raw):
+            break
+        deadline = time.monotonic() + idle
+    return got
+
+
 class Device:
     def __init__(self, mido, name):
         self.mido = mido
-        self.inp = mido.open_input(name)
-        self.out = mido.open_output(name)
+        self.name = name
+        self.raw = raw_midi_path(name) if sys.platform.startswith("linux") else None
+        self.open()
+
+    def open(self):
+        self.inp = self.mido.open_input(self.name)
+        self.out = self.mido.open_output(self.name)
 
     def close(self):
         self.inp.close()
@@ -126,54 +199,102 @@ class Device:
     def send(self, msg):
         self.out.send(msg)
 
-    def receive(self, accept, idle, stop=lambda m: False, first_wait=None):
-        """Collect SysEx messages (as full F0..F7 bytes) that accept() keeps.
-
-        Ends when stop(msg) is true, or after `idle` seconds without an
-        accepted message (`first_wait` for the first one)."""
-        got = []
-        deadline = time.monotonic() + (first_wait if first_wait is not None else idle)
-        while time.monotonic() < deadline:
+    def _next_mido(self, timeout):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
             m = self.inp.poll()
             if m is None:
                 time.sleep(0.0005)
-                continue
-            if m.type != "sysex":
-                continue
-            raw = bytes([0xF0, *m.data, 0xF7])
-            if not accept(raw):
-                continue
-            got.append(raw)
-            if stop(raw):
-                break
-            deadline = time.monotonic() + idle
-        return got
+            elif m.type == "sysex":
+                return bytes([0xF0, *m.data, 0xF7])
+        return None
+
+    def receive(self, accept, idle, stop=lambda m: False, first_wait=None):
+        return collect(self._next_mido, accept, idle, stop, first_wait)
+
+    def transfer(self, request, accept, idle, stop, first_wait):
+        """Send request and collect the reply; on Linux via rawmidi.
+
+        Returns (messages, how). The mido ports are closed meanwhile, since
+        the sequencer holds the rawmidi device while they are open."""
+        if self.raw is None:
+            self.drain()
+            self.send_sysex(request)
+            return self.receive(accept, idle, stop, first_wait), "mido"
+        self.close()
+        try:
+            fd = os.open(self.raw, os.O_RDWR | os.O_NONBLOCK)
+        except OSError as e:
+            path, self.raw = self.raw, None
+            self.open()
+            msgs, _ = self.transfer(request, accept, idle, stop, first_wait)
+            return msgs, f"mido ({path} failed: {e})"
+        split, pending = SysexSplitter(), []
+
+        def next_raw(timeout):
+            end = time.monotonic() + timeout
+            while not pending:
+                left = end - time.monotonic()
+                if left <= 0 or not select.select([fd], [], [], left)[0]:
+                    return None
+                pending.extend(split.feed(os.read(fd, 65536)))
+            return pending.pop(0)
+        try:
+            os.write(fd, request)
+            msgs = collect(next_raw, accept, idle, stop, first_wait)
+        finally:
+            os.close(fd)
+            self.open()
+        return msgs, f"rawmidi {self.raw}"
 
 
-def find_port(mido, wanted):
-    ins, outs = mido.get_input_names(), mido.get_output_names()
-    both = [n for n in ins if n in outs]
+def is_bootloader_port(name):
+    """Components' test: the bootloader's port name says Bootloader or BL."""
+    return "Circuit Mono Station Bootloader" in name or "Circuit Mono Station BL" in name
+
+
+def matching_ports(names, wanted, bootloader):
     if wanted:
-        hits = [n for n in both if wanted.lower() in n.lower()]
+        names = [n for n in names if wanted.lower() in n.lower()]
     else:
-        hits = [n for n in both if "mono station" in n.lower()]
-    if len(hits) != 1:
-        sys.exit(f"need exactly one matching port, found {hits!r}; ports: {both!r} "
-                 "(use --port)")
-    return hits[0]
+        names = [n for n in names if "circuit mono station" in n.lower()]
+    return [n for n in names if is_bootloader_port(n) == bootloader]
+
+
+def find_port(mido, wanted, bootloader=False, wait=0):
+    """The one app (or bootloader) port; polls up to `wait` seconds for it."""
+    deadline = time.monotonic() + wait
+    while True:
+        ins, outs = mido.get_input_names(), mido.get_output_names()
+        hits = matching_ports([n for n in ins if n in outs], wanted, bootloader)
+        if len(hits) == 1:
+            return hits[0]
+        if time.monotonic() >= deadline:
+            if wait and not hits:
+                return None
+            sys.exit(f"need exactly one matching port, found {hits!r}; "
+                     f"ports: {ins!r} (use --port)")
+        time.sleep(0.25)
+
+
+def query_version(dev):
+    dev.drain()
+    dev.send_sysex(VERSION_REQUEST)
+    v = dev.receive(lambda m: m[:6] == VERSION_REQUEST[:6] and len(m) >= 17, 2,
+                    stop=lambda m: True)
+    return decode_version(v[0]) if v else None
 
 
 def dump(dev, start, length, path, idle, log):
     """0x78 request; save the raw reply to path. Returns a result dict."""
     log(f"request 0x{start:X}/0x{length:X} -> {path.name}")
-    dev.drain()
-    dev.send_sysex(sessionsyx.request(start, length))
     t0 = time.monotonic()
-    msgs = dev.receive(is_transfer_message, idle,
-                       stop=lambda m: m[5] == sessionsyx.CMD_TRAILER, first_wait=max(idle, 5))
+    msgs, how = dev.transfer(sessionsyx.request(start, length), is_transfer_message, idle,
+                             stop=lambda m: m[5] == sessionsyx.CMD_TRAILER,
+                             first_wait=max(idle, 5))
     raw = b"".join(msgs)
     path.write_bytes(raw)
-    res = {"file": path.name, "messages": len(msgs), "bytes": len(raw),
+    res = {"file": path.name, "via": how, "messages": len(msgs), "bytes": len(raw),
            "seconds": round(time.monotonic() - t0, 1)}
     if not msgs:
         res["error"] = "no reply"
@@ -292,14 +413,12 @@ def main(argv):
     port = find_port(mido, args.port)
     report["port"] = port
     dev = Device(mido, port)
+    t = report["tests"]
     try:
-        dev.drain()
-        dev.send_sysex(VERSION_REQUEST)
-        v = dev.receive(lambda m: m[:6] == VERSION_REQUEST[:6] and len(m) >= 17, 2,
-                        stop=lambda m: True)
+        v = query_version(dev)
         if v:
-            report["bootloader_version"], report["firmware_version"] = decode_version(v[0])
-            log(f"bootloader {report['bootloader_version']}, firmware {report['firmware_version']}")
+            report["bootloader_version"], report["firmware_version"] = v
+            log(f"bootloader {v[0]}, firmware {v[1]}")
         else:
             log("no 0x70 version reply")
         if report.get("firmware_version") not in (None, 800):
@@ -308,8 +427,22 @@ def main(argv):
             log(f"warning: {FIRMWARE_BIN} missing; slots can't be compared to Initial Patch")
         save()
 
+        # Into the bootloader, which serves the 0x78 dumps
+        log("rebooting into the bootloader (0x71)")
+        dev.send_sysex(REBOOT_TO_BOOTLOADER)
+        dev.close()
+        bl_port = find_port(mido, None, bootloader=True, wait=BOOTLOADER_WAIT)
+        if bl_port is None:
+            sys.exit(f"no bootloader port within {BOOTLOADER_WAIT} s; "
+                     f"ports: {mido.get_input_names()!r}")
+        time.sleep(0.1)
+        report["bootloader_port"] = bl_port
+        dev = Device(mido, bl_port)
+        log(f"bootloader port: {bl_port}")
+        report["bootloader_reply_0x70"] = query_version(dev)
+        save()
+
         # 0: backups
-        t = report["tests"]
         t["0_patches64"], visible = dump(dev, sessionsyx.PATCHES_START, sessionsyx.PATCHES_LENGTH,
                                          args.outdir / "patches-64.syx", args.idle, log)
         save()
@@ -326,6 +459,19 @@ def main(argv):
         t["1_dump128"], full = dump(dev, sessionsyx.PATCHES_START, ALL_SLOTS * SLOT_SIZE,
                                     args.outdir / "patches-128.syx", args.idle, log)
         save()
+
+        # Back to the app
+        dev.close()
+        while True:
+            ask("Press Play on the Mono Station to leave the bootloader, then press Enter.")
+            port = find_port(mido, args.port, wait=10)
+            if port:
+                break
+            log("app port not back yet")
+        time.sleep(1)
+        dev = Device(mido, port)
+        log(f"app port: {port}")
+
         hidden = None
         if full is not None and len(full) == ALL_SLOTS * SLOT_SIZE:
             hidden = full[VISIBLE_SLOTS * SLOT_SIZE:]

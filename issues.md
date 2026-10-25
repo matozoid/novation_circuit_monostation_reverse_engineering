@@ -202,7 +202,8 @@ Components has no hint of how to start the unit in its bootloader without the ap
   - The app has no code for this; its only jump to the bootloader is the SysEx reboot. So the bootloader reads the buttons itself, and the combination should survive a broken app image.
   - Details are in `docs/update-protocol.md` → *Entering the bootloader by hand*.
   - The guide also says the bootloader updates factory patches, which may explain where the factory bank lives (#8).
-- **Still open:** try it on a unit with stock firmware: enter the bootloader, read the version patterns, exit with Play. Check that the `Circuit Mono Station Bootloader` USB port appears.
+- **Still open:** try the button combo on a unit with stock firmware and read the version patterns.
+- **Tried 2026-10-25 via the `0x71` reboot (not the buttons):** the bootloader's USB-MIDI port is named **`Circuit Mono Station BL`** (ALSA `Circuit Mono Station BL MIDI 1`), not `…Bootloader`; Components' check accepts both. It answers `0x70`, serves the `0x78` dumps, and **Play** returns to the app. The app's `0x70` reply reports bootloader **740**, firmware 800.
 
 ### #30 Trace the application's update and version handlers
 Find the SysEx handlers in firmware 800 that serve the update protocol from the application side:
@@ -275,6 +276,12 @@ The firmware's patch store has 128 slots (`0x2000`–`0x12000`, 512 bytes each).
   - try a slot write, then a `0x40` request, to slot 64.
 - **Feature candidate:** patch the page setter, the Oct LED logic and pad rendering to allow 4 pages, giving 128 patches. Depends on #17.
 - **Program change 64–127 on the Osc 1 channel already selects these slots:** the firmware has no 0–63 clamp, despite the MIDI PDF (`docs/sysex-spec.md` *Patch store*). First hardware test: dump the region, then send PC 64.
+- **Hardware results (2026-10-25, stock unit, bootloader 740 / firmware 800; tests 0–3 of the plan, `~/ms-dumps/report.json`):**
+  - The `0x78` dumps are served by the **bootloader** only; the app ignores them. `tools/hwtest_slots.py` reboots with `0x71` first, like Components.
+  - The bootloader accepts `0x2000`/`0x10000`: a full 128-slot dump, header echoing that range, CRC ok. Slots 0–63 match the 64-slot backup.
+  - **Slots 64–127 all hold `Initial Patch`, byte for byte.** There is no hidden factory or test bank (#8), and no `FF` slots, so the boot scan counts them as unused.
+  - **PC 64 on ch 1 loads slot 64:** the sound changed to the init patch and no patch pad was lit. PC 63 (control) loaded slot 63 and lit page 2's last pad. So the panel is the only 64-slot limit.
+  - Not run (by user decision): the slot write (4) and the `0x40` request (5).
 
 ### #20 Expose SysEx-only parameters via CC/NRPN
 Map parameters missing from the CC table (#14) to free CC or NRPN numbers.
