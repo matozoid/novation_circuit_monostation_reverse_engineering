@@ -2,6 +2,8 @@
 
 This supersedes the community PDF (`CircuitMonoStationPatchSysExFormat.pdf`, rev. 2020-06-30). It is derived from Novation **Components 1.72.5** (`app.asar` → `main-*.js`): the parameter array `kD`, the parse/build methods `fromPatchSysex` / `overlayFromPatchSysex`, the 7↔8-bit codec `RX`/`OX`/`LX`, the value transform `UX`, and the framing constants `PD` (`SYSEX_SIZE=154`, `HEADER_SIZE=9`, `LEGACY_SYSEX_SIZE=122`). Parameter names, offsets, types, ranges and CC/NRPN numbers are vendor data, taken verbatim. It is corroborated by a real 64-patch bank (`.monostationpack`) and the two default patches embedded in firmware 800 (see *The 136-byte bank/pack format* and *Reference data*).
 
+> **Caveat:** `kD` does not match firmware 800's own parameter and CC tables. `kD` has a sub oscillator, a second LFO, a mod envelope and aftertouch routings that firmware 800 lacks, and several CC numbers differ (filter reso CC 71 in firmware vs CC 82 in `kD`). For firmware 800 the firmware tables and the 136-byte bank layout (`tools/patchbank.py` `PARAMS`) are the reference; see `docs/session-format.md` → *Firmware vs Components `kD`*. Treat the `kD`-derived parameter list and `tools/monostation_patch_params.tsv` as unconfirmed until checked against hardware.
+
 **There are (at least) three distinct patch encodings.** They must not be conflated:
 
 1. **136-byte bank/pack** (`F0 00 20 29 01 61 …`) — the real-world storage format: firmware patch memory, `.monostationpack` files, and what the community PDF documents. Parameter values use the split "LSB + `0x00`/`0x40` MSB-flag" encoding. **Here the `0x40` bytes are real** — the PDF is correct.
