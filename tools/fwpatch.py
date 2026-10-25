@@ -30,7 +30,7 @@ HEADER_OFFSET = 0x1AC  # "MAIN" + BCD version, little-endian (docs/sysex-handler
 HEADER_TAG = b"MAIN"
 
 PATCH_ALIGN = 32
-FLASH_END = 0x08040000  # end of sector 5; how much the bootloader accepts is unknown (#25)
+FLASH_END = 0x08080000  # end of sector 7, the last one the bootloader erases (docs/bootloader.md)
 
 HOOK_KINDS = ("bl", "b", "word", "bytes")
 

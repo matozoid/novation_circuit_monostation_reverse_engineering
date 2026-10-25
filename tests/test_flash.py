@@ -71,6 +71,12 @@ class CheckTest(unittest.TestCase):
         self.rejects(fake_syx(fake_image(reset=0x0800C100)), "reset vector")
         self.rejects(fake_syx(fake_image(reset=0x08000101)), "reset vector")
 
+    def test_size_limit(self):
+        # the bootloader erases up to 0x08080000 (docs/bootloader.md)
+        room = flash.FLASH_END - fwsyx.LOAD_ADDRESS
+        self.assertEqual(flash.check_syx(fake_syx(fake_image(size=room)))[1]["image_bytes"], room)
+        self.rejects(fake_syx(fake_image(size=room + 32)), "runs past")
+
     def test_rejects_missing_header(self):
         image = bytearray(fake_image())
         image[0x1AC:0x1B0] = b"XXXX"

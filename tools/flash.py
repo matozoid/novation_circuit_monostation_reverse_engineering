@@ -28,7 +28,7 @@ import hwtest_slots as hw
 
 HEADER_OFFSET = 0x1AC          # "MAIN" + BCD version, little-endian
 HEADER_TAG = b"MAIN"
-FLASH_END = 0x08040000         # end of sector 5; the bootloader's real limit is unknown (#25)
+FLASH_END = 0x08080000         # end of sector 7, the last one the bootloader erases (docs/bootloader.md)
 STACK_RANGES = ((0x10000000, 0x10010000), (0x20000000, 0x20020000))  # CCM, SRAM (top inclusive)
 DATA_LENGTH = len(fwsyx.NOVATION_HEADER) + 1 + fwsyx.BLOCK_SEPTETS + 1
 

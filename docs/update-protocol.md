@@ -78,15 +78,15 @@ Mono Station update config (`o1` defaults overridden by the device class):
 
 ## Consequences for our own flasher (#16)
 
-- **The `0x76` trailer is never sent.** The loop stops at the `0x73` packet, and in the stock 800 file that packet is the second to last, followed by `0x76`. So the bootloader must finish the update on `0x73`, the vector-table block at offset 0. It then reboots, since Components next waits for the new version to be reported. As far as Components is concerned, the checksum in the trailer is unused. The bootloader could still compute its own check, which #25 would answer. `tools/bin2syx.py` should keep writing a correct trailer anyway.
+- **The `0x76` trailer is never sent.** The loop stops at the `0x73` packet, and in the stock 800 file that packet is the second to last, followed by `0x76`. So the bootloader must finish the update on `0x73`, the vector-table block at offset 0. It then reboots, since Components next waits for the new version to be reported. The bootloader doesn't verify a checksum either. It keeps a word sum that nothing reads, and `0x73` boots the new image at once (`docs/bootloader.md`). `tools/bin2syx.py` should keep writing a correct trailer anyway.
 - **The `0x73` block must come last.** A flasher must not send anything after it, or must at least expect the device to have left the bootloader.
 - **Reboot.** The app accepts any `0x71` with `00 7F` at bytes 6–7 (or a bare `0x60`), writes `2` to backup SRAM and jumps to the bootloader without a system reset (`docs/sysex-handlers.md`). A patched image must keep that path to stay updatable without the manual entry (#29).
-- **Version digits.** The bootloader sees the `0x71` start message with the version digits. Whether it rejects versions it considers older or equal is unknown (#25). Components itself only offers an update when the running version is below 800. That version comes from the image header (`MAIN` + BCD at image offset `0x1B0`), not from the container digits. A modified image that reports a version of 800 or higher won't be "updated" by Components, which matters for restoring stock (#15).
+- **Version digits.** The bootloader sees the `0x71` start message with the version digits. The bootloader doesn't look at them: `0x71` only needs `00 7F` at bytes 6–7 (`docs/bootloader.md`). Components itself only offers an update when the running version is below 800. That version comes from the image header (`MAIN` + BCD at image offset `0x1B0`), not from the container digits. A modified image that reports a version of 800 or higher won't be "updated" by Components, which matters for restoring stock (#15).
 - **Pacing.** Wait for each ack: the 10-byte `0x72` reply with an increasing counter. Do not stream. Use a timeout of at least 10 s per packet.
 ## Our flasher (`tools/flash.py`, #16)
 
 `python3 tools/flash.py <firmware.syx> [--port NAME] [--yes]` implements the sequence above. It needs mido + python-rtmidi.
-1. It decodes and checks the file first: message order (`0x71`, `0x72`…, one `0x73`, `0x76`), 44-byte data messages, product id `00 7F`, the trailer checksum, the `MAIN` header version, an image end at or below `0x08040000`, and a vector table with the stack in RAM and a Thumb reset vector inside the image.
+1. It decodes and checks the file first: message order (`0x71`, `0x72`…, one `0x73`, `0x76`), 44-byte data messages, product id `00 7F`, the trailer checksum, the `MAIN` header version, an image end at or below `0x08080000` (the bootloader's erase limit), and a vector table with the stack in RAM and a Thumb reset vector inside the image.
 2. It asks you to enter the bootloader by hand and waits up to 10 minutes for its port. It never sends the `0x71` reboot.
 3. It sends `0x70`, then asks for confirmation unless `--yes` is given.
 4. It sends every packet up to and including `0x73`, each one after the previous ack. The timeout is 10 s per ack, and status codes 16/124/126 abort.
@@ -121,4 +121,4 @@ The application has other power-on combinations, which are not bootloader entrie
 
 - Whether the bootloader's button check really runs before any check of the app image. This needs a test on hardware.
 - The exact ack timing and whether the counter equals the packet index, which needs a capture of a real update.
-- What the bootloader checks: product id, version, block count, checksum (#25).
+- ~~What the bootloader checks~~: answered statically in `docs/bootloader.md` (only `00 7F`, 44-byte blocks and the header tag).

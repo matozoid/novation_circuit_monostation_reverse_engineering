@@ -247,7 +247,7 @@ Build tooling to apply code patches to the decoded image:
 
 Patches should live as source plus a declarative hook list, not as hex blobs.
 - **Decided (2026-10-25):** injected code is assembly only, with GNU binutils (`binutils-arm-none-eabi`) and no C toolchain.
-- **Built (2026-10-25):** `tools/fwpatch.py`, spec in `docs/patching.md`, tests in `tests/test_fwpatch.py`. Patch code is linked at the first 32-byte boundary after the stock image (`0x0802BB20`), up to `0x08040000`. Hooks are `bl`, `b`, `word` and `bytes`; each one checks the stock bytes it replaces. An optional `version` sets the image header and the `.syx` start message. Branch encoding is checked against the stock image and `ld` output.
+- **Built (2026-10-25):** `tools/fwpatch.py`, spec in `docs/patching.md`, tests in `tests/test_fwpatch.py`. Patch code is linked at the first 32-byte boundary after the stock image (`0x0802BB20`), up to `0x08080000` (raised from `0x08040000` after the bootloader analysis, #25). Hooks are `bl`, `b`, `word` and `bytes`; each one checks the stock bytes it replaces. An optional `version` sets the image header and the `.syx` start message. Branch encoding is checked against the stock image and `ld` output.
 - **Open:** the bootloader's maximum image size (#25); free RAM for patch state (the linker rejects `.data`/`.bss`); the patch hasn't run on hardware yet (#18).
 - **Depends on:** #7, #9
 
@@ -265,10 +265,32 @@ The bootloader (`0x08000000–0x0800BFFF`, 48 KB) is not distributed by Novation
 
 Before this, check #10 for an existing debug/memory-read SysEx command (the firmware keeps debug strings, so one may exist) — that would need no patching.
 
-Do not attempt to lower RDP via SWD to read the bootloader: dropping from RDP level 1 to 0 mass-erases flash including the bootloader and bricks the unit with no way back.
+Do not change RDP via SWD. Going from level 1 to 0 mass-erases flash, including the bootloader, and bricks the unit. The option-byte dump below shows this unit is at level 0, so no change is needed.
+- **Done (2026-10-25):** patch `patches/memread` (version 802) hooks the SPI read call of `'p' 0x40` op 2 (`0x0802066A`). Addresses in MCU memory are copied from memory; everything else still reads external flash. `tools/p40dump.py 0x08000000 0x10000` read 64 KiB:
+  - The app part `0x0800C000`–`0x0800FFFF` matches the stock image except for the patched version byte, so the dump is faithful.
+  - **Bootloader 740:** header `BOOT` + `40 07` at `0x080001AC`. Initial SP `0x10010000`, reset vector `0x08005F45`. Code and data end at `0x08007003` (about 28 KB); the rest of the 48 KiB is `FF`. Strings include `Circuit Mono Station BL` and `Focusrite A.E`.
+  - Saved as `firmware/bootloader-740.bin` (git-ignored, like the stock image).
+  - **Other reads with the same patch (2026-10-25, files in `~/ms-dumps/`, not in the repo):**
+    - Option bytes `0x1FFFC000`: `EF AA 10 55`, then `FF 3F 00 C0`. RDP `0xAA` = **level 0**, so there is no read-out protection and SWD could read and debug the chip. nWRP `0xFFF` = no sector is write-protected, including the bootloader. USER `0xEF`: BOR off, software watchdog.
+    - `FLASHSIZE` (`0x1FFF7A22`) = `0x0200` = **512 KB**, not the 1 MB of an F405VG (`docs/hardware.md`). OTP `0x1FFF7800`–`0x1FFF7A0F` is blank. The 96-bit unique id reads fine, but it identifies this unit, so it stays out of the repo.
+    - Flash `0x0800C000`–`0x0807FFFF`: the running 802 image byte for byte, then `FF` to the 512 KB end. Nothing is stored past the app. `0x08080000`+ was not read, because it may fault on a 512 KB part.
+    - ST system ROM `0x1FFF0000`–`0x1FFF77FF`: vectors SP `0x20002D40`, reset `0x1FFF5163`. This is ST's own USB DFU/UART bootloader, kept for reference only.
+    - Backup SRAM: word 0 = `1` (the app's "normal" flag, `docs/sysex-handlers.md`); `0x200` and up looks random, i.e. never written.
+    - SRAM snapshot while running: a zero run at `0x20004986`–`0x20016511` (about 70 KB). It is a candidate for patch RAM, but a snapshot doesn't prove the area is unused.
+  - Next: disassemble the bootloader (#25 acceptance checks, backup SRAM flag values, the button check).
 - **Depends on:** #16, #17 (or #10 alone if a memory-read command exists)
 
 ### #25 Probe bootloader acceptance checks
+**Answered statically (2026-10-25) from the dump, `docs/bootloader.md`:**
+- `0x71` checks only `00 7F`, then erases sectors 3–7 at once.
+- `0x72` blocks must be exactly 44 bytes; other lengths are dropped silently.
+- No checksum is verified, and the version digits are ignored.
+- `0x73` writes the vector block and boots the app right away. The app is accepted when its tag is `TEST`/`MAIN`/`BOOT` and its SP word isn't `FFFFFFFF`.
+- Maximum image: up to `0x0807FFFF`.
+- Backup SRAM `2` = stay in the bootloader, `1` = set before jumping to the app.
+- The bootloader starts a ~6 s IWDG.
+
+The hardware probing below is no longer needed to answer these questions. It could still confirm them.
 With a tested recovery path in place, send malformed firmware (wrong checksum, wrong product id, truncated) to learn what the bootloader validates — answers the open "is the checksum verified?" question without a dump. Safe because the bootloader region stays intact.
 - **Depends on:** #15, #16
 

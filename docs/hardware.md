@@ -1,6 +1,6 @@
 # Hardware & memory map
 
-All evidence is from the decoded application image (`tools/syx2bin.py`); nothing has been confirmed against a physical unit yet.
+Most of this comes from the decoded application image (`tools/syx2bin.py`). The *read from a unit* notes come from memory dumps taken with patch memread (#24).
 
 ## MCU
 
@@ -13,7 +13,7 @@ STM32F405/407-class (ARM Cortex-M4F, Thumb-2), almost certainly an **STM32F405**
 - USB **OTG_HS** register block (`0x40040000`) present in addition to OTG_FS (`0x50000000`), consistent with F405/407.
 - GPIO ports A–E referenced (`0x40020000`–`0x40021000`), none above E → 100-pin part (LQFP100), so **STM32F405VG** is the leading candidate.
 
-Still open (needs hardware): exact part/flash size (read `FLASHSIZE` at `0x1FFF7A22`), package, and silicon rev (`DBGMCU_IDCODE` `0xE0042000`). A teardown photo of the main IC would settle it immediately.
+Read from a unit with patch memread (#24): `FLASHSIZE` (`0x1FFF7A22`) = **512 KB**. That would make it a 512 KB variant (STM32F405xE-class) rather than the 1 MB F405VG, unless the size register understates the die. Flash past the app is erased up to `0x0807FFFF`. Option bytes: **RDP level 0** (no read-out protection) and no write-protected sectors. Still open: the package and the silicon revision (`DBGMCU_IDCODE` `0xE0042000`, which the patch's range table doesn't cover).
 
 ## Flash
 
@@ -21,8 +21,9 @@ Base `0x08000000`. STM32F4 sector layout: sectors 0–3 = 16 KB, sector 4 = 64 K
 
 | Region | Range | Notes |
 |--------|-------|-------|
-| Bootloader | `0x08000000`–`0x0800BFFF` (48 KB, sectors 0–2) | Not in the firmware file; protected region an app update never writes. Must be dumped from a unit (#24). |
+| Bootloader | `0x08000000`–`0x0800BFFF` (48 KB, sectors 0–2) | Not in the firmware file, and an app update never writes it. Dumped from a unit: `firmware/bootloader-740.bin` (#24). Code ends at `0x08007003`; the rest is erased. |
 | Application | `0x0800C000`–`0x0802BB20` (129,824 bytes) | The decoded image. Occupies sector 3 (16 KB @ `0x0800C000`), sector 4 (64 KB @ `0x08010000`) and part of sector 5 (128 KB @ `0x08020000`). |
+| Free | `0x0802BB20`–`0x0807FFFF` | Erased (`FF`) on a unit (read from a unit). Patch code goes here (`docs/patching.md`). |
 
 The application load base `0x0800C000` is confirmed: the reset vector (`0x08025E61`) disassembles to the standard CMSIS `.data`-copy + `.bss`-zero startup, and 39 vector-table entries share one default handler at `0x08025EA9` (`b .`), which lands exactly on a branch-to-self at this base.
 

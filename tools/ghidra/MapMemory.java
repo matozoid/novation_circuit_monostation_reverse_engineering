@@ -30,7 +30,9 @@ public class MapMemory extends GhidraScript {
 
     @Override
     public void run() throws Exception {
-        // 48 KB bootloader: not in the image; leave uninitialized to fill from a dump (#24).
+        // The imported image starts with its vector table (app 0x0800C000, bootloader 0x08000000).
+        Address base = currentProgram.getMinAddress();
+        // 48 KB bootloader: not in the app image; skipped when the bootloader itself is imported.
         block("bootloader", 0x08000000L, 0x0000C000L, true, false, true);
         // RAM.
         block("ccm", 0x10000000L, 0x00010000L, true, true, false);
@@ -47,7 +49,7 @@ public class MapMemory extends GhidraScript {
 
         // Point the disassembler at the reset handler; auto-analysis walks the
         // vector table from there.
-        long reset = currentProgram.getMemory().getInt(toAddr(0x0800C004L)) & 0xFFFFFFFEL;
+        long reset = currentProgram.getMemory().getInt(base.add(4)) & 0xFFFFFFFEL;
         println(String.format("  reset handler %#010x", reset));
         Address resetAddr = toAddr(reset);
         disassemble(resetAddr);

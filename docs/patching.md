@@ -10,7 +10,7 @@ It needs GNU binutils for ARM (`apt install binutils-arm-none-eabi`: `as`, `ld`,
 
 ## Where patch code goes
 
-The stock 800 image ends at `0x0802BB20`; its last data is the `.data` initialiser (`0x0802AEEC`–`0x0802BB04`). Patch code is linked at the first 32-byte boundary after the image (`0x0802BB20` for 800) and may grow up to the end of sector 5 (`0x08040000`), about 80 KB. How large an image the bootloader accepts hasn't been tested (#25). The stock code has no literal reference to its own end address, so appending code doesn't seem to break a self-check, but this isn't proven.
+The stock 800 image ends at `0x0802BB20`; its last data is the `.data` initialiser (`0x0802AEEC`–`0x0802BB04`). Patch code is linked at the first 32-byte boundary after the image (`0x0802BB20` for 800) and may grow up to the end of sector 7 (`0x08080000`), about 336 KB. That is the last sector the bootloader erases (`docs/bootloader.md`); the chip reports 512 KB. The app never programs internal flash (it has no `FLASH_KEYR` keys), so nothing else lives there. Stay well under the ~6 s watchdog: the bootloader starts the IWDG, and the app refreshes it. The stock code has no literal reference to its own end address, so appending code doesn't seem to break a self-check, but this isn't proven.
 
 Patch code is **read-only**: the linker rejects any `.data` or `.bss`, because the stock startup code copies and clears only its own ranges (`.data` `0x20000000`–`0x20000C18`, `.bss` `0x20000C18`–`0x200035B8`). Free RAM for patch state isn't mapped yet.
 
