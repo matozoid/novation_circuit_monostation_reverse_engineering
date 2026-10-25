@@ -32,7 +32,7 @@ Parse the firmware catalogue embedded in `app.asar` and list every `product: "mo
 
 Found so far: the catalogue has two Mono Station entries. Id 8 is build 800 (v1.2), identical to the bundled file. Id 9 is build 745 (v1.1) with `url: null`, and `/firmwares/9/file` returns HTTP 500. An older build would have to come from another source: older Components versions, the S3 `circuit-content` bucket, or the community.
 
-### #4 Reverse the firmware-update protocol from Components JS
+### #4 Reverse the firmware-update protocol from Components JS — DONE (host side; hardware capture pending)
 Find the Mono Station updater in `app.asar`. Relevant markers: `WAITING_FOR_PACKET_REQUEST`, `FIRMWARE_TRANSFER_IN_PROGRESS`, `deviceIsInBootloader`, `sendToMainApplication`, `maxWaitForResetTimeout`. Document:
 - how the device enters the bootloader
 - whether the host streams messages or the device requests packets (flow control)
@@ -45,6 +45,13 @@ Found during #6:
 - `rebootToBootloader` sends `F0 00 20 29 00 71 00 7f 00 00 F7`.
 - `0x70` is the version inquiry.
 - The generic updater lives near the `WAITING_FOR_PACKET_REQUEST` state enum.
+
+**Done:** `docs/update-protocol.md`.
+- Entry: Components sends the 15-byte `0x71` start message to the running application, then waits up to 8 s for the bootloader port.
+- Flow control is device-driven: each packet waits up to 10 s for a `F0 00 20 29 00 72 a b c F7` ack with an increasing counter.
+- The loop stops after the `0x73` (offset 0) packet, so the `0x76` checksum trailer is never sent.
+- Success: the unit reboots and reports the new version via `0x70`. Status codes 124/126 mean failure.
+- Open: the manual bootloader entry, the real ack timing, and what the bootloader validates (#25).
 
 ---
 
@@ -170,8 +177,23 @@ Before flashing anything modified, confirm the bootloader lives in a protected r
 - **Depends on:** #4, #8
 - **Done when:** `docs/recovery.md` describes a tested way to get back to stock firmware.
 
+### #29 Find the manual bootloader entry
+Components has no hint of how to start the unit in its bootloader without the application's help; it only reboots a running unit with `0x71` (`docs/update-protocol.md`). Recovery from a modified image that won't boot, or won't answer `0x71`, needs a way in that doesn't depend on the application, probably a button combination held at power-on. Look in the user manual, Novation support articles, and the application's boot path (it may check a key before jumping to its own code, or the bootloader may check one before jumping to the app).
+- **Feeds:** #15
+- **Done when:** the entry method is documented and tried on a unit with stock firmware.
+
+### #30 Trace the application's update and version handlers
+Find the SysEx handlers in firmware 800 that serve the update protocol from the application side:
+- `0x71`: does the app check the product id and version digits before rebooting, and how does it hand over to the bootloader (a flag in backup SRAM or RAM, then a reset)?
+- `0x70`: where the version reply is built, and where the bootloader version it reports comes from.
+
+This tells us what a patched image must keep intact so that Components and our flasher can still reboot it into the bootloader. It also shows where the reported version lives, which matters because Components only offers a restore when the version is below 800.
+- **Feeds:** #15, #16, #18
+
 ### #16 Command-line firmware flasher
 Implement the update protocol (#4) on a host MIDI library so that flashing does not depend on Components. First test: flash stock 800 and confirm the version shown on the device.
+- **Decision needed:** the tooling is stdlib-only, but Python's stdlib has no MIDI I/O. Options: a library such as `mido` + `python-rtmidi`, raw ALSA sequencer access through `ctypes`, or writing SysEx to the raw `/dev/snd/midiC*D*` device (Linux only, no extra dependency).
+- Follow `docs/update-protocol.md`: wait for each `0x72` ack, stop after the `0x73` block, then poll `0x70` for the new version.
 - **Depends on:** #4, #15
 
 ---

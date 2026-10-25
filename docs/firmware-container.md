@@ -13,7 +13,7 @@ All messages are `F0 00 20 29 00 <cmd> <body…> F7`.
 | `0x73` | 1 | 44 | data block for image offset **0**, sent after all `0x72` blocks |
 | `0x76` | 1 | 24 | trailer: `00`, `"Firmware"`, then the image checksum as 8 nibbles, most significant first (`00 02 07 09 0a 05 02 04` = `0x0279A524`) |
 
-Sending offset 0, which holds the vector table, last most likely means an interrupted flash leaves no valid reset vector, so the bootloader stays in control. This is unverified.
+Components stops sending after the `0x73` block, so the bootloader never receives the `0x76` trailer from it (`docs/update-protocol.md`). Sending offset 0, which holds the vector table, last most likely means an interrupted flash leaves no valid reset vector, so the bootloader stays in control. This is unverified.
 
 Components also uses `0x71` outside the firmware file. `rebootToBootloader()` sends `F0 00 20 29 00 71 <pid0> <pid1> 00 00 F7` to the running application. `0x70` (`F0 00 20 29 00 70 F7`) is a version inquiry. Its reply carries the bootloader version in bytes 6–10 and the firmware version in bytes 11–15, both as decimal digits.
 
