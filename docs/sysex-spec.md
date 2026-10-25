@@ -39,7 +39,8 @@ Per 136-byte message:
 | 26 | genre index: 0 None, 1 Classic, 2 D&B/Breaks, 3 House, 4 Industrial, 5 Jazz, 6 R&B/HHop, 7 Rock/Pop, 8 Techno, 9 Dubstep |
 
 The category and genre tables come from Components' Circuit-family librarian (modules `frontend/constants/circuit/patch-categories` and `patch-genres`, JS names `mP`/`gP`; the sidebar binds `categoryOptions=mP`, `genreOptions=gP`). The similar lists `kR`/`Wte` (`Motion`, `User 1`, `User 2`) belong to Peak, not the Circuit family. Real packs use the field loosely: Roboo tags its basses `1` (Arp) and its drums `3` (Bell), the YBC banks use only 0–3, and every genre seen is `0`. Treat the byte as a free user tag, not a reliable description of the sound.
-| 27–40 | reserved / unmapped (`00` in the init patch; `27` = env retrigger/legato per the PDF) |
+| 27 | envelope Trigger (`env_retrigger`): firmware param id 2, NRPN 0:73, 0–1, default 0. The MIDI PDF lists it as `Trigger`, 0–1, default 0, and the user guide doesn't mention it. What 0 and 1 do (retrigger vs legato) needs a listening test. |
+| 28–40 | unused: there is no firmware param-table record for patch offsets 19–31. They are `00` in `Initial Patch`, `Classic Mono`, all 64 Roboo patches and all 64 YBC patches. |
 | 41–134 | parameters; 8-bit ones split over two bytes (high 7 bits, then the low bit as `0x00`/`0x40`, see below) — offsets per the community PDF (osc1/osc2 from 41, mixer, filter, env, LFO, distortion, 93–133 mod matrix, 134 selected routing) |
 | 135 | `F7` |
 
@@ -83,7 +84,7 @@ The YBC "Big City Flippin' Grooves" pack ships a `.syx` bank plus 64 "Patch Deta
 - **Glide is always shown as 0**, even where the bank has non-zero glide (ARP Lead 4/1, Animals 51/59, PWM Lead 34/25, …). The editor doesn't read bytes 49/58. The firmware table puts osc 1/2 glide (CC 5/37, 0–127) there.
 - **Ext and Ringmod sliders are swapped.** The slider labelled Ext shows byte 71 and the one labelled Ringmod byte 69 (Adlib: 255 under Ext; Italo: 50 under Ringmod). The firmware table and the MIDI PDF put ring mod (CC 24) at 71 and audio in (CC 25) at 69, and 13 YBC patches use byte 71 against 1 for byte 69, so the editor mislabels.
 - Enum values seen match the MIDI PDF tables: osc wave 0–3 Sin/Tri/Saw/PW, range 0–3 16'/8'/4'/2', filter shape 0–2 LP/BP/HP, slope 0/1 12/24 dB, bypass 0 off / 1 Noise / 2 Osc / 3 both, dist type 0–2 I/II/III, LFO wave 0–3 Tri/Saw/Sq/S&H, sync rate (e.g. 8 "21 2/3 beats", 16 "8 beats", 19 "4 beats", 25 4th, 29 16th dotted, 31 16th, 34 32nd triplet). Selected routing = source × 8 + destination. Env → amp is a bool (the lit "Amp" button).
-- Unresolved: Animals stores env re-trigger (byte 27) = 1, but its Re-Trigger button looks unlit.
+- **Re-Trigger is always shown unlit**: Animals (byte 27 = 1, the only YBC patch with it set) and 808 Cow (byte 27 = 0) look the same. Like glide, the editor doesn't read byte 27.
 
 ### Request a patch
 `F0 00 20 29 01 61 40 <slot> 00 F7` — message type `0x40` requests a patch dump (seen on the Circuit path with its own id; expected to apply to Mono Station). Lets a bank be dumped from a connected unit by sweeping slots 0–63.
@@ -115,7 +116,7 @@ So program change 64–127 on the Osc 1 channel should load slot 64–127 from `
 
 ## Open items
 - The 136-byte split-pair value decode is **resolved** (see *Split-pair decode* above), from the firmware's store routine and checked against packs and editor screenshots.
-- Coarse tune spans −128…127, but how that maps to semitones is unknown.
+- Coarse tune spans −128…127. The user guide gives the range as ±1 octave (p. 18 control list and the oscillator section), so about 10.7 steps per semitone. Whether the engine quantises to semitones is not traced.
 - The `category`/`genre` enums are resolved (#28), although real packs don't set them consistently.
 - Request message (`0x40`) to be confirmed on hardware.
 - The in-session patch copy is covered by #13 (`docs/session-format.md`).

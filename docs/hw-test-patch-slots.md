@@ -2,6 +2,24 @@
 
 The firmware's patch store has 128 slots (`docs/sysex-spec.md`, *Patch store*), but the panel and Components use only 64. This plan checks on a real unit what is stored in slots 64–127 and whether program change and SysEx can reach them. Tests 1–3 only read. Tests 4–5 write, but only to slot 64, which the panel can't reach.
 
+## Automated run
+
+`tools/hwtest_slots.py` runs tests 0–3 and needs `pip install mido python-rtmidi`; it works on Linux and Windows. Test 4 (write) and test 5 (request) stay manual.
+
+```sh
+python3 tools/hwtest_slots.py ~/ms-dumps            # --port NAME, --channel N, --skip-session-backup, --skip-trigger, --skip-pc
+```
+
+What the script does:
+1. It checks the version with `0x70`.
+2. It backs up the patches and the sessions. If a backup fails, it stops before running anything else.
+3. It tries the 128-slot dump, then falls back to `p 0x40` op 2 reads. It never sends op 0 or op 1.
+4. It classifies slots 64–127 and checks that slots 0–63 match the backup.
+5. It sets the envelope Trigger (patch byte 27, NRPN 0:73 on the Osc 1 channel) to 0 and then to 1. Each time it asks whether a second key, pressed while the first is still held, restarts the envelope. This changes only the current patch's working copy. Skip it with `--skip-trigger`.
+6. It sends PC 63 and PC 64 on the Osc 1 channel, prompting for what you hear and see, then PC 0. The PC 0 also undoes the Trigger change.
+
+The dumps and `report.json` are written to the output directory. The manual steps below do the same with `amidi`.
+
 ## Setup
 
 - Linux with `alsa-utils` (`amidi`). Connect the Mono Station over USB, running stock firmware 800.
@@ -151,3 +169,4 @@ The type-`0x40` request isn't confirmed on hardware for any slot (#12), so run `
 - #31 in `issues.md`: contents of slots 64–127, the dump range limit, program change 64, and the outcomes of the slot write and the request;
 - `docs/session-transport.md` *Open*: whether other start/length values are accepted;
 - #12: whether the `0x40` request works.
+- #12 and `docs/sysex-spec.md` byte 27: what Trigger 0 and 1 do (`report.json` → `tests.trigger`).

@@ -32,6 +32,8 @@ Parse the firmware catalogue embedded in `app.asar` and list every `product: "mo
 
 Found so far: the catalogue has two Mono Station entries. Id 8 is build 800 (v1.2), identical to the bundled file. Id 9 is build 745 (v1.1) with `url: null`, and `/firmwares/9/file` returns HTTP 500. An older build would have to come from another source: older Components versions, the S3 `circuit-content` bucket, or the community.
 
+**Decided (2026-10-25):** look for older builds in older Components releases, extracted statically.
+
 ### #4 Reverse the firmware-update protocol from Components JS — DONE (host side; hardware capture pending)
 Find the Mono Station updater in `app.asar`. Relevant markers: `WAITING_FOR_PACKET_REQUEST`, `FIRMWARE_TRANSFER_IN_PROGRESS`, `deviceIsInBootloader`, `sendToMainApplication`, `maxWaitForResetTimeout`. Document:
 - how the device enters the bootloader
@@ -105,6 +107,15 @@ Method: compare the firmware SysEx handler (#10) with Components JS (patch edito
 **Resolved PDF/open unknowns:** device id (bytes 4–5) = **`01 61`** (`yte` validator; Circuit is `01 60`). Message type (byte 6/7): `0`=current patch, `1`=slot write/dump, `0x40`=request patch (`F0 00 20 29 01 61 40 <slot> 00 F7`). Offset 25 = category, 26 = genre.
 
 **136-byte split-pair decode — RESOLVED (corrected 2026-10-25).** The firmware's patch store `FUN_080176e8` writes each CC(8) param as `byte[off] = v >> 1`, `byte[off+1] = (v & 1) << 6`, so `v = byte[off] << 1 | byte[off+1] >> 6`. Signed ones subtract the centre from the firmware table at `0x0802A62A`: 128 for coarse and pitch/cutoff mod depths, 100 for fine. The earlier decode (`LSB + 128·flag`, with the flag "redundant" for mod depths) agreed only at 0/255. It invented a "×2 display curve" for mod depths. The new decode matches the firmware `Initial Patch` centres, the MIDI PDF's default LFO rate 68, and all 62 usable YBC "Patch Details" screenshots value for value (Acid and Italo were edited after export; see `docs/sysex-spec.md` *Editor screenshots*). `tests/test_patchbank.py` checks every `PARAMS` kind and MIDI number against the firmware table and Novation's MIDI parameter PDF (`circuit-mono-station-midi-parameters-v1.pdf`); all 74 match. There is no display curve: the editor shows raw values. It never shows glide (bytes 49/58) and swaps the Ext/Ringmod slider labels.
+
+**Bytes 27–40 (2026-10-25):**
+- Byte 27 is the envelope Trigger: param id 2, NRPN 0:73, 0–1. The YBC editor never lights Re-Trigger, so the Animals puzzle is an editor quirk.
+- Bytes 28–40 have no param-table record (patch offsets 19–31) and are zero in every known patch, so they are unused.
+- Still open:
+  - what Trigger 0/1 does (a listening test with NRPN 0:73);
+  - coarse tune quantisation (±1 octave over −128…127);
+  - hardware checks of the `0x40` request and slot write.
+- Components' `resources/mididata/factory-patches.syx` is **Circuit** (`01 60`), not Mono Station factory patches.
 
 **Caveat found:** byte 25 (`category`) in the vendor soundpack banks does **not** track patch names (lead patches tagged Bass/Drum) — either the enum differs from the Roboo pack or packs don't set it meaningfully. Category enum still TBD.
 
@@ -209,7 +220,11 @@ This tells us what a patched image must keep intact so that Components and our f
 
 ### #16 Command-line firmware flasher
 Implement the update protocol (#4) on a host MIDI library so that flashing does not depend on Components. First test: flash stock 800 and confirm the version shown on the device.
-- **Decision needed:** the tooling is stdlib-only, but Python's stdlib has no MIDI I/O. Options: a library such as `mido` + `python-rtmidi`, raw ALSA sequencer access through `ctypes`, or writing SysEx to the raw `/dev/snd/midiC*D*` device (Linux only, no extra dependency).
+- **Decided (2026-10-25):**
+  - MIDI I/O: `mido` + `python-rtmidi`. This is the one exception to the stdlib-only rule; the import stays inside the flasher so the other tools and tests stay stdlib-only.
+  - Platforms: Linux and Windows.
+  - Bootloader entry: manual only. The tool asks the user to hold Scales + Note + Velocity at power-on and waits for the bootloader; it does not send the `0x71` reboot.
+  - Checks: before sending, decode the `.syx` and verify its structure (message types and order, block count, checksum, product id). After the `0x73` block, poll `0x70` and compare with the expected version.
 - Follow `docs/update-protocol.md`: wait for each `0x72` ack, stop after the `0x73` block, then poll `0x70` for the new version.
 - **Depends on:** #4, #15
 
@@ -225,6 +240,7 @@ Build tooling to apply code patches to the decoded image:
 - re-pack with #7
 
 Patches should live as source plus a declarative hook list, not as hex blobs.
+- **Decided (2026-10-25):** injected code is assembly only (`arm-none-eabi-as` or keystone), with no C toolchain.
 - **Depends on:** #7, #9
 
 ### #18 Hello-world patch
