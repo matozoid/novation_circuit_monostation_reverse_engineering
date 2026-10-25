@@ -15,7 +15,7 @@ Addresses are from a **static** scan of the decoded application image (`firmware
 | USART1 | `0x08023FE1` | DIN MIDI in/out |
 | EXTI15_10 | `0x08023A79` | GPIO edge (button/encoder/ext sync) |
 | TIM6_DAC | `0x08023B99` | DAC sample clock |
-| TIM5 | `0x0801F545` | 32-bit timer (sequencer/tempo clock) |
+| TIM5 | `0x0801F545` | 32-bit 10 kHz time base (soft timers, sequencer clock; `docs/sequencer.md`) |
 | TIM1_UP_TIM10 | `0x08023D89` | timer |
 | TIM1_TRG_COM_TIM11 | `0x08023D39` | timer |
 | TIM8_TRG_COM_TIM14 | `0x0801F61D` | timer |
@@ -58,13 +58,13 @@ Internal 2-channel DAC streamed at audio/control rate via TIM6 trigger + DMA. Th
 Pot/slider reads and CV/gate inputs.
 
 ### Timers
-TIM5 (32-bit, ISR `0x0801F545`) is the likely sequencer/tempo master clock; TIM6 is the DAC sample clock; TIM1/TIM8/TIM9/TIM10/TIM11 serve PWM/LED/auxiliary timing.
+TIM5 (32-bit, ISR `0x0801F545`, 10 kHz) is the system time base: its 1 ms channel drives the main-loop soft timers, one of which is the sequencer clock engine `0x08017F1C` (`docs/sequencer.md`). TIM2 makes the analogue sync-out pulse. TIM6 is the DAC sample clock; TIM1/TIM8/TIM9/TIM10/TIM11 serve PWM/LED/auxiliary timing.
 
 ### Persistent storage — FLASH_IF `0x40023C00`, Backup SRAM `0x40024000`
 On-chip flash program/erase (FLASH_IF, 2 refs at `0x0801A930`, `0x08028890`) saves patches/sessions; Backup SRAM (7 refs) holds state across power cycles. Default blobs `"Initial Patch"`, `"Classic Mono"`, `"Initial Session"`, `"User Session"` are referenced from `0x0800EEF8`–`0x0801B5C0` (patch/session init + storage layer).
 
 ## Still to isolate (needs Ghidra function graph — #9/#10 follow-up)
-- **Sequencer engine**: no dedicated peripheral signature; driven by a timer ISR (TIM5?). Find via the tempo/step state it mutates.
+- **Sequencer engine**: mapped in `docs/sequencer.md` (clock engine, transport, step advance, track players). Still open there: the note engine behind the players, MIDI clock in/out, record paths.
 - **SysEx parser/dispatcher**: shared by USB-MIDI and USART paths; locate the `F0 00 20 29` header match and the per-command (`0x00` patch replace, firmware `0x71`/`0x72`/`0x73`/`0x76`) jump.
 - **Patch/session (de)serialiser**: the 136-byte patch and `.monostationsession` layout handlers (#12/#13) live in the storage region above.
 - **SPI device assignment**: which SPI port drives LEDs vs an external DAC.
@@ -73,7 +73,7 @@ On-chip flash program/erase (FLASH_IF, 2 refs at `0x0801A930`, `0x08028890`) sav
 
 `tools/ghidra/import_firmware.sh` imports the image, runs `MapMemory.java` (memory map + reset-handler seed) and leaves the DB in `ghidra-project/` (git-ignored). `ExportMap.java` writes the full function listing to `docs/ghidra-functions.txt`; `DecompileFunc.java <addr>…` prints decompiled C for investigation. (Ghidra 12.x headless has no Jython, so these are Java GhidraScripts, not Python.)
 
-Auto-analysis finds **467 functions**. Confirmed so far:
+Auto-analysis finds **467 functions**; with the vtable targets and push-prologue functions added since via `MakeFunc.java`, the listing has 828. Confirmed so far:
 
 | Function | Role |
 |----------|------|

@@ -337,16 +337,16 @@ Collect the features the user actually wants and turn each one into an issue onc
 From a third-party wish list, one issue per item. All of them depend on #17 (patching infrastructure) and on free RAM and flash. Anything that stores new per-step data has to fit the session format (#13, `docs/session-format.md`) or extend it in a way Components still accepts.
 
 ### #32 Micro-step note timing (off-grid notes, trills, ratchets)
-Move notes off the 16-step grid and allow repeats within a step. The session already has a finer grid for automation: each lane holds 96 values, 16 steps × 6 micro-steps. Note steps have no such field yet. Check first whether the playback routine `FUN_080234AC` can schedule a note at micro-step resolution, and where a per-step offset or repeat count could live. Overlaps the ratchet idea in #22.
+Move notes off the 16-step grid and allow repeats within a step. The session already has a finer grid for automation: each lane holds 96 values, 16 steps × 6 micro-steps. Note steps have no such field yet. Check first whether the playback routine `FUN_080234AC` can schedule a note at micro-step resolution, and where a per-step offset or repeat count could live. *Found (`docs/sequencer.md`):* note-ons fire only when the step cell changes, but note-offs already run on a tick-resolution delta list (8 slots), which a delayed note-on or ratchet could share. Overlaps the ratchet idea in #22.
 
 ### #33 Unquantised recording
-Record live notes at their real timing instead of snapping them to the nearest step. Needs #32's micro-step offset, or something like it, for storage. Find the real-time record path; it is reached from the Record button and documented in the user guide's *Recording a Pattern in real time*.
+Record live notes at their real timing instead of snapping them to the nearest step. Needs #32's micro-step offset, or something like it, for storage. The live-input path into the recorder is mapped (`docs/sequencer.md` *Note routing*: keys and MIDI in reach `FUN_0802345C`, which forwards to per-track recorders built by `FUN_08021128`). Find what the recorders write; the path is reached from the Record button and documented in the user guide's *Recording a Pattern in real time*.
 
 ### #34 Step-time recording (SH-101 style)
 Enter notes one after another from the keyboard pads, each one moving to the next step, with no transport running. A UI mode only. It writes the same step data as normal step editing, so the session format is unchanged.
 
 ### #35 Per-step probability and mutation (Launchpad Pro style)
-Per-step trigger probability, plus Launchpad Pro-style mutation of a pattern's notes. Needs a per-step probability field (session format) and a random source at playback. The firmware already has a random generator for the random play direction (`FUN_0801B698`). Same as the probability candidate in #22. The stock Mutate re-sequences the notes of a pattern (user guide p. 54).
+Per-step trigger probability, plus Launchpad Pro-style mutation of a pattern's notes. Needs a per-step probability field (session format) and a random source at playback. The firmware already has a random generator for the random play direction: `FUN_0801AB9C` reads the hardware RNG at `0x50060800` (`docs/sequencer.md`). Same as the probability candidate in #22. The stock Mutate re-sequences the notes of a pattern (user guide p. 54).
 
 ### #36 Arpeggiator
 The user guide documents no arpeggiator. Needs:
@@ -359,7 +359,7 @@ The user guide documents no arpeggiator. Needs:
 A momentary beat-repeat: while held, repeat the last 1/4, 1/8, … of the playback at the clock rate. It could be done by looping the sequencer's step position (`FUN_0801B698` computes it) instead of buffering audio, which avoids needing audio RAM.
 
 ### #38 Decouple the Osc 2 track from Osc 2
-Let sequencer track 1 (the Osc 2 track, `docs/session-format.md`) drive only its MIDI output, so it can sequence an external synth without also playing oscillator 2. Probably a per-session or per-pattern flag that playback checks before passing track 1's notes to the synth engine. Find where track 1's notes reach Osc 2 and where they are sent to MIDI.
+Let sequencer track 1 (the Osc 2 track, `docs/session-format.md`) drive only its MIDI output, so it can sequence an external synth without also playing oscillator 2. Probably a per-session or per-pattern flag that playback checks before passing track 1's notes to the synth engine. Find where track 1's notes reach Osc 2 and where they are sent to MIDI. *Found:* sequencer notes go through a note router and a per-track merger (vtable `0x08029F04`) whose outputs are MIDI out (`FUN_08018B48`), the synth engine (`FUN_080226BC`) and the recorder. The split point for #38 is the track-1 merger's stage 1 → stage 2 forward (`docs/sequencer.md` *Note routing*).
 
 ### #39 Randomise gate, glide and velocity patterns
 A randomise action for each per-step property (gate length, glide, velocity) on its own, leaving the notes in place. This is unlike Mutate, which re-sequences the notes. It needs no new storage, only a UI action and a random fill of the existing step fields. The step layout (#13) must be known first.
