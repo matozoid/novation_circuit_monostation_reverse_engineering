@@ -12,7 +12,7 @@ builds in FUN_08018CA4, then 4 bytes of 0xFF. Layout:
     0x12498  track 1: 8 patterns x 140 bytes
     0x128F8  track 1 automation: 8 patterns x 12 lanes x 108 bytes
     0x15178  track 2: 8 patterns x 140 bytes (no automation)
-    0x155D8  7 bytes of further globals (meaning TBD)
+    0x155D8  7 bytes of further globals; 0x155DA = current patch slot
     0x15F5C  the session's patch: 126 bytes = bytes 9..134 of a 136-byte patch
 
 Pattern = 16 steps x 8 bytes + 12-byte footer: footer[0] = start step << 4 |
@@ -103,6 +103,9 @@ STEP_PATCH_ID = 0x50
 
 GLOBALS2_OFF = 0x155D8
 GLOBALS2_LEN = 7
+# Patch slot (0..63) the session's patch was loaded from: the controller's
+# current-patch observable (+0x64), the one step byte 4 is compared against.
+PATCH_SLOT_OFF = 0x155DA
 PATCH_OFF = 0x15F5C
 PATCH_LEN = 126
 
@@ -125,6 +128,7 @@ def header(image):
         "tempo": image[TEMPO_OFF],
         "swing": image[SWING_OFF],
         "chains": [(image[o], image[o + 1]) for o in CHAIN_OFFS],
+        "patch_slot": image[PATCH_SLOT_OFF],
     }
 
 
@@ -201,7 +205,8 @@ def main(argv):
         h = header(image)
         print(f"{h['type']}  {h['name']!r}  tempo={h['tempo']} swing={h['swing']} "
               f"flags=0x{h['flags']:x} colour={h['colour']}")
-        print(f"patch: {patchbank.decode_meta(patch_message(image))['name']!r}")
+        print(f"patch: {patchbank.decode_meta(patch_message(image))['name']!r} "
+              f"(slot {h['patch_slot']})")
         for t, (_, count, _, _) in enumerate(TRACKS):
             start, end = h["chains"][t]
             used = [i for i in range(count)

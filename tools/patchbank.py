@@ -84,19 +84,23 @@ GENRES = ["None", "Classic", "D&B/Breaks", "House", "Industrial", "Jazz",
 #              no new information and is ignored here -- unlike a `pair`, whose
 #              flag really is the high bit of a 0..255 value
 PARAMS = [
+    ("env_retrigger",      27, "bool"),    # id 2, NRPN 0:73
     ("osc1_octave",        41, "oct"),
     ("osc1_waveform",      42, "enum"),
     ("osc1_pw",            43, "u"),
     ("osc1_coarse",        44, "pair"),
     ("osc1_fine",          46, "pair"),    # 0..100, centre 50
     ("osc1_range",         48, "enum"),    # 0..3 = 16'/8'/4'/2'
+    ("osc1_glide",         49, "u"),       # CC 5
     ("osc2_octave",        50, "oct"),
     ("osc2_waveform",      51, "enum"),
     ("osc2_pw",            52, "u"),
     ("osc2_coarse",        53, "pair"),
     ("osc2_fine",          55, "pair"),
     ("osc2_range",         57, "enum"),
+    ("osc2_glide",         58, "u"),       # CC 37
     ("osc_sync",           59, "bool"),
+    ("patch_level",        60, "u"),       # CC 7
     ("mix_osc1",           61, "pair"),
     ("mix_osc2",           63, "pair"),
     ("mix_sub",            65, "pair"),

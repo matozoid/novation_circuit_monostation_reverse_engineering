@@ -21,7 +21,7 @@ All 370 automation lanes that hold data in the YBC sessions fit the lane format 
 | `0x00020` | 32 | name, space-padded |
 | `0x00040` | 1 | tempo, BPM (init 120) |
 | `0x00041` | 1 | swing (init 50) |
-| `0x00042` | 1 | `3` everywhere seen (meaning TBD) |
+| `0x00042` | 1 | `3` everywhere seen. Third field of the tempo/swing observable (tempo, swing, this), which the session controller loads and saves with them (`FUN_08019664` / `FUN_08019494`). Meaning TBD; the readers found so far go through generic accessors. |
 | `0x00043` | 9 | 0 everywhere seen |
 | `0x0004C` | 3 × 4 | per-track pattern chain: byte 0 = first pattern, byte 1 = last pattern, then 2 bytes that are always 0. One group each for tracks 0, 1 and 2, at `0x4C`, `0x50` and `0x54`. |
 | `0x00058` | 16 × 140 | track 0 (synth / osc 1) patterns |
@@ -29,7 +29,10 @@ All 370 automation lanes that hold data in the YBC sessions fit the lane format 
 | `0x12498` | 8 × 140 | track 1 (osc 2) patterns |
 | `0x128F8` | 8 × 12 × 108 | track 1 automation (12 lanes per pattern) |
 | `0x15178` | 8 × 140 | track 2 (mod sequence) patterns, no automation |
-| `0x155D8` | 7 | further globals. The firmware initialises them to `00 00 00 00 00 00 40`. In real sessions byte 2 varies from 0 to 0x3A, byte 3 is 0 or 1, and bytes 0–1 are rarely set. Meaning TBD. |
+| `0x155D8` | 2 | fields 0 and 1 of a small observable that the UI constructor `FUN_0800FB5C` gets as its 7th argument. Meaning TBD. YBC: `0x155D8` always 0, `0x155D9` 0 except one `05`. |
+| `0x155DA` | 1 | **current patch slot** 0–63: the controller's current-patch observable (`+0x64`), the one step byte 4 is compared against. Every YBC session whose patch is in its pack has this slot. |
+| `0x155DB` | 2 | two observables, UI constructor arguments 8 and 9. On change the controller mirrors them into a settings block (`DAT_08019660` `+0xC` / `+0x10`). Meaning TBD. YBC: `0x155DB` is 0 or 1, `0x155DC` 0 except one `0x22`. |
+| `0x155DD` | 2 | slots 6 and 0 of the third parameter group, set by ids `0x4C` and `0x4D` (no patch byte). Init `00 40`. `0x4C` is the track 2 step parameter (step byte 3). |
 | `0x155DF` | 0x97D | zero |
 | `0x15F5C` | 126 | the session's patch: bytes 9–134 of the 136-byte bank format (name, category, genre, params) |
 | `0x15FDA` | 0x22 | zero in files. The firmware fills this region with `0xFF` in RAM. |
@@ -55,11 +58,11 @@ The tracks, from the parameters their automation lanes drive (below): **track 0*
 | 0 | `00` | note number; 0 = empty step. Sent with byte 1 as a note-on. |
 | 1 | `60` (tracks 0, 1), `00` (track 2) | velocity; 0 plays as 96. On track 2 this is the mod-sequence value (centred on `0x40`). |
 | 2 | `00` | gate in micro-steps (1/6 step), clamped to 1–96; 6 = one step, above 6 ties into later steps. Played as `gate × ticks_per_step / 6`. |
-| 3 | `FF` | value for the track's step parameter: id `0x09` (patch byte 49, CC 5) on track 0, id `0x10` (patch byte 58, CC 37) on track 1, id `0x4C` on track 2. `FF` = none. All YBC sessions leave it `FF`. |
+| 3 | `FF` | value for the track's step parameter: id `0x09` (osc 1 glide, patch byte 49) on track 0, id `0x10` (osc 2 glide, byte 58) on track 1, id `0x4C` on track 2. So on the note tracks it is per-step glide. `FF` = none. All YBC sessions leave it `FF`. |
 | 4 | `FF` | **patch change**: patch slot 0–63 to load when the step plays, sent as id `0x50`. `FF` = none. In the YBC sessions it is set only on track 0 note steps, values 0–60. |
 | 5–7 | `00` | always 0 |
 
-Byte offsets here are in the 136-byte patch message (see `tools/patchbank.py`). Bytes 49 and 58 sit at the end of the osc 1 and osc 2 groups and are not in the community PDF. CC 5 and CC 37 suggest per-oscillator glide.
+Byte offsets here are in the 136-byte patch message (see `tools/patchbank.py`). Bytes 49 and 58 are not in the community PDF; see "Patch bytes the PDF does not name" below.
 
 Footer:
 - Byte 0 is the played step range: start step in the high nibble, end step in the low nibble (init `0F` = steps 0–15). The length is `end + 1 − start`, plus 16 when end < start, so the range can wrap past step 15 (`FUN_08016A5A`). The YBC sessions only use `0F` and `07`.
@@ -103,10 +106,31 @@ Track 1 lanes 0–11: osc2 coarse, fine, pw; mix osc2; then the osc 2 pitch and 
 
 This fits the YBC data. The most-automated parameters there are filter cutoff (79 lanes), reso (78), env release (40) and sustain (38), mix sub, mix osc1 and osc 2 level.
 
-The firmware CC numbers differ from the Components `kD` schema in places. For example, filter reso is CC 71 here but CC 82 in `kD`, and osc1 pw is CC 39 here but CC 74 in `kD`. Check this against hardware MIDI output before relying on either.
+## Patch bytes the PDF does not name
+
+The parameter setter `FUN_0801C842` writes each id into a slot of a parameter group (osc 1, osc 2, a third group, sync, mixer, filter, distortion, envelope, LFO, mod matrix, routing). That placement, the MIDI numbers and the YBC "Patch Details" screenshots name the four bytes the PDF leaves out:
+
+| byte | id | MIDI | name | evidence |
+|------|----|------|------|----------|
+| 27 | 2 | NRPN 0:73 | amp envelope re-trigger (bool) | envelope group slot 4, after ADSR; Components names NRPN 0:73 `envAmpTrigger`; screenshots show "Re-Trigger" under Amp Env |
+| 49 | 9 | CC 5 | osc 1 glide (0–127) | slot 6 of the osc 1 group; CC 5 is portamento time; screenshots show a Glide knob per oscillator |
+| 58 | 16 | CC 37 | osc 2 glide (0–127) | slot 6 of the osc 2 group |
+| 60 | 18 | CC 7 | patch level (0–127) | first slot of the mixer group; CC 7 is volume; screenshots show "Patch Level"; both firmware templates and Roboo use 100 |
+
+`tools/patchbank.py` decodes them as `env_retrigger`, `osc1_glide`, `osc2_glide` and `patch_level`.
+
+## Firmware vs Components `kD`
+
+The firmware 800 CC numbers differ from the Components `kD` schema in places. For example, filter reso is CC 71 here but CC 82 in `kD`, and osc1 pw is CC 39 here but CC 74 in `kD`. The two do not describe the same parameter set. `kD` has a sub oscillator, a second LFO, a mod envelope and aftertouch routings. Firmware 800 has one envelope, one LFO and the PDF's layout. They agree by CC only on a subset:
+- mixer CC 20–25 (+32);
+- cutoff CC 16, overdrive CC 114, filter shape CC 84;
+- amp envelope CC 90–93;
+- LFO wave CC 88 and rate CC 18;
+- osc coarse/fine CC 27/26 and 30/29;
+- sync CC 110, distortion CC 94.
+
+So `kD` most likely describes a different or newer parameter set, and the firmware tables are the reference for firmware 800. Check this against hardware MIDI output.
 
 ## Open
 
-- Patch bytes 27, 49, 58 and 60 (ids 2, 9, 16, 18: NRPN 0:73, CC 5, CC 37, CC 7): not named by the PDF.
-- Header byte `0x42`, and the 7 bytes at `0x155D8`.
-- The CC differences between firmware and Components `kD`.
+- Header byte `0x42`, and session bytes `0x155D8`–`0x155D9`, `0x155DB`–`0x155DC` and the group-3 slots at `0x155DD`–`0x155DE` (ids `0x4C`/`0x4D`). Candidates from the manual/screenshots: keyboard octave per oscillator, swing sync rate.

@@ -25,6 +25,7 @@ def make_image():
     image[session.TEMPO_OFF] = 120
     image[session.SWING_OFF] = 50
     image[0x51] = 3                       # track 1 chain end
+    image[session.PATCH_SLOT_OFF] = 12
     return image
 
 
@@ -46,6 +47,7 @@ class SyntheticTest(unittest.TestCase):
         self.assertEqual(h["name"], "Test")
         self.assertEqual((h["tempo"], h["swing"], h["flags"], h["colour"]), (120, 50, 7, 16))
         self.assertEqual(h["chains"][1], (0, 3))
+        self.assertEqual(h["patch_slot"], 12)
 
     def test_pattern(self):
         image = make_image()
