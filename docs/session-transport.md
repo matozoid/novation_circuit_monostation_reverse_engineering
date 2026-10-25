@@ -50,4 +50,4 @@ The header names a region of the device's storage, not a type:
 ## Open
 
 - Whether the device accepts any other start/length, such as `0x12000 + n × 0x16000` for one session, or a single patch slot. Components never asks for one, so test this on hardware.
-- What lives at `0x0`–`0x2000` and `0xA000`–`0x12000`.
+- What lives at `0x0`–`0x2000`. The region `0xA000`–`0x12000` is patch slots 64–127: the firmware's patch store has 128 × 512-byte slots from `0x2000`, but the panel only reaches 64 (`docs/sysex-spec.md`, *Patch store*). Whether units ship with data there is unknown. A dump of `0x2000`/`0x10000` would show it.

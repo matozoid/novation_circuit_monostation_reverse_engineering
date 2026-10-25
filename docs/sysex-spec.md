@@ -93,6 +93,17 @@ The YBC "Big City Flippin' Grooves" pack ships a `.syx` bank plus 64 "Patch Deta
 - `Roboo.monostationpack` (repo root) — a real 64-patch bank: slots 0–31 named (bass1–4, drum one-shots, pad1–4, key1–4, …), 32–63 = `Initial Patch`. Primary corroboration for the 136-byte layout above.
 - Firmware 800 embeds two defaults in its image: `Classic Mono` (`0x08028868`) and `Initial Patch` (`0x08028F6B`), each a bare 126-byte patch (the 136-byte message without its 9-byte header and `F7`), name first. `Classic Mono` is the patch a blank session gets: `FUN_08018ca4` copies it to session offset `0x15F5C`. `Initial Patch` is the "empty slot" reference: at boot the firmware reads 128 stored patches from external flash (block `n/8 + 2`, offset `(n % 8) × 512`, i.e. from `0x2000`) and builds a bitmask of slots that differ from it, and `FUN_0801b4e0` updates that mask when a patch is saved. (The firmware image contains **only** these templates, not a 64-slot factory bank — the shipped factory patches live in a separate data-flash region outside the app update image.)
 
+### Patch store: 128 slots, 64 reachable from the panel
+
+The firmware's patch store has **128 slots** of 512 bytes at external-flash `0x2000`–`0x12000`. Components and the user guide use only 64 (`0x2000`–`0xA000`). Every firmware check on a slot number is `< 0x80`, and none is `< 0x40`:
+- the boot scan `FUN_0800e1f8` reads all 128 and keeps a 128-bit "differs from `Initial Patch`" mask in four observable words (`0x10`–`0x13`);
+- the patch save `FUN_0801b4e0` updates that mask. Its two callers reject slot ≥ `0x80`: the session-controller port handler at `0x08019A26` (save the current patch, or clear a slot with `Initial Patch`), and `0x08020210` (slot 2 of the session-controller vtable `0x08027068`, which writes the patch it is given to slot `r4`; probably the SysEx slot write, not yet confirmed);
+- the patch-load handler `FUN_08019AE4` (parameter id `0x50`) loads slot `< 0x80`.
+
+Only the panel stops at 64. The patch view (render `FUN_08013ac4`, pads `FUN_08014330`) shows 32 pads, and slot = page × 32 + pad. Oct ↓ / Oct ↑ (button events `0x14` / `0x15` in `FUN_08011FBC`) call `FUN_08022fdc(view, 0)` / `(view, 1)`, so the page is only ever 0 or 1. The render does mask the page with `& 7` and lights the Oct LEDs by `page == 0` vs `page != 0`.
+
+So slots 64–127 are probably dead space left over from a 4-page design, and the firmware would load, save and track them as normal. A 7-bit SysEx slot byte can address them, and so could a patched page setter (#31). Not tried on hardware. Program change has not been traced; the MIDI PDF documents 0–63.
+
 ## Open items
 - The 136-byte split-pair value decode is **resolved** (see *Split-pair decode* above), from the firmware's store routine and checked against packs and editor screenshots.
 - Coarse tune spans −128…127, but how that maps to semitones is unknown.
