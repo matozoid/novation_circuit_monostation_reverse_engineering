@@ -49,13 +49,29 @@ From `0x78` dumps of a stock unit (bootloader 740, firmware 800), cross-checked 
 |-------|---------|
 | `0x0000`–`0x0043` | 32 little-endian u16 values (100, 131, 131, 131, 124, 134, …, mostly near 128), then their **zlib CRC-32** (LE) at `0x40`. Probably a per-unit calibration or trim table. **Never erase or overwrite it**; back it up first. |
 | `0x0044`–`0x0FFF` | `FF` |
-| `0x1000`–`0x1017` | a small record: `08 00 00 00 00 00 00 00 2E 02 00 00 00 00 00 00 01 00 00 00 FF 00 00 00`. Maybe global settings; not decoded. |
+| `0x1000`–`0x1017` | the 24-byte **System Settings record**: `08 00 00 00 00 00 00 00 2E 02 00 00 00 00 00 00 01 00 00 00 FF 00 00 00` on this unit. Layout below. |
 | `0x1018`–`0x1FFF` | `FF` |
 | `0x2000`–`0x12000` | 128 patch slots × 512 bytes. On this unit, slots 64–127 all hold `Initial Patch`. |
 | `0x12000`–`0x2E8000` | 33 session images |
 | `0x2E8000`–`0x1000000` | all `FF` (scanned completely). There is no factory bank in external flash (#8). |
 
 The bootloader returned `FF` at `0x1000000`, `0x2000000` and `0x7FFFF000`, so the read doesn't wrap at 16 MiB. **It doesn't map MCU memory:** `0x0800C000` (the app's vector table, the control), `0x08000000` (bootloader), `0x1FFF0000`, `0x1FFF7800`, `0x1FFFC000`, `0x10000000`, `0x20000000` and `0x40024000` all came back as valid transfers full of `00`. Why these give `00` and the others `FF` is unknown. The app's `p 0x40` read stops at `0x800000` (see `docs/sysex-handlers.md`), which suggests an 8 MiB (64 Mbit) chip.
+
+### Settings record (`0x1000`)
+
+The System Settings page (hold Shift while switching on; Play exits) is stored here. Mapped on hardware by changing one setting per power cycle and reading the record with `p 0x40` op 2 after each one. The record is written **only at power-off**: after Play it was still unchanged, and after a power cycle it had changed. The boot code `FUN_0800e1f8` reads it with `FUN_0801aef4(1, 0, buf, 0x18)` (sector 1, offset 0, 24 bytes).
+
+| offset | content |
+|--------|---------|
+| `0x00` | `08`. Unknown. At boot, `FUN_0800e1f8` checks it: if it is above `0x1F`, a field gets cleared, which reads like a sanity check for an erased (`FF`) record. |
+| `0x08` | flags. bit 2 = Note Tx on, bit 3 = Note Rx on, bit 4 = Clock Rx **off**, bit 5 = Clock Tx **off**, bit 6 = CC Tx **off**, bit 7 = CC Rx **off**. Bit 1 was set in every reading and bit 0 was always clear; their meaning is unknown. |
+| `0x09` | bits 0–2 = clock out rate (pad 18, 2 ppqn → 2; pad 20, 8 ppqn → 4; so probably pads 17–21 → 1–5), bit 3 = pot pickup on |
+| `0x0C` | Osc 1 MIDI channel, 0-based (ch 3 → `02`) |
+| `0x10` | Osc 2 MIDI channel, 0-based. Inferred: it reads `01` while Osc 2 is on ch 2, but it wasn't changed during the test. |
+| `0x14` | `FF`. Unknown. |
+| others | `00` |
+
+The Rx/Tx flags mix polarities: Note Rx/Tx are "on" bits, while CC and Clock are "off" bits. The defaults (Note, CC and Clock Rx on, Clock Tx off) therefore read `0x2E`. Readings are in `~/ms-dumps2/settings-1000.tsv`. The unit was restored afterwards, and the final record matches the first one byte for byte.
 
 ## Requesting and sending (Components `k0`, `decode-worker-*.js`)
 
@@ -68,5 +84,5 @@ These transfers are handled by the **bootloader**, not the app. The app's `F0 00
 ## Open
 
 - **Resolved (hardware): the bootloader takes any start and length.** Each of these came back with a matching header and a valid CRC: one slot (`0x2000`/`0x200`), one session (`0x12000`/`0x16000`), all 128 slots (`0x2000`/`0x10000`), `0x0`/`0x2000`, and 4 KiB to 1 MiB reads anywhere up to `0x7FFFF000`.
-- What the `0x0`–`0x2000` data means (see *Storage map*).
+- What the `0x0`–`0x44` calibration-like table means, and the unknown bytes of the settings record at `0x1000` (see *Storage map*).
 - On Linux, receive big dumps from the ALSA rawmidi device (`amidi`, or `/dev/snd/midiC*D*`). Through the ALSA sequencer (rtmidi/mido) a 3 MB session dump lost 16 blocks to input overruns. Poll the rawmidi device before sending the request: input starts on the first poll or read, and the fast `0x77` header was lost once when the request went out first.

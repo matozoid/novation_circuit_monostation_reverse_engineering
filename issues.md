@@ -183,6 +183,7 @@ One `0x77`…`0x7A` transfer carries **all 32 sessions** (~2.9 MB unpacked ≈ 3
 ### #14 Document full MIDI implementation (CC/NRPN)
 Cross-check the official MIDI parameter guide against the firmware's CC/NRPN dispatch tables. List parameters that are reachable by SysEx but not by CC; these are candidates for #20.
 - **Depends on:** #10
+- **System Settings record (hardware, 2026-10-25):** the MIDI channels, clock out rate, pot pickup and the six Note/CC/Clock Rx/Tx switches are stored at external flash `0x1000` (24 bytes) and saved only at power-off. The layout is in `docs/session-transport.md` *Settings record*. Open: byte `0x00` (`08`), bit 1 of `0x08`, byte `0x14` (`FF`), and the Osc 2 channel at `0x10`, which is inferred but not yet changed on hardware.
 
 ---
 
