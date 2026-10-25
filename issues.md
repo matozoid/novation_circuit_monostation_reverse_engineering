@@ -257,7 +257,8 @@ The firmware's patch store has 128 slots (`0x2000`–`0x12000`, 512 bytes each).
 - **Hardware checks:**
   - dump `0x2000`/`0x10000` (cmd `0x78`) to see whether slots 64–127 hold data on a stock unit;
   - try a slot write, then a `0x40` request, to slot 64.
-- **Feature candidate:** patch the page setter, the Oct LED logic and pad rendering to allow 4 pages, giving 128 patches. Depends on #17. Program change (MIDI PDF: 0–63) not yet traced.
+- **Feature candidate:** patch the page setter, the Oct LED logic and pad rendering to allow 4 pages, giving 128 patches. Depends on #17.
+- **Program change 64–127 on the Osc 1 channel already selects these slots:** the firmware has no 0–63 clamp, despite the MIDI PDF (`docs/sysex-spec.md` *Patch store*). First hardware test: dump the region, then send PC 64.
 
 ### #20 Expose SysEx-only parameters via CC/NRPN
 Map parameters missing from the CC table (#14) to free CC or NRPN numbers.
@@ -269,4 +270,49 @@ The LFO is digital, so new shapes (S&H variants, random, ramp) are firmware-only
 Candidates: per-step probability, ratchets, extra scales, and longer or chained patterns. Before deciding scope, measure the remaining RAM and flash headroom and check the session format constraints (#13).
 
 ### #23 Feature request intake
-Collect the features the user actually wants and turn each one into an issue once #10 shows what is feasible.
+Collect the features the user actually wants and turn each one into an issue once #10 shows what is feasible. The first external list became #32–#42.
+
+## Feature requests (external list, 2026-10-25)
+
+From a third-party wish list, one issue per item. All of them depend on #17 (patching infrastructure) and on free RAM and flash. Anything that stores new per-step data has to fit the session format (#13, `docs/session-format.md`) or extend it in a way Components still accepts.
+
+### #32 Micro-step note timing (off-grid notes, trills, ratchets)
+Move notes off the 16-step grid and allow repeats within a step. The session already has a finer grid for automation: each lane holds 96 values, 16 steps × 6 micro-steps. Note steps have no such field yet. Check first whether the playback routine `FUN_080234AC` can schedule a note at micro-step resolution, and where a per-step offset or repeat count could live. Overlaps the ratchet idea in #22.
+
+### #33 Unquantised recording
+Record live notes at their real timing instead of snapping them to the nearest step. Needs #32's micro-step offset, or something like it, for storage. Find the real-time record path; it is reached from the Record button and documented in the user guide's *Recording a Pattern in real time*.
+
+### #34 Step-time recording (SH-101 style)
+Enter notes one after another from the keyboard pads, each one moving to the next step, with no transport running. A UI mode only. It writes the same step data as normal step editing, so the session format is unchanged.
+
+### #35 Per-step probability and mutation (Launchpad Pro style)
+Per-step trigger probability, plus Launchpad Pro-style mutation of a pattern's notes. Needs a per-step probability field (session format) and a random source at playback. The firmware already has a random generator for the random play direction (`FUN_0801B698`). Same as the probability candidate in #22. The stock Mutate re-sequences the notes of a pattern (user guide p. 54).
+
+### #36 Arpeggiator
+The user guide documents no arpeggiator. Needs:
+- a held-note buffer;
+- arp modes (up, down, up/down, random, as played) and an octave range;
+- a rate synced to the sequencer clock;
+- a UI entry point (a Shift combination or a free button) and a home for its settings, in the patch's reserved bytes 27–40 or in the session.
+
+### #37 Roll / looper performance effect
+A momentary beat-repeat: while held, repeat the last 1/4, 1/8, … of the playback at the clock rate. It could be done by looping the sequencer's step position (`FUN_0801B698` computes it) instead of buffering audio, which avoids needing audio RAM.
+
+### #38 Decouple the Osc 2 track from Osc 2
+Let sequencer track 1 (the Osc 2 track, `docs/session-format.md`) drive only its MIDI output, so it can sequence an external synth without also playing oscillator 2. Probably a per-session or per-pattern flag that playback checks before passing track 1's notes to the synth engine. Find where track 1's notes reach Osc 2 and where they are sent to MIDI.
+
+### #39 Randomise gate, glide and velocity patterns
+A randomise action for each per-step property (gate length, glide, velocity) on its own, leaving the notes in place. This is unlike Mutate, which re-sequences the notes. It needs no new storage, only a UI action and a random fill of the existing step fields. The step layout (#13) must be known first.
+
+### #40 Per-step modulation shapes on the mod sequencer
+Choose a shape for each mod-sequencer step (step, ramp up/down, curve, …) instead of one global smooth on/off. Today byte 3 of a pattern is the smooth flag, and the mod-sequence output `FUN_08023998` crossfades from one step to the next with weight table `0x0802A286` (`docs/session-format.md`). A per-step shape needs storage, perhaps in unused bits of the mod step records, and more weight tables or a computed curve.
+
+### #41 AFX mode / per-key overlays
+Per-key parameter overlays, as on Bass Station II's AFX mode: each key recalls its own set of patch parameters. Components implements this only for Bass Station II (`frontend/constants/bass-station-ii/afx-overlay-midi-config`, `docs/bass-station-ii.md` *Overlays*), so there is nothing Mono Station-specific to reuse. Needs storage for one overlay per key and a hook in note-on that applies it. The biggest item on the list, so check RAM and flash headroom first.
+
+### #42 Fast LFO mode (audio-rate)
+An LFO range that reaches well into the audio band. LFO rate is an 8-bit parameter (0–255, CC(8); `tools/patchbank.py` `PARAMS`). A fast mode could be a flag that scales the rate. Questions:
+- how often the LFO is updated (the control-rate tick);
+- whether the destinations it modulates are applied at audio rate or per block.
+
+Find the LFO code and its rate table first. Related to #21.
