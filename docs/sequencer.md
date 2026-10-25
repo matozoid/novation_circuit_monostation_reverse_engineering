@@ -238,11 +238,68 @@ So the mod track (2) never reaches MIDI out. Sequencer playback is not recorded 
 
 **#38 (track 1 to MIDI only):** the split point is merger stage 1 → stage 2 for track 1. Skipping that forward (merger input 3 on the track-1 merger) sends keys and sequencer notes of track 1 only to MIDI out, while MIDI in still plays Osc 2. A hook in `FUN_080178F0` on `track == 1` would also mute MIDI-in notes on Osc 2. Which behaviour is wanted is a design choice.
 
+## Recording (#33)
+
+Live input reaches the recorder hub through merger stage 3 (above). The hub (0x18 bytes, vtable `0x08027154`) is:
+
+| Slot | Function | Role |
+|------|----------|------|
+| `[0]` | `FUN_0802345C(note, vel, track)` | note on → per-track recorder `[0]` |
+| `[1]` | `FUN_0802341C(note, track)` | note off → recorder `[1]` |
+| `[2]` | `FUN_08023370(param_id, value)` | knob move: table `DAT_08023410` (2 bytes per id: recorder index, lane; `FF` = not recordable) picks the recorder and lane. It sets the lane's bit in the recorder's touched-lanes bitmap cell `+0x2C` and stores the value in `+0x28[lane]`. |
+
+All three do nothing unless the transport cell (hub `+8`, transport `+0x1C`) has field 0 ≠ 0, field 1 ≠ 0 and the third field = 0. That is presumably record armed, playing, and not some pending state. The order isn't confirmed.
+
+**Per-track recorders** (hub `+0x0C`/`+0x10`/`+0x14`) are 0x288-byte objects built by `FUN_08021128` (base vtable `0x08029F14`). They differ in lane count `+0x24`: track 0 has 42 lanes (vtable `0x080270FC`), track 1 has 12 and track 2 has 0. Byte `+0x284` enables velocity recording; it is 0 on track 2. Fields:
+
+| Offset | Content |
+|--------|---------|
+| `+0x0C` / `+0x10` | current and next (pattern, step, tick-in-step) position cells |
+| `+0x14` | pattern cell compared on a write (probably the pattern on screen) |
+| `+0x18` / `+0x20` | transport and tick cells, subscribed with masks 7 and 1 |
+| `+0x1C` | running tick counter cell: the 16-bit note start and release times |
+| `+0x28` | `lanes + 1` pending values (`FFFF` = none). The extra last entry is the **patch change** lane. |
+| `+0x2C` / `+0x30` / `+0x34` | touched-lanes bitmap cell, last-tick-recorded bitmap, last values |
+| `+0x38`–`+0x3B` | previous rate class, pattern, step, micro-step (for interpolation) |
+| `+0x3C` | "in the first half of a step" flag |
+| `+0x40` / `+0x44` | pattern data (140 bytes each) / automation lanes (`(pattern × lanes + lane) × 0x6C`: a 12-byte mask + 96 values) |
+| `+0x48` | cell committed after a write ("pattern edited") |
+| `+0x50`–`+0x57` | pending note: note (0 = none), velocity, released flag, start time `+0x54`, release time `+0x56` |
+| `+0x54 + note × 4` | per-note slot, notes 1–139: bit 0 held, bits 1–4 step, bits 5–8 pattern, bits 9–15 velocity, then the 16-bit start time |
+
+Recorder vtable `0x080270FC`:
+
+| Slot | Function | Role |
+|------|----------|------|
+| `[0]` | `FUN_08023208` | note on: reads the position (`FUN_08021844`) and the start time, then calls `[3]` |
+| `[1]` | `FUN_08016A72` | note off → `[4]` with the release time |
+| `[2]` | `FUN_08017248` | cell observer (also via the `+8` thunk `FUN_080175C8`): step placement and automation, below |
+| `[3]` | `FUN_08023042` | makes the note pending. An earlier pending note that hasn't been placed yet is dropped. |
+| `[4]` | `FUN_080231B8` | note off: for the pending note it only stores the release time. For a placed note it writes the step (`FUN_08021334`). |
+| `[5]` | `FUN_080234A0` | sync rate of the current pattern (field 1 of cell `+0x4C`) |
+| `[6]` | `FUN_0802314E(pattern, step)` | places the pending note at that step. If it has already been released, it writes it at once. |
+| `[7]` | `FUN_080230C2(pattern, step, time)` | the same, then writes every note still held (1–139) with `time` as the release (record stop) |
+| `[8]` | `FUN_080230AA(lane, pattern)` | automation lane pointer |
+| `[9]` | `FUN_08023098(pattern, step, v)` | writes step byte 4 (patch change) |
+
+**Note placement is quantised to the nearest step**, but not when the key is hit. `FUN_08021844` compares the tick-in-step with half the step period, `(ticks[rate] + 1) >> 1` (table `0x08029F6C`). In the first half it returns the current step, in the second half the next one. A note-on only makes the note pending. The observer places it when the clock next crosses a half-step (flag `+0x3C` goes from 1 to 0), at the step that is current then. So a note hit early in step *n* lands on *n*, and one hit late in *n* lands on *n + 1*. Only one note per track can be pending, so of two notes inside the same half-step only the second is kept.
+
+**Step write** `FUN_08021334(rec, note, release_time)`, for a held note:
+- byte 0 = note;
+- byte 1 = velocity if `+0x284` is set;
+- byte 2 = gate = `(release − start)` in micro-steps (`6 × whole steps + remainder × 6 / ticks_per_step`), capped at 96 and at least 1. `ticks_per_step` comes from the pattern's own sync rate (footer byte 1, pattern `+0x81`).
+
+It then clears the held bit. When the note's pattern matches cell `+0x14`, the caller commits `+0x48`. The raw start time stays in the slot, so **the off-grid offset (`start − step start`) is known at write time and just discarded**. That is the hook point for #33.
+
+**Automation**: on each tick the observer walks the lanes whose bit is set in `+0x2C`. Once a knob has moved during recording, its lane stays selected until recording stops. The micro-step comes from the tick-in-step: it is used directly at 1/16 (6 ticks per step), looked up in table `DAT_080175C0` for the faster rates, and is `tick × 6 / ticks` for the slower ones. With a new value, `FUN_08023266(lane, step, micro, v)` writes it and sets the mask bit. Without one, `FUN_0802323C` clears the micro-step, so only change points stay. When the clock skipped one or two micro-steps since the last write (rates faster than 1/16), the gap is filled by linear interpolation (`(a + b) / 2`, or `(2a + b) / 3` and `(a + 2b) / 3`). At slower rates nothing is interpolated.
+
+**Record stop** (transport cell change, mask 7): the observer writes any pending patch change, calls `[7]` at the rounded position with the tick counter as release, and clears the touched-lanes and last-tick bitmaps.
+
 ## Open
 
 - Inside the synth engine `FUN_080226BC` (Osc 1/Osc 2 voice assignment), and the merge stages' note priority.
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
-- Real-time record (#33): the per-track recorders behind `FUN_0802345C` (`0x288`-byte objects from `FUN_08021128`). Step entry (#34): which UI handlers write step cells.
+- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#34): which UI handlers write step cells.
 - The 6th sync-out mask `0x80810` (the guide lists only 5 rates). Bits 0–1 of the MIDI settings byte: no reader found yet.
