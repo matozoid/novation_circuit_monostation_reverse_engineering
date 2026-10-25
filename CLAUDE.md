@@ -22,7 +22,9 @@ Hardware: decoded image is a 129,824-byte Cortex-M4F app at load base `0x0800C00
 
 | File | What it is |
 |------|------------|
-| `CircuitMonoStationPatchSysExFormat.pdf` | Community spec (rev. 2020-06-30, by "chaocrator") of the single-patch SysEx dump. Primary source of truth so far. |
+| `CircuitMonoStationPatchSysExFormat.pdf` | Community spec (rev. 2020-06-30, by "chaocrator") of the single-patch SysEx dump. Offsets are right; its "MSB" bytes are the value's low bit (see `docs/sysex-spec.md`). |
+| `circuit-mono-station-midi-parameters-v1.pdf` | Novation's official MIDI parameter list (v3, Aug 2017): CC / CC(8) / NRPN numbers, ranges, defaults, value tables. All 74 synth params match the firmware table at `0x0802A62A`. |
+| `circuit-mono-station-ug-en-v1-2.pdf` | User guide v1.2. Bootloader Mode is on p. 90. |
 | `Components-1.72.5-Setup.exe` / `Components-1.72.5-universal.dmg` | Novation Components editor/librarian (Windows / macOS). Likely contains the full SysEx protocol, patch parsing, and firmware update logic (Components is Electron/web-based — look for bundled JS). |
 | `NovationUsbMidi_2.22.0.10_Installer.exe`, `novationusbmidi_2.30.0_84.exe` | Novation Windows USB-MIDI driver installers, two versions. |
 
@@ -33,7 +35,7 @@ These are large (~500 MB total), untrusted vendor binaries. Never execute them. 
 **Spec: `docs/sysex-spec.md`**, which supersedes the community PDF. The Mono Station has **one** patch format: the **136-byte** message `F0 00 20 29 01 61 <type> <slot> 00` + 126-byte patch + `F7`. It is used on the wire, in `.monostationpack` files (a ZIP holding `patches.syx`, a 64×136 = 8704-byte bank) and, without the framing, in firmware memory. Components' Mono Station validator accepts only 136 bytes. Message type: `0`=current patch, `1`=slot write, `0x40`=request. Mono Station device id is `01 61`; the original Circuit is `01 60`.
 
 - Read a pack/bank: `python3 tools/patchbank.py list Roboo.monostationpack`; decode one patch's params: `python3 tools/patchbank.py show <pack> <slot|name>` (`tools/patchbank.py`: framing, name@9, category@25 / genre@26 (indices into `CATEGORIES`/`GENRES`, Components' Circuit tables), slot, and the synth param map `PARAMS`).
-- Split-pair decode (resolved): a param's `0x00`/`0x40` flag byte is a **genuine** `+128` for unsigned 0–255 params (mixer, cutoff, LFO rate), but a **redundant sign flag to ignore** for bipolar mod-matrix depths (`value = LSB − 64`). Validated byte-exact against vendor soundpack banks. The Components editor shows cutoff/release and pitch/cutoff mod depths through display curves, so its on-screen numbers differ from the raw bytes.
+- Split-pair decode (resolved, #12): params the firmware sends as CC + LSB-CC (`CC(8)` in the MIDI PDF) take two bytes, `value = byte[off] << 1 | byte[off+1] >> 6`. So the `0x00`/`0x40` byte is the **low bit**, not `+128`. Signed ones subtract the firmware table's centre: 128 for coarse and pitch/cutoff mod depths, 100 for fine tune. `tests/test_patchbank.py` checks `PARAMS` against the firmware table at `0x0802A62A` and the PDF.
 - Reference data: `Roboo.monostationpack` (a real 64-patch bank) and the firmware-embedded defaults `Classic Mono`@`0x08028864` / `Initial Patch`@`0x08028F6B`. The image holds only these templates, not a factory bank; Components' Mono Station init patch `pR` matches `Initial Patch` byte for byte.
 - **Not Mono Station — don't mix in:** the 154-byte / 122-byte formats, Components' `kD` param array and its `RX`/`OX`/`UX` codec are **Bass Station II** (product id `00 33`; Components modules `bass-station-ii/*`). They are kept for reference in `docs/bass-station-ii.md`, `tools/bassstation2_patch.py` (`decode`/`selftest`) and `tools/bassstation2_params.tsv`. For Mono Station parameters and CCs, trust the firmware tables and `tools/patchbank.py` `PARAMS`.
 

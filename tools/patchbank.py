@@ -21,11 +21,10 @@ A full bank is 64 * 136 = 8704 bytes. A .monostationpack is a ZIP holding one
 member, patches.syx, with that bank.
 
 Framing, name, category, genre, slot and the synth parameters are decoded
-here.  Parameters with a 0..255 range are stored as an LSB plus a 0x00/0x40
-MSB flag one byte later (value = LSB + 128*(MSB==0x40)); see PARAMS and
-decode_params.  Validated byte-exact against real packs; the Components editor
-applies perceptual display curves to a few knobs, so its on-screen numbers can
-differ from this raw, linear decode.
+here.  Parameters with a 0..255 range are stored as two 7-bit bytes, the
+value's top seven bits then its low bit in bit 6 (value = LSB << 1 |
+flag >> 6), the same split the firmware uses for its CC + LSB-CC MIDI output;
+see PARAMS and decode_params.
 
 Usage:
     python3 tools/patchbank.py list Roboo.monostationpack
@@ -58,48 +57,46 @@ GENRES = ["None", "Classic", "D&B/Breaks", "House", "Industrial", "Jazz",
 
 # --- 136-byte parameter map (community PDF offsets == message byte offsets) ---
 #
-# Several Mono Station parameters have a 0..255 range.  They are stored as two
-# bytes: an LSB (0..127) at the parameter's offset and an MSB flag one byte
-# later that is 0x00 (clear) or 0x40 (set).  The value is simply:
+# Kinds follow the firmware parameter table at 0x0802A62A (8 bytes per id:
+# offset, 0, kind, centre, min, max, MIDI MSB, CC; see docs/session-format.md).
+# The parameters the firmware sends as a CC plus a +32 LSB CC (MIDI byte 0xFC)
+# have 8-bit values and take two bytes in the patch.  FUN_080176e8 stores them
+# as
 #
-#     value = LSB + (128 if MSB == 0x40 else 0)
+#     byte[off]     = value >> 1          (0..127)
+#     byte[off + 1] = (value & 1) << 6    (0x00 or 0x40)
 #
-# Verified byte-exact against real packs (e.g. YBC "Acid": mixer osc1 = 113,
-# noise = 255; filter overdrive 47 / reso 81; env decay 24 / sustain 28; and
-# the whole mod matrix).  The PDF's "MSB" is this flag byte, not a real MSB.
+# so value = byte[off] << 1 | byte[off + 1] >> 6.  The PDF's "MSB" byte is the
+# low bit, not a high bit.  Signed parameters are stored offset by the table's
+# centre: 64 for the one-byte ones, 128 for coarse tune and the pitch / cutoff
+# mod depths, 100 for fine tune (range -100..100, MIDI 0..200).
 #
-# Bipolar parameters (osc octave, mod-matrix depths) are stored centred on 64:
-# the signed value is (stored - 64).  env->amp is the lone 0/1 boolean in the
-# mod matrix.  Note the Components editor shows some knobs through a perceptual
-# curve (filter cutoff, env release) and the pitch/cutoff mod depths at ~2x, so
-# an editor's on-screen number can differ from this raw, linear decode.
+# The Components editor shows filter cutoff and env release through a
+# perceptual curve, so its on-screen numbers can differ from these raw values.
 #
-# kind:  u     unsigned 0..127 (raw byte)
-#        enum  small enumeration (raw byte); see *_VALUES below
-#        bool  0/1 (raw byte)
-#        oct   bipolar octave, value = raw - 64
-#        pair  unsigned 0..255, LSB here + MSB flag at offset+1
-#        mod   bipolar mod depth, value = raw - 64
-#        modp  bipolar mod depth, value = LSB - 64, followed at offset+1 by a
-#              redundant sign flag (0x40 when LSB>=64, else 0x00) that carries
-#              no new information and is ignored here -- unlike a `pair`, whose
-#              flag really is the high bit of a 0..255 value
+# kind:  u      unsigned 0..127 (raw byte)
+#        enum   small enumeration (raw byte); see *_VALUES below
+#        bool   0/1 (raw byte)
+#        s      signed, value = raw - 64
+#        pair   unsigned 0..255, two bytes as above
+#        spair  signed, value = pair - 128
+#        fine   signed, value = pair - 100
 PARAMS = [
     ("env_retrigger",      27, "bool"),    # id 2, NRPN 0:73
-    ("osc1_octave",        41, "oct"),
+    ("osc1_octave",        41, "s"),
     ("osc1_waveform",      42, "enum"),
-    ("osc1_pw",            43, "u"),
-    ("osc1_coarse",        44, "pair"),
-    ("osc1_fine",          46, "pair"),    # 0..100, centre 50
+    ("osc1_pw",            43, "s"),
+    ("osc1_coarse",        44, "spair"),
+    ("osc1_fine",          46, "fine"),
     ("osc1_range",         48, "enum"),    # 0..3 = 16'/8'/4'/2'
-    ("osc1_glide",         49, "u"),       # CC 5
-    ("osc2_octave",        50, "oct"),
+    ("osc1_glide",         49, "enum"),    # CC 5; 0..15, see the MIDI PDF
+    ("osc2_octave",        50, "s"),
     ("osc2_waveform",      51, "enum"),
-    ("osc2_pw",            52, "u"),
-    ("osc2_coarse",        53, "pair"),
-    ("osc2_fine",          55, "pair"),
+    ("osc2_pw",            52, "s"),
+    ("osc2_coarse",        53, "spair"),
+    ("osc2_fine",          55, "fine"),
     ("osc2_range",         57, "enum"),
-    ("osc2_glide",         58, "u"),       # CC 37
+    ("osc2_glide",         58, "enum"),    # CC 37
     ("osc_sync",           59, "bool"),
     ("patch_level",        60, "u"),       # CC 7
     ("mix_osc1",           61, "pair"),
@@ -121,62 +118,64 @@ PARAMS = [
     ("env_release",        84, "u"),
     ("lfo_waveform",       85, "enum"),
     ("lfo_rate",           86, "pair"),
-    ("lfo_clock_sync_rate", 88, "u"),      # 0..34
+    ("lfo_clock_sync_rate", 88, "enum"),   # 0..34, 64 beats .. 1/32 triplet
     ("lfo_clock_sync",     89, "bool"),
     ("lfo_key_sync",       90, "bool"),
     ("dist_amount",        91, "u"),
     ("dist_type",          92, "enum"),    # 0..2
-    ("mod_env_osc1_pitch", 93, "modp"),
-    ("mod_env_osc1_pw",    95, "mod"),
-    ("mod_env_osc2_pitch", 96, "modp"),
-    ("mod_env_osc2_pw",    98, "mod"),
+    ("mod_env_osc1_pitch", 93, "spair"),
+    ("mod_env_osc1_pw",    95, "s"),
+    ("mod_env_osc2_pitch", 96, "spair"),
+    ("mod_env_osc2_pw",    98, "s"),
     ("mod_env_amp",        99, "bool"),
-    ("mod_env_cutoff",    100, "modp"),
-    ("mod_env_dist",      102, "mod"),
-    ("mod_env_aux",       103, "mod"),
-    ("mod_lfo_osc1_pitch", 104, "modp"),
-    ("mod_lfo_osc1_pw",   106, "mod"),
-    ("mod_lfo_osc2_pitch", 107, "modp"),
-    ("mod_lfo_osc2_pw",   109, "mod"),
-    ("mod_lfo_amp",       110, "mod"),
-    ("mod_lfo_cutoff",    111, "modp"),
-    ("mod_lfo_dist",      113, "mod"),
-    ("mod_lfo_aux",       114, "mod"),
-    ("mod_seq_osc1_pitch", 115, "modp"),
-    ("mod_seq_osc1_pw",   117, "mod"),
-    ("mod_seq_osc2_pitch", 118, "modp"),
-    ("mod_seq_osc2_pw",   120, "mod"),
-    ("mod_seq_amp",       121, "mod"),
-    ("mod_seq_cutoff",    122, "modp"),
-    ("mod_seq_dist",      124, "mod"),
-    ("mod_seq_aux",       125, "mod"),
-    ("mod_vel_osc1_pitch", 126, "mod"),
-    ("mod_vel_osc1_pw",   127, "mod"),
-    ("mod_vel_osc2_pitch", 128, "mod"),
-    ("mod_vel_osc2_pw",   129, "mod"),
-    ("mod_vel_amp",       130, "mod"),
-    ("mod_vel_cutoff",    131, "mod"),
-    ("mod_vel_dist",      132, "mod"),
-    ("mod_vel_aux",       133, "mod"),
+    ("mod_env_cutoff",    100, "spair"),
+    ("mod_env_dist",      102, "s"),
+    ("mod_env_aux",       103, "s"),
+    ("mod_lfo_osc1_pitch", 104, "spair"),
+    ("mod_lfo_osc1_pw",   106, "s"),
+    ("mod_lfo_osc2_pitch", 107, "spair"),
+    ("mod_lfo_osc2_pw",   109, "s"),
+    ("mod_lfo_amp",       110, "s"),
+    ("mod_lfo_cutoff",    111, "spair"),
+    ("mod_lfo_dist",      113, "s"),
+    ("mod_lfo_aux",       114, "s"),
+    ("mod_seq_osc1_pitch", 115, "spair"),
+    ("mod_seq_osc1_pw",   117, "s"),
+    ("mod_seq_osc2_pitch", 118, "spair"),
+    ("mod_seq_osc2_pw",   120, "s"),
+    ("mod_seq_amp",       121, "s"),
+    ("mod_seq_cutoff",    122, "spair"),
+    ("mod_seq_dist",      124, "s"),
+    ("mod_seq_aux",       125, "s"),
+    ("mod_vel_osc1_pitch", 126, "s"),
+    ("mod_vel_osc1_pw",   127, "s"),
+    ("mod_vel_osc2_pitch", 128, "s"),
+    ("mod_vel_osc2_pw",   129, "s"),
+    ("mod_vel_amp",       130, "s"),
+    ("mod_vel_cutoff",    131, "s"),
+    ("mod_vel_dist",      132, "s"),
+    ("mod_vel_aux",       133, "s"),
     ("selected_routing",  134, "enum"),    # 0..31
 ]
 
 
 def _pair(msg, off):
-    """Merge an LSB at off with the 0x00/0x40 MSB flag at off+1 -> 0..255."""
-    return msg[off] + (128 if msg[off + 1] == 0x40 else 0)
+    """Join the top 7 bits at off with the low bit (bit 6) at off+1 -> 0..255."""
+    return (msg[off] & 0x7F) << 1 | msg[off + 1] >> 6
 
 
 def decode_param(msg, offset, kind):
     """Decode one parameter from a 136-byte message by its kind (see PARAMS)."""
     if kind in ("u", "enum", "bool"):
         return msg[offset]
-    if kind == "oct":
+    if kind == "s":
         return msg[offset] - 64
     if kind == "pair":
         return _pair(msg, offset)
-    if kind in ("mod", "modp"):
-        return msg[offset] - 64
+    if kind == "spair":
+        return _pair(msg, offset) - 128
+    if kind == "fine":
+        return _pair(msg, offset) - 100
     raise ValueError("unknown kind %r" % kind)
 
 
