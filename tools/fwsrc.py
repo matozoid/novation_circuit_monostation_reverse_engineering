@@ -9,6 +9,7 @@ files.tsv (which address ranges become which .s file; the rest goes into gap_*.s
     python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/fwsrc
     python3 tools/fwsrc.py build build/fwsrc build/fwsrc/firmware.bin
     cmp build/fwsrc/firmware.bin firmware/monostation-firmware-800.bin
+    python3 tools/fwsrc.py coverage        # functions named and listed in docs/source-map.md
 
 Code becomes Thumb-2 assembly: branch, literal-load and adr targets are labels, and data
 words that Ghidra marks as pointers into the image are `.word label`. Every instruction
@@ -31,6 +32,7 @@ LAYOUT = ROOT / "src" / "layout.tsv"
 LAYOUT_FIXES = ROOT / "src" / "layout-fixes.tsv"
 SYMBOLS = ROOT / "src" / "symbols.tsv"
 FILES = ROOT / "src" / "files.tsv"
+SOURCE_MAP = ROOT / "docs" / "source-map.md"
 CPU_FLAGS = ["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
 TOOL = "arm-none-eabi-"
 IMAGE_HEADER = 0x1AC    # "MAIN" + BCD version: the bootloader reads it at this image offset
@@ -812,6 +814,14 @@ def shift_test(image_path, pads, relax=False, keep=None, files_path=FILES):
     return len(gen.items), shift_check(gen, data, amap)
 
 
+def coverage(layout, names, doc_text):
+    """(functions, unnamed, undocumented): the layout's function entries, those without a
+    symbols.tsv name, and those whose address is not in the source map as `XXXXXXXX`."""
+    functions = sorted(layout.functions)
+    return (functions, [a for a in functions if a not in names],
+            [a for a in functions if f"`{a:08X}`" not in doc_text])
+
+
 def first_difference(a, b):
     for n, (x, y) in enumerate(zip(a, b)):
         if x != y:
@@ -842,6 +852,11 @@ def main(argv=None):
     b.add_argument("srcdir", type=Path)
     b.add_argument("out", type=Path)
     b.add_argument("--compare", type=Path, help="image the build must equal")
+    c = sub.add_parser("coverage", help="count functions with a name and a source-map entry")
+    c.add_argument("--layout", type=Path, default=LAYOUT)
+    c.add_argument("--symbols", type=Path, default=SYMBOLS)
+    c.add_argument("--doc", type=Path, default=SOURCE_MAP)
+    c.add_argument("--list", action="store_true", help="print the missing addresses")
     args = parser.parse_args(argv)
 
     if args.cmd == "generate":
@@ -850,6 +865,16 @@ def main(argv=None):
         print(f"{args.outdir}: {stats['insns']} instructions ({stats['inst']} as .inst), "
               f"{stats['words']} pointer words, {stats['files']} files "
               f"({stats['exported']} labels used across files)")
+    elif args.cmd == "coverage":
+        doc = args.doc.read_text() if args.doc.exists() else ""
+        functions, unnamed, undocumented = coverage(load_layout(args.layout),
+                                                    load_symbols(args.symbols), doc)
+        print(f"{len(functions)} functions: {len(functions) - len(unnamed)} named, "
+              f"{len(functions) - len(undocumented)} in {args.doc.name}")
+        if args.list:
+            for label, addrs in (("unnamed", unnamed), ("undocumented", undocumented)):
+                for a in addrs:
+                    print(f"{label} {a:#010x}")
     elif args.cmd == "shift":
         pads = {}
         for spec in args.pad:

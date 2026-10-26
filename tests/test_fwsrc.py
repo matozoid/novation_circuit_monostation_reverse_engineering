@@ -60,6 +60,13 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(names[0x08017F1C], "clock_engine")
         self.assertEqual(names[0x080202A0], "sysex_dispatch")
 
+    def test_every_function_named_and_documented(self):
+        functions, unnamed, undocumented = fwsrc.coverage(
+            fwsrc.load_layout(), fwsrc.load_symbols(), fwsrc.SOURCE_MAP.read_text())
+        self.assertGreater(len(functions), 800)
+        self.assertEqual([f"{a:#010x}" for a in unnamed], [])
+        self.assertEqual([f"{a:#010x}" for a in undocumented], [])
+
     def test_symbols_rejects_duplicates(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "symbols.tsv"

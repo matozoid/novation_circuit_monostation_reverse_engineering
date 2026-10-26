@@ -3,75 +3,76 @@
 # left out become gap_<start>.s. A range must start on a layout unit, and only wide
 # branches (bl, b.w) and data words may refer across files.
 # Only ranges with evidence for their extent: the image has no source file names.
-# cu_<start>: app code from one linker input section to the next. The linker fills with
-# 00 00 up to a 4-aligned section; gas pads inside a section with 00 bf. A cu_ range can
-# hold several compile units whose boundaries leave no pad.
+# App files run from one linker input section to the next and are named for what they hold
+# (docs/source-map.md). The linker fills with 00 00 up to a 4-aligned section; gas pads
+# inside a section with 00 bf. An app file can hold several compile units whose
+# boundaries leave no pad.
 
 0800c000 0800c1ac vectors                vector table: 107 words up to the image header
 0800c1ac 0800c1d0 image_header           "MAIN" + BCD version, read by the bootloader (sysex-handlers.md)
 0800c1d0 0800c230 crtbegin               __do_global_dtors_aux, frame_dummy: the .fini/.init_array entries
-0800c230 0801264c cu_0800c230            after crtbegin; no pad up to 0x0801264C
-0801264c 080126e8 cu_0801264c            after linker fill 00 00
-080126e8 080127b4 cu_080126e8            after linker fill 00 00
-080127b4 080128a4 cu_080127b4            after linker fill 00 00
-080128a4 08012a88 cu_080128a4            after linker fill 00 00
-08012a88 08013218 cu_08012a88            after linker fill 00 00
-08013218 0801392c cu_08013218            after linker fill 00 00
-0801392c 08014948 cu_0801392c            after linker fill 00 00
-08014948 08014c48 cu_08014948            after linker fill 00 00
-08014c48 08014d58 cu_08014c48            after linker fill 00 00
-08014d58 08014dfc cu_08014d58            after linker fill 00 00
-08014dfc 08014f80 cu_08014dfc            after linker fill 00 00
-08014f80 080150a4 cu_08014f80            after linker fill 00 00
-080150a4 0801548c cu_080150a4            after linker fill 00 00
-0801548c 08015d40 cu_0801548c            after linker fill 00 00
-08015d40 08015e48 cu_08015d40            after linker fill 00 00
-08015e48 08016e78 cu_08015e48            after linker fill 00 00
-08016e78 08017a74 cu_08016e78            after linker fill 00 00
-08017a74 080186b8 cu_08017a74            after linker fill 00 00
-080186b8 08018b90 cu_080186b8            after linker fill 00 00
-08018b90 08018ee8 cu_08018b90            after linker fill 00 00
-08018ee8 080192a4 cu_08018ee8            after linker fill 00 00
-080192a4 08019430 cu_080192a4            after linker fill 00 00
-08019430 0801985c cu_08019430            after linker fill 00 00
-0801985c 08019d90 cu_0801985c            after linker fill 00 00
-08019d90 08019e94 cu_08019d90            after linker fill 00 00
-08019e94 0801a348 cu_08019e94            after linker fill 00 00
-0801a348 0801a534 cu_0801a348            after linker fill 00 00
-0801a534 0801a790 cu_0801a534            after linker fill 00 00
-0801a790 0801ab50 cu_0801a790            after linker fill 00 00
-0801ab50 0801aecc cu_0801ab50            after linker fill 00 00
-0801aecc 0801aef4 cu_0801aecc            after linker fill 00 00
-0801aef4 0801b0bc cu_0801aef4            after linker fill 00 00
-0801b0bc 0801c010 cu_0801b0bc            after linker fill 00 00
-0801c010 0801d028 cu_0801c010            after linker fill 00 00
-0801d028 0801e080 cu_0801d028            after linker fill 00 00
-0801e080 0801e12c cu_0801e080            after linker fill 00 00
-0801e12c 0801e310 cu_0801e12c            after linker fill 00 00
-0801e310 0801ee24 cu_0801e310            after linker fill 00 00
-0801ee24 0801eeac cu_0801ee24            after linker fill 00 00
+0800c230 0801264c app_main               after crtbegin; no pad up to 0x0801264C
+0801264c 080126e8 pad_leds               after linker fill 00 00
+080126e8 080127b4 pad_flags              after linker fill 00 00
+080127b4 080128a4 gate_octave_views      after linker fill 00 00
+080128a4 08012a88 meter_keyboard_leds    after linker fill 00 00
+08012a88 08013218 glide_step_views       after linker fill 00 00
+08013218 0801392c pad_views              after linker fill 00 00
+0801392c 08014948 pattern_patch_views    after linker fill 00 00
+08014948 08014c48 cells                  after linker fill 00 00
+08014c48 08014d58 cell_ports             after linker fill 00 00
+08014d58 08014dfc view_base              after linker fill 00 00
+08014dfc 08014f80 view_leds              after linker fill 00 00
+08014f80 080150a4 mode_view_misc         after linker fill 00 00
+080150a4 0801548c osc_mixer_views        after linker fill 00 00
+0801548c 08015d40 synth_views            after linker fill 00 00
+08015d40 08015e48 knob_flag_leds         after linker fill 00 00
+08015e48 08016e78 synth_views_transport  after linker fill 00 00
+08016e78 08017a74 patch_params           after linker fill 00 00
+08017a74 080186b8 clock                  after linker fill 00 00
+080186b8 08018b90 midi_in_out            after linker fill 00 00
+08018b90 08018ee8 sysex_patch_session    after linker fill 00 00
+08018ee8 080192a4 settings               after linker fill 00 00
+080192a4 08019430 session_ctl_save       after linker fill 00 00
+08019430 0801985c session_globals        after linker fill 00 00
+0801985c 08019d90 session_ctl_usb_user   after linker fill 00 00
+08019d90 08019e94 usbd_desc              after linker fill 00 00
+08019e94 0801a348 usbd_core_a            after linker fill 00 00
+0801a348 0801a534 usbd_core_b            after linker fill 00 00
+0801a534 0801a790 usbd_midi              after linker fill 00 00
+0801a790 0801ab50 system_init            after linker fill 00 00
+0801ab50 0801aecc drivers_a              after linker fill 00 00
+0801aecc 0801aef4 tempo_midiout          after linker fill 00 00
+0801aef4 0801b0bc nor_async_a            after linker fill 00 00
+0801b0bc 0801c010 drivers_seq            after linker fill 00 00
+0801c010 0801d028 nor_async_router       after linker fill 00 00
+0801d028 0801e080 synth_math             after linker fill 00 00
+0801e080 0801e12c midi_send              after linker fill 00 00
+0801e12c 0801e310 io_helpers             after linker fill 00 00
+0801e310 0801ee24 controls_stdperiph     after linker fill 00 00
+0801ee24 0801eeac identity               after linker fill 00 00
 0801eeac 0801eefc syscalls               newlib stubs: _read, _fstat (S_IFCHR), _sbrk (limit 0x200235B8, bkpt #1), _write (drops output), _lseek, _isatty, _close
-0801eefc 0801fac4 cu_0801eefc            after linker fill 00 00
-0801fac4 08020278 cu_0801fac4            after linker fill 00 00
-08020278 08020b04 cu_08020278            after linker fill 00 00
-08020b04 08020ea0 cu_08020b04            after linker fill 00 00
-08020ea0 08021128 cu_08020ea0            after linker fill 00 00
-08021128 0802129c cu_08021128            after linker fill 00 00
-0802129c 0802284c cu_0802129c            after linker fill 00 00
-0802284c 080229f8 cu_0802284c            after linker fill 00 00
-080229f8 08022ed8 cu_080229f8            after linker fill 00 00
-08022ed8 08023324 cu_08022ed8            after linker fill 00 00
-08023324 08023370 cu_08023324            after linker fill 00 00
-08023370 08023a78 cu_08023370            after linker fill 00 00
+0801eefc 0801fac4 irq_calibration        after linker fill 00 00
+0801fac4 08020278 pattern_ctl            after linker fill 00 00
+08020278 08020b04 sysex                  after linker fill 00 00
+08020b04 08020ea0 midi_tx                after linker fill 00 00
+08020ea0 08021128 player_ctors           after linker fill 00 00
+08021128 0802129c recorder_ctor          after linker fill 00 00
+0802129c 0802284c synth_updates          after linker fill 00 00
+0802284c 080229f8 ui_stack               after linker fill 00 00
+080229f8 08022ed8 keyboard_step_ui       after linker fill 00 00
+08022ed8 08023324 recorder               after linker fill 00 00
+08023324 08023370 clock_timestamps       after linker fill 00 00
+08023370 08023a78 players                after linker fill 00 00
 08023a78 08024070 stm32f4xx_it           IRQ and fault handlers in ST's stm32f4xx_it.c order, reversed (NMI_Handler last)
-08024070 080240b0 cu_08024070            after stm32f4xx_it
-080240b0 08024218 cu_080240b0            after linker fill 00 00
-08024218 0802434c cu_08024218            after linker fill 00 00
-0802434c 08024690 cu_0802434c            after linker fill 00 00
-08024690 08024adc cu_08024690            after linker fill 00 00
-08024adc 080256f4 cu_08024adc            after linker fill 00 00
-080256f4 08025928 cu_080256f4            after linker fill 00 00
-08025928 08025e60 cu_08025928            after linker fill 00 00
+08024070 080240b0 soft_timers            after stm32f4xx_it
+080240b0 08024218 nor_regs               after linker fill 00 00
+08024218 0802434c nor_ctl                after linker fill 00 00
+0802434c 08024690 nor_fsm_ring           after linker fill 00 00
+08024690 08024adc nor_io_pins            after linker fill 00 00
+08024adc 080256f4 calibration_dac        after linker fill 00 00
+080256f4 08025928 global_ctors           after linker fill 00 00
+08025928 08025e60 view_ctors             after linker fill 00 00
 08025e60 08025eac startup                Reset_Handler + Default_Handler (CMSIS startup_stm32f4xx.s)
 08025eac 08025ebc libstdcxx_new_handler  std::get_new_handler: loads __new_handler (0x200035A8) with dmb
 08025ebc 08025ec0 libstdcxx_new_opv      operator new[]: b.w operator new
