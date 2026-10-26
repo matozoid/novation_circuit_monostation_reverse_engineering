@@ -31,6 +31,7 @@ LAYOUT_FIXES = ROOT / "src" / "layout-fixes.tsv"
 SYMBOLS = ROOT / "src" / "symbols.tsv"
 CPU_FLAGS = ["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
 TOOL = "arm-none-eabi-"
+IMAGE_HEADER = 0x1AC    # "MAIN" + BCD version: the bootloader reads it at this image offset
 
 Unit = namedtuple("Unit", "kind start end dtype")      # kind: C, D or U
 Insn = namedtuple("Insn", "addr raw text")
@@ -166,6 +167,7 @@ BRANCH = re.compile(rf"^((?:bl|b)(?:{COND})?(?:\.[nw])?|cbn?z)\t(r\d+, )?(0x[0-9
 PC_LOAD = re.compile(r"^(ldr[a-z]*(?:\.w)?|vldr|ldrd)\t(.*), \[pc, #(-?\d+)\]\t@ \(?(0x[0-9a-f]+)\)?$")
 ADR = re.compile(r"^(addw?|subw?)(\.w)?\t(r\d+|sl|fp|ip|lr|sb), pc, #(\d+)\t@ \(adr [^,]+, (0x[0-9a-f]+)\)$")
 COMMENT = re.compile(r"\t@.*$")
+MARKER = "__m_"     # shift test: label on every line, named after its stock address
 
 
 def pc_target(insn):
@@ -188,17 +190,34 @@ def pc_target(insn):
     return None
 
 
-def rewrite(insn, kind, label):
+def wide_by_choice(insn, target):
+    """A 32-bit b/b<cond> whose target the 16-bit encoding would also reach."""
+    if len(insn.raw) != 4 or insn.text.startswith("bl"):
+        return False
+    offset = target - (insn.addr + 4)
+    limit = 2048 if re.match(r"^b(\.w)?\t", insn.text) else 256
+    return -limit <= offset < limit
+
+
+def rewrite(insn, kind, label, relax=False):
+    """Operand as a label. With relax, a branch loses its width suffix so gas picks the
+    encoding (and widens it when code moves). Literal loads and adr keep their width:
+    gas never shrinks a relaxed instruction, and in one large file its first estimates
+    widen some loads. A fixed narrow load that ends up out of range is an assembler error."""
     t = insn.text
     if kind == "branch":
         m = BRANCH.match(t)
-        return f"{m.group(1)}\t{m.group(2) or ''}{label}"
+        op = re.sub(r"\.[nw]$", "", m.group(1)) if relax else m.group(1)
+        return f"{op}\t{m.group(2) or ''}{label}"
     if kind == "load":
         m = PC_LOAD.match(t)
-        return f"{m.group(1)}\t{m.group(2)}, {label}"
+        op = m.group(1)
+        if len(insn.raw) == 2 and not op.endswith(".w"):
+            op += ".n"
+        return f"{op}\t{m.group(2)}, {label}"
     if kind == "adr":
         m = ADR.match(t)
-        wide = ".w" if len(insn.raw) == 4 else ""
+        wide = ".w" if len(insn.raw) == 4 else ".n"
         return f"adr{wide}\t{m.group(3)}, {label}"
     raise ValueError(kind)
 
@@ -256,8 +275,10 @@ def probe(groups, workdir):
 # --- generation --------------------------------------------------------------------------
 
 class Generator:
-    def __init__(self, image, layout, names, code):
-        self.image, self.layout, self.code = image, layout, code
+    def __init__(self, image, layout, names, code, relax=False, pads=None, markers=False):
+        self.image, self.layout, self.code, self.relax = image, layout, code, relax
+        self.pads = dict(pads or {})    # address -> bytes inserted before it (shift test)
+        self.markers = markers          # label every line M_<address> (shift test)
         self.end = LOAD_ADDRESS + len(image)
         self.functions = set(layout.functions)
         self.symbols = names
@@ -267,7 +288,9 @@ class Generator:
         self.unit_starts = [u.start for u in layout.units]
         self.labels = {}            # address -> label
         self.aliases = set()        # function entries that also need a plain local label
-        self.stats = {"inst": 0, "insns": 0, "words": 0}
+        self.tables = {}            # jump-table entry address -> (directive, expression)
+        self.tables_base = set()    # first entry of each jump table
+        self.stats = {"inst": 0, "insns": 0, "words": 0, "tables": 0}
 
     def label(self, addr):
         """Label for an image address, or None when no unit boundary lies there."""
@@ -312,7 +335,29 @@ class Generator:
                 self.stats["inst"] += n not in good
         self.stats["insns"] = len(self.insn_at)
         self.plan_words()
+        self.plan_tables()
         self.plan_symbols()
+
+    def plan_tables(self):
+        """tbb/tbh tables become `(target - base)/2` like GCC emits them, so they follow
+        code that moves. The table starts right after the instruction (base = its pc); an
+        entry that is no forward target inside the code (the pad byte) stays a number."""
+        for addr, i in self.insn_at.items():
+            if not i.text.startswith(("tbb\t", "tbh\t")):
+                continue
+            size, directive = (1, ".byte") if i.text.startswith("tbb") else (2, ".short")
+            base = addr + 4
+            self.tables_base.add(base)
+            pos = base
+            while self.unit_kind(pos) != "C" and pos + size <= self.end:
+                value = int.from_bytes(self.image[pos - LOAD_ADDRESS:pos - LOAD_ADDRESS + size],
+                                       "little")
+                target = base + 2 * value
+                if target not in self.insn_at or target <= addr:
+                    break
+                self.tables[pos] = (directive, f"({self.label(target)} - {self.label(base)}) / 2")
+                pos += size
+            self.stats["tables"] += 1
 
     def plan_symbols(self):
         """Every name in symbols.tsv gets a label, referenced or not. It must sit on an
@@ -371,45 +416,97 @@ class Generator:
             self.text[i.addr] = inst(i)
             self.stats["inst"] += 1
         else:
-            self.text[i.addr] = rewrite(i, kind, lab)
+            # A branch that is wide although a narrow one would reach keeps its width: the
+            # linker resolved it (tail calls), so gas would choose differently.
+            relax = self.relax and not (kind == "branch" and wide_by_choice(i, target))
+            if relax and kind == "branch" and self.is_function(target):
+                # and a relaxed branch to a global symbol is always wide: use the local alias
+                self.aliases.add(target)
+                lab = f".La_{target:08x}"
+            self.text[i.addr] = rewrite(i, kind, lab, relax)
 
     def emit(self):
+        self.items = []             # (address, kind, size) of every emitted line
+        self.padded = set()
+        self.realign = False        # a pad since the last .p2align 2: data must align itself
         out = [f"@ Generated by tools/fwsrc.py from the firmware image; do not commit.",
                ".syntax unified", ".thumb", ".section .text.image, \"ax\", %progbits", ".p2align 2", ""]
         for u in self.layout.units:
             if u.kind == "C":
+                if self.unit_kind(u.start - 1) not in ("C", None):
+                    self.emit_pad(out, u.start)
+                    out.append("\t.p2align 1")       # code after data stays aligned
                 for i in self.code[u.start]:
                     self.emit_label(out, i.addr)
-                    out.append(f"\t{self.text[i.addr]}")
+                    self.emit_item(out, i.addr, "insn", len(i.raw), self.text[i.addr])
             else:
                 self.emit_data(out, u)
         return "\n".join(out) + "\n"
 
+    def emit_pad(self, out, addr):
+        if addr in self.pads and addr not in self.padded:
+            out.append(f"\t.space\t{self.pads[addr]}")
+            self.padded.add(addr)
+            self.realign = True
+
+    def emit_item(self, out, addr, kind, size, text):
+        if self.markers:
+            out.append(f"{MARKER}{addr:08x}:")
+        self.items.append((addr, kind, size))
+        out.append(f"\t{text}")
+
     def emit_label(self, out, addr):
+        self.emit_pad(out, addr)
         lab = self.labels.get(addr)
         if lab is None:
             return
         if self.is_function(addr):
             out += ["", f"\t.global {lab}", f"\t.thumb_func", f"\t.type {lab}, %function"]
+        elif addr in self.symbols:
+            out += ["", f"\t.global {lab}", f"\t.type {lab}, %object"]
         out.append(f"{lab}:")
         if addr in self.aliases:
             out.append(f".La_{addr:08x}:")
 
     def emit_data(self, out, u):
         pos = u.start
+        self.emit_pad(out, pos)
+        after_code = self.unit_kind(pos - 1) == "C"
+        if (after_code or self.realign) and pos not in self.tables:
+            # Data keeps its alignment when code moves (data after data moves with it,
+            # unless bytes were inserted). At the stock address the directive adds no
+            # bytes, or, for a pool after code, the same `nop` pad (00 bf) the compiler
+            # put there.
+            pad = after_code and pos % 4 == 2 and u.end >= pos + 2 \
+                and pos not in self.labels \
+                and self.image[pos - LOAD_ADDRESS:pos - LOAD_ADDRESS + 2] == b"\x00\xbf"
+            if pos % 4 == 0 or pad:
+                out.append("\t.p2align 2")
+                self.realign = False
+                pos += 2 if pad else 0
+            elif pos % 2 == 0:
+                out.append("\t.p2align 1")
         while pos < u.end:
             self.emit_label(out, pos)
+            if pos in self.tables:
+                directive, expr = self.tables[pos]
+                size = 2 if directive == ".short" else 1
+                self.emit_item(out, pos, "table", size, f"{directive}\t{expr}")
+                pos += size
+                continue
             if pos in self.words and pos + 4 <= u.end:
-                out.append(f"\t.word\t{self.words[pos]}")
+                self.emit_item(out, pos, "word", 4, f".word\t{self.words[pos]}")
                 self.stats["words"] += 1
                 pos += 4
                 continue
             stop = pos + 1
             while stop < u.end and stop - pos < 16 and stop not in self.labels \
-                    and stop not in self.words:
+                    and stop not in self.words and stop not in self.tables \
+                    and stop not in self.pads:
                 stop += 1
             chunk = self.image[pos - LOAD_ADDRESS:stop - LOAD_ADDRESS]
-            out.append("\t.byte\t" + ", ".join(f"0x{b:02x}" for b in chunk))
+            self.emit_item(out, pos, "bytes", len(chunk),
+                           ".byte\t" + ", ".join(f"0x{b:02x}" for b in chunk))
             pos = stop
 
 
@@ -420,22 +517,35 @@ SECTIONS
     . = {LOAD_ADDRESS:#x};
     .text : {{ KEEP(*(.text.image)) }}
 }}
+ASSERT(image_header == {LOAD_ADDRESS + IMAGE_HEADER:#x},
+       "image header moved: the bootloader reads it at image offset {IMAGE_HEADER:#x}")
 """
 
 
-def generate(image_path, outdir, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES):
+def plan_source(image_path, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
+                **options):
+    """A Generator with every instruction and label planned; options go to Generator."""
     image = Path(image_path).read_bytes()
     layout = load_layout(layout_path, fixes)
     check_layout(layout, len(image))
     code = disassemble(image_path, layout)
-    gen = Generator(image, layout, load_symbols(symbols_path), code)
-    outdir = Path(outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
+    gen = Generator(image, layout, load_symbols(symbols_path), code, **options)
     with tempfile.TemporaryDirectory() as tmp:
         gen.plan(tmp)
-    # labels used by .word are only known after plan; emit afterwards
+    return gen
+
+
+def write_source(gen, outdir):
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "firmware.s").write_text(gen.emit())
     (outdir / "firmware.ld").write_text(LINKER_SCRIPT)
+
+
+def generate(image_path, outdir, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
+             relax=False):
+    gen = plan_source(image_path, layout_path, symbols_path, fixes, relax=relax)
+    write_source(gen, outdir)
     return gen.stats
 
 
@@ -451,6 +561,109 @@ def build(srcdir, out_bin):
                    check=True)
     subprocess.run([TOOL + "objcopy", "-O", "binary", str(elf), str(out_bin)], check=True)
     return Path(out_bin).read_bytes()
+
+
+# --- shift test: move code, check that every reference follows ----------------------------
+
+def address_map(elf):
+    """Stock address -> new address, from the shift test's line markers."""
+    out = subprocess.run([TOOL + "nm", str(elf)], check=True, capture_output=True,
+                         text=True).stdout
+    amap = {}
+    for line in out.splitlines():
+        value, _, name = line.split()
+        if name.startswith(MARKER):
+            amap[int(name[len(MARKER):], 16)] = int(value, 16)
+    return amap
+
+
+def normalize(insn, kind):
+    """Instruction text without addresses and offsets (and a branch without its width)."""
+    t = re.sub(r"#-?\d+|0x[0-9a-f]+", "", COMMENT.sub("", insn.text))
+    return re.sub(r"^(\w+)\.[nw]\t", r"\1\t", t) if kind == "branch" else t
+
+
+def shift_check(gen, new_image, amap):
+    """Differences between a moved build and what the stock image says it must be. gen is
+    the Generator that emitted it (with markers); amap comes from address_map()."""
+    old_image, errors = gen.image, []
+    keys = sorted(amap)
+
+    def moved(addr):
+        if addr in amap:
+            return amap[addr]
+        k = keys[bisect.bisect_right(keys, addr) - 1]
+        return amap[k] + addr - k
+
+    def new_bytes(addr, size):
+        n = addr - LOAD_ADDRESS
+        return new_image[n:n + size]
+
+    # disassemble the new image over each code unit's new range
+    order = sorted(amap.values())
+    ranges = []
+    for u in gen.layout.units:
+        if u.kind == "C":
+            start = amap[u.start]
+            n = bisect.bisect_right(order, amap[gen.code[u.start][-1].addr])
+            ranges.append((start, order[n] if n < len(order) else LOAD_ADDRESS + len(new_image)))
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "moved.bin"
+        path.write_bytes(new_image)
+        with ThreadPoolExecutor() as pool:
+            parts = list(pool.map(lambda r: objdump_range(path, *r), ranges))
+    new_insn = {i.addr: i for part in parts for i in part}
+
+    for addr, kind, size in gen.items:
+        where = f"{addr:#010x} -> {amap[addr]:#010x}"
+        if kind == "insn":
+            old, new = gen.insn_at[addr], new_insn.get(amap[addr])
+            if new is None:
+                errors.append(f"{where}: no instruction")
+                continue
+            t, nt = pc_target(old), pc_target(new)
+            if t is None or t[1] is None:
+                if new.raw != old.raw:
+                    errors.append(f"{where}: {old.text!r} became {new.text!r}")
+            elif nt is None or nt[0] != t[0] or normalize(old, t[0]) != normalize(new, t[0]):
+                errors.append(f"{where}: {old.text!r} became {new.text!r}")
+            elif nt[1] != moved(t[1]):
+                errors.append(f"{where}: {old.text!r} targets {nt[1]:#x}, "
+                              f"want {moved(t[1]):#x}")
+            elif old.text.startswith(("tbb\t", "tbh\t")) and addr + 4 in amap \
+                    and amap[addr + 4] != amap[addr] + 4:
+                errors.append(f"{where}: jump table no longer follows {old.text!r}")
+        elif kind == "bytes":
+            if new_bytes(amap[addr], size) != old_image[addr - LOAD_ADDRESS:][:size]:
+                errors.append(f"{where}: data differs")
+        else:
+            value = int.from_bytes(old_image[addr - LOAD_ADDRESS:][:size], "little")
+            got = int.from_bytes(new_bytes(amap[addr], size), "little")
+            if kind == "word":
+                want = moved(value & ~1) + (value & 1)
+            else:       # table entry: (target - base) / 2, base = first entry
+                base = max(b for b in gen.tables_base if b <= addr)
+                want = (moved(base + 2 * value) - amap[base]) // 2
+            if got != want:
+                errors.append(f"{where}: {kind} {value:#x} became {got:#x}, want {want:#x}")
+            if kind == "word" and addr % 4 == 0 and amap[addr] % 4:
+                errors.append(f"{where}: pointer word no longer aligned")
+    return errors
+
+
+def shift_test(image_path, pads, relax=False, keep=None):
+    """Build the source with bytes inserted at the given addresses; return
+    (number of lines checked, errors)."""
+    gen = plan_source(image_path, relax=relax, pads=pads, markers=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        outdir = Path(keep or tmp)
+        write_source(gen, outdir)
+        lost = sorted(set(pads) - gen.padded)
+        if lost:
+            raise ValueError("no line starts at " + ", ".join(f"{a:#010x}" for a in lost))
+        data = build(outdir, outdir / "firmware.bin")
+        amap = address_map(outdir / "firmware.elf")
+    return len(gen.items), shift_check(gen, data, amap)
 
 
 def first_difference(a, b):
@@ -469,6 +682,14 @@ def main(argv=None):
     g.add_argument("outdir", type=Path)
     g.add_argument("--layout", type=Path, default=LAYOUT)
     g.add_argument("--symbols", type=Path, default=SYMBOLS)
+    g.add_argument("--relax", action="store_true",
+                   help="no fixed .n/.w widths: gas picks them (for code that moves)")
+    t = sub.add_parser("shift", help="insert bytes, build, check every reference follows")
+    t.add_argument("image", type=Path)
+    t.add_argument("--pad", action="append", required=True, metavar="ADDR:N",
+                   help="insert N bytes before the line at ADDR (repeatable)")
+    t.add_argument("--relax", action="store_true")
+    t.add_argument("--keep", type=Path, help="leave the moved source and build here")
     b = sub.add_parser("build", help="assemble and link a generated tree")
     b.add_argument("srcdir", type=Path)
     b.add_argument("out", type=Path)
@@ -476,9 +697,25 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.cmd == "generate":
-        stats = generate(args.image, args.outdir, args.layout, args.symbols)
+        stats = generate(args.image, args.outdir, args.layout, args.symbols, relax=args.relax)
         print(f"{args.outdir}: {stats['insns']} instructions ({stats['inst']} as .inst), "
               f"{stats['words']} pointer words")
+    elif args.cmd == "shift":
+        pads = {}
+        for spec in args.pad:
+            addr, n = spec.split(":")
+            pads[int(addr, 16)] = int(n, 0)
+        try:
+            count, errors = shift_test(args.image, pads, args.relax, args.keep)
+        except subprocess.CalledProcessError as e:
+            sys.exit(f"{e.cmd[0]} failed: the moved source does not build")
+        except ValueError as e:
+            sys.exit(str(e))
+        for e in errors[:40]:
+            print(e)
+        if errors:
+            sys.exit(f"{len(errors)} of {count} lines wrong after the shift")
+        print(f"{count} lines checked: every reference follows the shift")
     else:
         data = build(args.srcdir, args.out)
         print(f"{args.out}: {len(data)} bytes")

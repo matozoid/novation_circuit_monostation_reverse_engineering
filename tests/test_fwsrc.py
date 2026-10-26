@@ -59,6 +59,45 @@ class RoundTrip800Test(unittest.TestCase):
             built = fwsrc.build(tmp / "src", tmp / "out.bin")
         self.assertIsNone(fwsrc.first_difference(built, image))
 
+    def test_relaxed_build_identical(self):
+        image = fwsyx.decode_image(FIRMWARE_800.read_bytes())
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "stock.bin").write_bytes(image)
+            fwsrc.generate(tmp / "stock.bin", tmp / "src", relax=True)
+            built = fwsrc.build(tmp / "src", tmp / "out.bin")
+        self.assertIsNone(fwsrc.first_difference(built, image))
+
+    def test_shift(self):
+        """Bytes inserted at a function entry, mid-function (past narrow branch range) and
+        at an odd offset in data: every reference must follow."""
+        image = fwsyx.decode_image(FIRMWARE_800.read_bytes())
+        pads = {0x0800C2D0: 2, 0x08017F42: 4094, 0x0802A62E: 1}
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "stock.bin").write_bytes(image)
+            count, errors = fwsrc.shift_test(tmp / "stock.bin", pads, relax=True,
+                                             keep=tmp / "src")
+            self.assertGreater(count, 40000)
+            self.assertEqual(errors, [])
+            # the check notices a reference that did not follow
+            gen = fwsrc.plan_source(tmp / "stock.bin", relax=True, pads=pads, markers=True)
+            gen.emit()
+            amap = fwsrc.address_map(tmp / "src" / "firmware.elf")
+            moved = bytearray((tmp / "src" / "firmware.bin").read_bytes())
+            moved[amap[0x0800C004] - fwsrc.LOAD_ADDRESS] ^= 4       # reset vector
+        errors = fwsrc.shift_check(gen, bytes(moved), amap)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("0x0800c004", errors[0])
+
+    def test_image_header_cannot_move(self):
+        image = fwsyx.decode_image(FIRMWARE_800.read_bytes())
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "stock.bin").write_bytes(image)
+            with self.assertRaises(fwsrc.subprocess.CalledProcessError):
+                fwsrc.shift_test(tmp / "stock.bin", {0x0800C004: 4})
+
 
 if __name__ == "__main__":
     unittest.main()

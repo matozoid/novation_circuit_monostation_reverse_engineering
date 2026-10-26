@@ -140,6 +140,7 @@
 08018b90 midiout_param                  session-format.md
 
 # --- SysEx, update handover (sysex-handlers.md)
+0800c1ac image_header                   sysex-handlers.md
 080202a0 sysex_dispatch
 0801ee24 sysex_identity_reply
 0801a5ac usb_endpoint_stop
