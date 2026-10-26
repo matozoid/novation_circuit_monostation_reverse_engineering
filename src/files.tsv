@@ -1,0 +1,15 @@
+# Source files for tools/fwsrc.py: `start end name [evidence]`. The range [start, end)
+# becomes <name>.s, in its own section .text.<name>; the linker keeps stock order. Ranges
+# left out become gap_<start>.s. A range must start on a layout unit, and only wide
+# branches (bl, b.w) and data words may refer across files.
+# Only ranges with evidence for their extent: the image has no source file names.
+
+0800c000 0800c1ac vectors                vector table: 107 words up to the image header
+0800c1ac 0800c1d0 image_header           "MAIN" + BCD version, read by the bootloader (sysex-handlers.md)
+0800c1d0 0800c230 crtbegin               __do_global_dtors_aux, frame_dummy: the .fini/.init_array entries
+08025e60 08025eac startup                Reset_Handler + Default_Handler (CMSIS startup_stm32f4xx.s)
+08026d98 0802aec8 rodata                 constant data after the last function and its pool: session_defaults, vtables, tables, strings
+0802aec8 0802aee0 crti                   _init, _fini (newlib crti/crtn)
+0802aee0 0802aee8 init_array             frame_dummy, one static constructor (0x080256F4)
+0802aee8 0802aeec fini_array             __do_global_dtors_aux
+0802aeec 0802bb20 data                   .data load image: Reset_Handler copies it to 0x20000000-0x20000C18

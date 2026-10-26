@@ -1,8 +1,8 @@
 # Firmware source build (#43)
 
 `tools/fwsrc.py` turns the stock app image into Thumb-2 assembly that GNU as/ld rebuild
-**byte for byte**. It is the first step towards a full source tree: next comes splitting by
-subsystem, then converting functions to C one at a time.
+**byte for byte**, split into files by `src/files.tsv`. It is the first step towards a full
+source tree: next come more file ranges, then converting functions to C one at a time.
 
 ## Copyright rule
 
@@ -16,6 +16,7 @@ Each user generates it locally from their own `firmware/*.syx`/`.bin` into `buil
 | `tools/ghidra/ExportLayout.java` | Ghidra post-script that writes `src/layout.tsv` |
 | `src/layout.tsv` | Ghidra's code/data map: addresses, kinds, data refs, function entries; no image bytes |
 | `src/layout-fixes.tsv` | hand corrections applied over it (same line syntax) |
+| `src/files.tsv` | `start end name [evidence]` address ranges, one source file each (see *Files*) |
 | `src/symbols.tsv` | `addr name [note]` names from `docs/*.md` (183: vectors, runtime, sequencer, recorder, MIDI, SysEx, image header, vtables, tables) |
 
 ## Usage
@@ -24,11 +25,13 @@ Each user generates it locally from their own `firmware/*.syx`/`.bin` into `buil
     python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/fwsrc
     python3 tools/fwsrc.py build build/fwsrc build/fwsrc/firmware.bin --compare firmware/monostation-firmware-800.bin
 
-Output: `firmware.s` (one section `.text.image`) and `firmware.ld` (`. = 0x0800C000`, plus
-an `ASSERT` that `image_header` stays at image offset `0x1AC`, where the bootloader reads
-`MAIN` + version). `generate --relax` drops branch widths so gas picks them; it is also
+Output: one `<name>.s` per file (section `.text.<name>`) and `firmware.ld`
+(`. = 0x0800C000`, the sections in address order, plus an `ASSERT` that `image_header`
+stays at image offset `0x1AC`, where the bootloader reads `MAIN` + version). `generate`
+deletes `.s` files from an earlier run (first line `@ Generated …`). `--files PATH` (on
+`generate` and `shift`) uses another file list. `generate --relax` drops branch widths so gas picks them; it is also
 byte-identical on stock and is what code that moves needs (see *Relocation*).
-Build flags: `-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard`. Needs
+Build flags (`--fatal-warnings`): `-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard`. Needs
 `binutils-arm-none-eabi`. `tests/test_fwsrc.py` runs the round trip when the firmware is present.
 
 To regenerate the layout after Ghidra changes:
@@ -60,6 +63,46 @@ To regenerate the layout after Ghidra changes:
 - **Alignment.** A data unit after code gets `.p2align 2` (4-aligned at stock) or replaces
   the compiler's `00 bf` nop pad with it. Named data (`symbols.tsv`) is `.global`, `%object`.
 - **Other data** is `.byte` rows, split at labels.
+
+## Files
+
+`src/files.tsv` lists `start end name` ranges `[start, end)`. Ranges it leaves out become
+`gap_<start>.s`. The checked-in list names what the image itself shows; the image holds no
+source-file names:
+
+| File | Range | Evidence |
+|------|-------|----------|
+| `vectors` | `0800C000`–`0800C1AC` | vector table, 107 words up to the image header |
+| `image_header` | `0800C1AC`–`0800C1D0` | `MAIN` + BCD version, read by the bootloader |
+| `crtbegin` | `0800C1D0`–`0800C230` | `__do_global_dtors_aux`, `frame_dummy` (the `.fini`/`.init_array` entries) |
+| `startup` | `08025E60`–`08025EAC` | `Reset_Handler` + `Default_Handler` (CMSIS `startup_stm32f4xx.s`) |
+| `rodata` | `08026D98`–`0802AEC8` | constant data after the last function and its pool |
+| `crti` | `0802AEC8`–`0802AEE0` | `_init`, `_fini` (newlib crti/crtn) |
+| `init_array` / `fini_array` | `0802AEE0`–`0802AEEC` | `frame_dummy` + one static constructor (`0x080256F4`); `__do_global_dtors_aux` |
+| `data` | `0802AEEC`–`0802BB20` | `.data` load image (`_sidata`); `Reset_Handler` copies it to `0x20000000`–`0x20000C18` |
+
+`.bss` runs to `0x200035B8`. `Reset_Handler` calls `0x0801A848`, then
+`0x08025EE0` (`__libc_init_array`), then `main`.
+
+Rules, checked by `generate`:
+- A file starts at an instruction or at a layout unit.
+- Only wide (32-bit) branches and data words may cross files. A narrow branch, a literal
+  load, `adr` or a jump table that would cross is an error ("reference across files"):
+  those are resolved by the assembler, so they must stay in one object. On firmware 800 no
+  narrow branch crosses a function boundary, but 8 literal loads read a neighbouring
+  function's pool.
+- A local label (`.L_x`, `.La_x`) that another file uses gets a `.global` twin without the
+  dot (`L_x`, `La_x`). The other file refers to the twin; the file itself keeps the local
+  name, because gas makes a relaxed branch to a global symbol wide.
+- **Alignment.** A section is aligned to its most aligned `.p2align`, and ARM gas pads the
+  section's size to that alignment. So a file whose data needs 4-alignment, or whose code
+  has a literal load or `adr` (gas warns about `Align(PC, 4)` in a less aligned section),
+  must start and end 4-aligned; otherwise `generate` fails. Code-only files need 2. This is
+  also a clue to the real compile units: an object with a literal pool starts and ends
+  4-aligned.
+
+A split into 829 files, one per function where these rules allow, also builds
+byte-identical in both modes and passes the shift test.
 
 ## Relocation
 
@@ -95,9 +138,9 @@ lines, not meaning: an insert inside a data structure (a table, the header) pass
 
 ## Limits and next steps
 
-- **Relocation.** The shift test passes, so code can move inside the one file. Still to
-  come: per-subsystem files with global symbols (cross-file even-pointer aliases; tail calls
-  across files are wide anyway). Data words that only *look* like pointers (false positives)
+- **Relocation.** The shift test passes across files, so code can move. Still to come:
+  ranges for the code itself (subsystems; the IRQ handlers cluster at
+  `0x08023A78`–`0x0802406E`). Data words that only *look* like pointers (false positives)
   would be rewritten wrongly when code moves; pointers at unaligned offsets in packed data
   are not found at all.
 - **Names.** `src/symbols.tsv` replaces Ghidra's `FUN_`/`D_` labels. A name doesn't make
