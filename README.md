@@ -1,0 +1,125 @@
+# Circuit Mono Station firmware mods
+
+New features for the Novation Circuit Mono Station, built on top of Novation's own
+firmware 1.2, plus the reverse-engineering tools and notes that make them possible.
+
+- **Plays like stock.** Each mod changes only the behaviour it adds; everything else is
+  the original firmware, byte for byte.
+- **Easy to undo.** The bootloader is never touched, so you can always flash stock
+  firmware 1.2 back the same way.
+- **No Novation code in this repo.** You supply the stock firmware yourself; the tools
+  rebuild it from source generated on your machine.
+
+> Unofficial and unsupported by Novation. Flashing modified firmware is at your own risk.
+
+**Made with Claude.** The reverse engineering, the tools, the docs and the mods in this
+repo were all done with [Claude Code](https://claude.com/claude-code). Claude can help
+you too: open Claude Code in a checkout of this repo and ask it to walk you through
+getting the stock firmware, building a mod and flashing it. `CLAUDE.md` gives it the
+project's commands and safety rules.
+
+## Feature: context-sensitive Mutate (#39)
+
+Stock **Mutate** (Shift + Pattern Settings) shuffles whole steps. With this mod, Mutate
+in the views below changes only one property of the steps that hold a note: the rhythm
+and everything else stay as they are.
+
+| View | Open with | Mutate now |
+|------|-----------|------------|
+| Velocity | Velocity | gives each note a random velocity from the velocity pads' levels |
+| Gate | Gate | gives each note a random length, from 1/6 step up to the longest gate already in the pattern; one note keeps that longest gate, so the range holds press after press |
+| Glide | Shift + Gate | half the notes get no glide, the others a random glide level 1–15 |
+| Expand | Shift + Note | gives each note a random pitch from the notes on the 32 Expand pads: the current scale and root over four octaves (two for Chromatic) |
+
+Tips:
+
+- If no note is longer than one step, random gates go up to one step. For longer random
+  gates, first make one note as long as you want the maximum to be.
+- In Expand view the pattern is hidden: listen, or press Note to see the new notes.
+- Works on the Osc 1 and Osc 2 tracks. In the Note and Pattern Settings views, and on the
+  Mod Seq track, Mutate behaves as stock.
+
+Firmware 1.2 is build 800 inside the firmware; this mod reports build **750**. That is
+below 800 on purpose: Components offers an update to any unit below 800, so it should
+offer to install stock 1.2 (from its code; not tried yet).
+
+## What you need
+
+- A Circuit Mono Station and a USB cable.
+- Linux or macOS with Python 3.
+- `arm-none-eabi-gcc` and `binutils-arm-none-eabi` (Debian/Ubuntu:
+  `sudo apt install gcc-arm-none-eabi binutils-arm-none-eabi`).
+- For flashing: a virtualenv with `mido` and `python-rtmidi`:
+
+      python3 -m venv .venv
+      .venv/bin/pip install mido python-rtmidi
+
+- The stock firmware 1.2, `monostation-firmware-800.syx`. It ships inside Novation
+  Components 1.72.5 (`resources/app.asar`; on Windows the installer holds
+  `Components-1.72.5-full.nupkg`, which holds `lib/net45/resources/app.asar`). Unpack it
+  with an asar extractor and copy the file to `firmware/`. Don't run the installer to get
+  it; unpack it with `7z`.
+
+## Quick start
+
+Build the modded firmware:
+
+    python3 tools/syx2bin.py firmware/monostation-firmware-800.syx firmware/monostation-firmware-800.bin
+    python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/rand --overlay overlays/randomise
+    python3 tools/fwsrc.py build build/rand build/rand/firmware.bin
+    python3 tools/bin2syx.py build/rand/firmware.bin firmware/randomise-750.syx --version 750
+
+Flash it:
+
+    .venv/bin/python tools/flash.py firmware/randomise-750.syx
+
+The flasher checks the file, then waits for the unit's bootloader:
+
+1. Switch the Mono Station off.
+2. Hold **Scales + Note + Velocity** and switch it on.
+3. The flasher sends the firmware, waits for the unit to restart and checks that it
+   reports version 750.
+
+Go back to stock firmware 1.2 at any time: connect the unit to Novation Components and
+accept its firmware update, or flash it the same way:
+
+    .venv/bin/python tools/flash.py firmware/monostation-firmware-800.syx
+
+## Writing your own mods
+
+`tools/fwsrc.py` turns the stock image into Thumb-2 assembly that rebuilds byte for byte.
+An **overlay** replaces stock functions by name with your own C or assembly; the original
+stays callable as `stock_<name>`. The Mutate feature is one small C file:
+`overlays/randomise/randomise.c`, with prototypes of stock functions in
+`overlays/include/firmware.h`. See `docs/source-build.md` (*Overlays*) for the format and
+`docs/source-map.md` for what each stock function does.
+
+Generated source is Novation's code: it stays in the git-ignored `build/` directory.
+Never commit it.
+
+## Tools
+
+| Tool | What it does |
+|------|--------------|
+| `tools/syx2bin.py`, `tools/bin2syx.py` | firmware `.syx` ⇄ raw image (`docs/firmware-container.md`) |
+| `tools/fwsrc.py` | generate and rebuild firmware source, with overlays (`docs/source-build.md`) |
+| `tools/fwpatch.py` | apply small assembly patches with hooks (`docs/patching.md`) |
+| `tools/flash.py` | flash a `.syx` through the bootloader and verify it (`docs/update-protocol.md`) |
+| `tools/patchbank.py` | list and decode patches in `.monostationpack` banks (`docs/sysex-spec.md`) |
+| `tools/sessionsyx.py`, `tools/session.py` | split, rebuild and inspect session dumps (`docs/session-transport.md`, `docs/session-format.md`) |
+| `tools/fwmap.py`, `tools/disasm.py`, `tools/ghidra/` | firmware map, quick disassembly, Ghidra headless scripts |
+
+## Documentation
+
+- `docs/hardware.md`: MCU, memory map, flash sectors, free RAM.
+- `docs/bootloader.md`, `docs/update-protocol.md`: bootloader and firmware updates.
+- `docs/sequencer.md`: clock, patterns, note routing.
+- `docs/sysex-spec.md`, `docs/sysex-handlers.md`: patch format and SysEx commands.
+- `issues.md`: open work, feature ideas and established facts.
+
+## Tests
+
+    python3 -m unittest discover -s tests -v
+
+Firmware tests skip when `firmware/monostation-firmware-800.syx` is missing; overlay
+tests skip without `arm-none-eabi-gcc`.

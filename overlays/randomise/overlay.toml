@@ -3,6 +3,7 @@
 # note a random value for that field only (Expand: a note from its pads). In every other
 # view, and on the mod-seq track, Mutate stays stock and shuffles whole steps.
 base = 800
-version = 806
+# Below 800 (firmware 1.2) and above 745 (1.1), so Components offers to restore stock 1.2.
+version = 750
 sources = ["randomise.c"]
 replace = ["ui_button_event"]

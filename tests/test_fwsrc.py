@@ -153,8 +153,8 @@ class Overlay800Test(unittest.TestCase):
         fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[RANDOMISE])
         built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
         changed = [i for i in range(len(self.image)) if built[i] != self.image[i]]
-        self.assertEqual(changed, [0x1B0, 0x1BB24, 0x1BB25, 0x1BB26])
-        self.assertEqual(built[0x1B0], 0x06)
+        self.assertEqual(changed, [0x1B0, 0x1B1, 0x1BB24, 0x1BB25, 0x1BB26])
+        self.assertEqual(built[0x1B0:0x1B2], b"\x50\x07")
         slot = int.from_bytes(built[0x1BB24:0x1BB28], "little")
         self.assertEqual(slot, 0x0802BB20 | 1)
 
