@@ -330,14 +330,14 @@ The LFO is digital, so new shapes (S&H variants, random, ramp) are firmware-only
 Candidates: per-step probability, ratchets, extra scales, and longer or chained patterns. Before deciding scope, measure the remaining RAM and flash headroom and check the session format constraints (#13).
 
 ### #23 Feature request intake
-Collect the features the user actually wants and turn each one into an issue once #10 shows what is feasible. The first external list became #32–#42.
+Collect the features the user actually wants and turn each one into an issue once #10 shows what is feasible. The first external list became #32–#42. Owner forums and reviews (2026-10-26) added #44–#53.
 
 ## Feature requests (external list, 2026-10-25)
 
 From a third-party wish list, one issue per item. All of them depend on #17 (patching infrastructure) and on free RAM and flash. Anything that stores new per-step data has to fit the session format (#13, `docs/session-format.md`) or extend it in a way Components still accepts.
 
 ### #32 Micro-step note timing (off-grid notes, trills, ratchets)
-Move notes off the 16-step grid and allow repeats within a step. The session already has a finer grid for automation: each lane holds 96 values, 16 steps × 6 micro-steps. Note steps have no such field yet. Check first whether the playback routine `FUN_080234AC` can schedule a note at micro-step resolution, and where a per-step offset or repeat count could live. *Found (`docs/sequencer.md`):* note-ons fire only when the step cell changes, but note-offs already run on a tick-resolution delta list (8 slots), which a delayed note-on or ratchet could share. Overlaps the ratchet idea in #22.
+Move notes off the 16-step grid and allow repeats within a step. The session already has a finer grid for automation: each lane holds 96 values, 16 steps × 6 micro-steps. Note steps have no such field yet. Check first whether the playback routine `FUN_080234AC` can schedule a note at micro-step resolution, and where a per-step offset or repeat count could live. *Found (`docs/sequencer.md`):* note-ons fire only when the step cell changes, but note-offs already run on a tick-resolution delta list (8 slots), which a delayed note-on or ratchet could share. Overlaps the ratchet idea in #22. Owners ask for ratchets too (2026-10-26); a repeat count per step that reuses the note-off delta list is the smallest first step.
 
 ### #33 Unquantised recording
 Record live notes at their real timing instead of snapping them to the nearest step. Needs #32's micro-step offset, or something like it, for storage. The live-input path into the recorder is mapped (`docs/sequencer.md` *Note routing*: keys and MIDI in reach `FUN_0802345C`, which forwards to per-track recorders built by `FUN_08021128`). *Found (`docs/sequencer.md` *Recording*):* a note-on only makes the note pending. The recorder places it at the next half-step crossing, so it snaps to the nearest step (`FUN_08021844`, half of `ticks[rate]`). On release, `FUN_08021334` writes note, velocity and gate. The gate is already measured in micro-steps (1/6 step). The raw 16-bit start tick stays in the recorder's per-note slot, so the off-grid offset is available right where the step is written, and the stock code throws it away. A patch needs only a place to store that offset (#32) and a playback change that delays the note-on.
@@ -379,3 +379,44 @@ Find the LFO code and its rate table first. Related to #21.
 
 ### #43 Firmware source tree
 Turn the image into source that can be edited and rebuilt, so features can be written as code rather than patches. Plan: byte-identical reassemblable assembly first, then split it by subsystem and convert functions to C one at a time. Each converted function is marked matching, or "equivalent, not matching". The source is Novation's code, so it is generated locally and never checked in; only the generator and metadata are committed (`docs/source-build.md`). *Status:* `tools/fwsrc.py` rebuilds firmware 800 byte for byte from generated assembly. All 40,476 instructions are text (no `.inst`), branch, literal and adr targets are labels, and 1,444 data words are symbolic pointers. `src/symbols.tsv` names 230 documented functions, vectors, library functions, vtables and tables (`clock_engine`, `sysex_dispatch`, `player_on_cell`, …). The source is relocatable: jump tables are symbolic, data keeps its alignment, `generate --relax` leaves branch widths to gas (also byte-identical), and `fwsrc.py shift` inserts bytes and checks that every branch, literal, table and pointer follows. `src/files.tsv` splits the source into files: vectors, image header, crt, syscalls, `stm32f4xx_it`, startup, one file per libstdc++/newlib-nano object (`docs/firmware-map.md` *Runtime libraries*), rodata and `.data`, split into app and libc parts. The app code is split into 60 `cu_<start>` files at the `00 00` linker fills between input sections (no `-ffunction-sections`, so each is one or more compile units), leaving no gap files; only wide branches and data cross files, and files with literal pools must be 4-aligned. Overlays (`overlays/<name>/`, `generate --overlay`) replace stock functions by name: the stock body stays as `stock_<name>` and every wide branch and pointer is redirected to our code after the image; `overlays/hello` builds the same image as the device-tested `patches/hello`. Overlays can be `.s` or C (`overlays/hello_c`, same image). Next: finer compile-unit boundaries inside the app files, prototypes in `overlays/include/firmware.h`.
+
+## Feature requests (owner forums and reviews, 2026-10-26)
+
+Collected from owner posts and reviews; requests already tracked (micro-steps/ratchets #32, unquantised and step-time recording #33/#34, probability #35, arpeggiator #36, roll #37, Osc 2 track for external gear #38, per-step mod shapes #40, AFX mode #41) are not repeated. Already shipped by Novation and so dropped: per-step patch changes (Patch Flip, v1.2) and a reset for mod depths (v1.1). Out of reach for firmware: a screen, delay/reverb or drums (the audio path is analogue), USB audio, bus or battery power. Sources:
+- Gearspace thread *Novation Circuit Mono Station* (wish list on p. 4–5 and 10–12): https://gearspace.com/board/electronic-music-instruments-and-electronic-music-production/1149981-novation-circuit-mono-station-11.html
+- ModWiggler thread: https://www.modwiggler.com/forum/viewtopic.php?t=224260&start=25
+- *Women and Dreams* blog review (2025-10): http://women-and-dreams.blogspot.com/2025/10/novation-circuit-mono-station-fat-bread.html
+- SonicScoop review: https://sonicscoop.com/new-gear-review-circuit-mono-station-novation/
+- Elektronauts thread: https://www.elektronauts.com/t/novation-circuit-monostation/38578 and *DT controlling CC midi for Circuit Mono Station*: https://www.elektronauts.com/t/dt-controlling-cc-midi-for-circuit-mono-station/132747
+
+Gearspace and ModWiggler refuse automated fetches, so their items come from search snippets; read the threads by hand before scoping.
+
+### #44 Sequencer track routing (Osc 2 follows the Osc 1 track)
+Owners ask for the opposite of #38: let both oscillators play from the Osc 1 track, so the Osc 2 track is free for external MIDI. One ModWiggler user mailed Novation for it ("osc1 seq for 0-coast/midi out, osc2 seq for monostation and mod seq for DFAM/CV"), and a reviewer wished for freely assignable sequencer channels. General form: a per-session map from track (Osc 1, Osc 2, Mod) to destinations (Osc 1, Osc 2, MIDI channel, CV/gate). Same split point as #38: the per-track merger stages (`docs/sequencer.md` *Note routing*).
+
+### #45 Play the keys without interrupting the sequence
+Pressing a key while a pattern plays takes over the oscillator ("pressing keys interrupts the sequence", "no way to cue up notes silently"). Options: audition notes silently while the pattern plays, or play the keys on top of the sequence, which only works for Osc 2 while Osc 1 plays. Look at where live keys and sequencer notes meet in the note router (`FUN_0802345C`, `docs/sequencer.md`).
+
+### #46 Edit a pattern while a chain plays
+The pattern view follows the playing pattern: to edit pattern 1 of a 1-2-3-4 chain, you wait for the chain to loop back to it. Wanted: pin the view to a chosen pattern while playback keeps running. It needs the view to read a "viewed pattern" instead of the playing one, and the step editors to write there.
+
+### #47 Flexible pattern chains
+Chains step through adjacent patterns in order only; reviewers compare this unfavourably with the Circuit. Wanted: any order, and a repeat count per pattern (e.g. 1-1-1-2). Needs storage per chain entry in the session (#13, `docs/session-format.md`) and a change where the step position wraps (`FUN_0801B698`).
+
+### #48 Live transpose of the sequence
+Transpose the playing pattern from the keyboard or by incoming MIDI notes, the way many monosynth sequencers do (requested in the blog review). Hold a key or a Shift combination to set the offset, then add it to sequencer notes on their way to the oscillators and MIDI out. The offset must stay in the selected scale.
+
+### #49 MIDI-in notes outside the scale
+Incoming MIDI notes are forced into the selected scale, so you must switch to chromatic to play every note from an external keyboard or DAW. Wanted: a setting where MIDI notes bypass the scale and keys and the sequencer keep it. Find the scale mapping on the MIDI-in path (`midi_in_out`, `docs/source-map.md`).
+
+### #50 Pattern select and program change out over MIDI
+A session can be chosen by program change on channel 16, but a pattern can't be chosen over MIDI (Elektronauts), and the unit never sends program changes. Wanted: pattern select from MIDI (CC or program change per track) and, optionally, program change out when a patch or session changes, so an external sequencer or DAW can follow and drive song structure.
+
+### #51 Second LFO
+One LFO and one envelope are the main modulation complaint ("you can't combine a slow-running filter sweep with fast-moving pulse width modulation"). The LFO is digital, so a second LFO with its own rate, shape and depth row in the mod matrix is firmware-only, if CPU time and the per-destination control rate allow it. Related to #21 and #42. Needs patch storage, perhaps in the reserved bytes 27–40.
+
+### #52 Static pulse width
+The blog review says "Pulse width has to be modulated". The patch has `osc1_pw`/`osc2_pw` (offsets 43/52, `tools/patchbank.py`), so first check on the unit and in the firmware how they are set from the panel and what they do without modulation. If a fixed width can't be dialled in today, map it to a knob or Shift combination.
+
+### #53 Record patch changes into the sequencer
+Patch Flip (v1.2) assigns patches to steps by hand, one step at a time. Wanted: while recording, a press on the patch-select page is written to the current step as a patch change, so a pattern of patch changes can be played in live, e.g. a drum beat played on kick/snare/hat patches. Needs: where Patch Flip keeps its per-step patch numbers in the session (#13, `docs/session-format.md`), the recording path that writes notes on the current step (#33), and a hook on the patch-select pads during record. Patch loads must be fast enough to follow 16th notes; measure the time from pad press to new sound.
