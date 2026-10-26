@@ -77,6 +77,7 @@ source-file names:
 | `crtbegin` | `0800C1D0`–`0800C230` | `__do_global_dtors_aux`, `frame_dummy` (the `.fini`/`.init_array` entries) |
 | `syscalls` | `0801EEAC`–`0801EEFC` | newlib stubs `_read` … `_close` |
 | `stm32f4xx_it` | `08023A78`–`08024070` | IRQ and fault handlers, in ST's `stm32f4xx_it.c` order reversed (`NMI_Handler` last) |
+| `cu_<start>` | `0800C230`–`08025E60` (60 ranges) | app code between linker input sections: each starts after a `00 00` linker fill that follows code (see below) |
 | `startup` | `08025E60`–`08025EAC` | `Reset_Handler` + `Default_Handler` (CMSIS `startup_stm32f4xx.s`) |
 | `libstdcxx_*`, `libc_*` | `08025EAC`–`08026D94` | one file per library object (`docs/firmware-map.md` *Runtime libraries*) |
 | `rodata` | `08026D94`–`0802AE30` | app constant data; `D_08026D94` is read by app code |
@@ -107,6 +108,15 @@ Rules, checked by `generate`:
   also a clue to the real compile units: an object with a literal pool starts and ends
   4-aligned. Another clue: `stm32f4xx_it.c`'s handlers appear in reverse source order,
   so GCC probably emitted every unit's functions last to first.
+- **Input sections.** The linker fills the gap before a 4-aligned input section with
+  `00 00`; gas pads inside a section with `00 bf` (`nop`). 58 app functions follow code
+  plus a `00 00` fill, so each starts a new input section and a `cu_` file; the other two
+  `cu_` files start after `crtbegin` and `stm32f4xx_it`. 4 follow a `00 bf` pad
+  (`main`, `0x080114C0`, `recorder_on_cell`, `session_ctl_patch_write`), so one section
+  holds several functions: the app was built without `-ffunction-sections`, and an
+  input section is a whole compile unit. A boundary into a 2-aligned section, or at an
+  address already 4-aligned, leaves no pad, so a `cu_` range can hold several units. The
+  first, `cu_0800C230`, runs 25.6 KB to `0x0801264C` with no pad.
 
 A split into 829 files, one per function where these rules allow, also builds
 byte-identical in both modes and passes the shift test.
@@ -145,10 +155,12 @@ lines, not meaning: an insert inside a data structure (a table, the header) pass
 
 ## Limits and next steps
 
-- **Relocation.** The shift test passes across files, so code can move. Still to come:
-  ranges for the app code, which is still in the `gap_*` files. Data words that only *look* like pointers (false positives)
+- **Relocation.** The shift test passes across files, so code can move. Data words that only *look* like pointers (false positives)
   would be rewritten wrongly when code moves; pointers at unaligned offsets in packed data
   are not found at all.
+- **Compile units.** The `cu_` ranges cover the whole app code, but are bounded only
+  where the linker left a pad. Finer splits need other evidence: call clusters, vtables,
+  HAL driver order.
 - **Names.** `src/symbols.tsv` replaces Ghidra's `FUN_`/`D_` labels. A name doesn't make
   an address a function: function status comes from the layout (`F` lines). Each name must
   sit on an instruction, or on data outside a pointer word, and must be unique, or
