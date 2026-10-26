@@ -1,0 +1,207 @@
+# Names for tools/fwsrc.py: `addr name [where documented]`. A name replaces Ghidra's
+# FUN_/D_ label at that address; whether it is a function comes from src/layout.tsv.
+# Only names backed by docs/*.md. Vector handlers use the CMSIS names.
+
+# --- vectors (from the vector table at 0x0800C000)
+08025e60 Reset_Handler                  firmware-map.md
+0802406e NMI_Handler
+0802406c HardFault_Handler
+0802406a MemManage_Handler
+08024068 BusFault_Handler
+08024066 UsageFault_Handler
+08024064 SVC_Handler
+08024062 DebugMon_Handler
+08024060 PendSV_Handler
+0802403c SysTick_Handler
+08025ea8 Default_Handler                66 vectors, b .
+08023b18 DMA1_Stream2_IRQHandler
+08023f88 DMA1_Stream3_IRQHandler
+08023f40 DMA1_Stream4_IRQHandler
+08023af0 DMA1_Stream5_IRQHandler
+08023d88 TIM1_UP_TIM10_IRQHandler
+08023d38 TIM1_TRG_COM_TIM11_IRQHandler
+08023fe0 USART1_IRQHandler              DIN MIDI
+08023a78 EXTI15_10_IRQHandler
+0801f61c TIM8_TRG_COM_TIM14_IRQHandler
+0801f544 TIM5_IRQHandler                10 kHz time base, sequencer.md
+08023b98 TIM6_DAC_IRQHandler
+0801f504 DMA2_Stream0_IRQHandler
+0801f4dc DMA2_Stream1_IRQHandler
+08023ca8 DMA2_Stream4_IRQHandler
+0801eefc OTG_FS_IRQHandler
+0801f4d8 OTG_HS_IRQHandler
+
+# --- runtime (hardware.md, firmware-map.md, source-build.md)
+0800c2d0 main                           main loop, soft-timer table 0x20003230
+0800e1f8 app_construct                  builds the object graph, reads settings and patches
+0800fb5c ui_construct
+08025ec0 operator_new
+0801eebc _sbrk
+08025f3c memset
+08026752 memcpy
+0802aec8 _init
+0802aed4 _fini
+08024070 soft_timers_run                sequencer.md Time base
+0801e1ec delay_systick_wraps            sysex-handlers.md
+0801ab9c rng_read                       hardware RNG
+
+# --- observable cells (sequencer.md Observable state)
+080231f8 cell_read
+08017a40 cell_read_field1
+0802335c cell_read_other
+08014abe cell_write
+080192e8 cell_write_field0
+0801c83c cell_write_field1
+08014bcc cell_write_indexed
+08014be4 cell_commit
+08014c2e cell_subscribe
+
+# --- sequencer clock and transport (sequencer.md)
+08017f1c clock_engine
+080179dc clock_timer_arm
+08017ea8 clock_state_on_midi_clock
+08021790 clock_first_tick
+0801aecc clock_publish_tempo
+08023306 clock_timestamp_push
+0802328c clock_tempo_fit
+08016e78 transport_on_tick_cell
+08016b52 transport_button
+08016c5e transport_start
+08016bd6 transport_continue
+08016d1c transport_stop
+08016ad2 transport_song_position
+08016a8e transport_song_select
+0801ba36 seq_step_advance
+0801b698 seq_track_position
+0801b880 seq_track_positions_all
+0801b8b8 seq_set_clock
+08016a5a pattern_length
+0801275c step_in_range
+
+# --- track players and note routing (sequencer.md)
+08020ea0 player_new
+080234ac player_on_cell
+080211f4 player_fire_note_offs
+08023998 modseq_output                  session-format.md
+080189ce note_sink_note_on
+080189ba note_sink_note_off
+0801c748 router_note_on
+0801c67e router_note_off
+0801b8da router_map_note
+0801b058 router_map_note2
+08018eca scale_map_note
+08020fa0 merger_new
+08018940 merger_note_on
+080188d8 merger_note_off
+08020d7c merge_stage_new
+080178f0 synth_obj_note_on
+080226bc synth_note_on
+
+# --- recorder (sequencer.md Recording)
+0802345c rec_hub_note_on
+0802341c rec_hub_note_off
+08023370 rec_hub_param
+08021128 recorder_new
+08023208 recorder_note_on
+08016a72 recorder_note_off
+08017248 recorder_on_cell
+080175c8 recorder_on_cell_thunk
+08023042 recorder_note_pending
+080231b8 recorder_note_release
+080234a0 recorder_sync_rate
+0802314e recorder_place_note
+080230c2 recorder_place_all
+080230aa recorder_lane_ptr
+08023098 recorder_write_patch_change
+08021844 recorder_step_position
+08021334 recorder_write_step
+0802323c lane_clear
+08023266 lane_write
+
+# --- MIDI in / out (sequencer.md MIDI)
+080186b8 midi_in_parse
+08018618 midi_ctl_note_on
+080185e8 midi_ctl_note_off
+080185a8 midi_ctl_cc
+0801c610 midi_ctl_clock
+0801c626 midi_ctl_program_change        sysex-spec.md
+0801c658 midi_ctl_song_select
+0801ca18 midi_apply_settings
+0801aee8 midiout_send
+08018b48 midiout_note_on
+08018b20 midiout_note_off
+08018af2 midiout_start
+08018a08 midiout_continue
+08018ac4 midiout_stop
+08018a92 midiout_song_position
+08018a64 midiout_song_select
+08018a36 midiout_clock
+08018a5c midiout_clock_tick
+08018b90 midiout_param                  session-format.md
+
+# --- SysEx, update handover (sysex-handlers.md)
+080202a0 sysex_dispatch
+0801ee24 sysex_identity_reply
+0801a5ac usb_endpoint_stop
+0801a830 usb_soft_disconnect
+0801abec jump_to_image
+08024940 bootloader_handover
+0801ac30 app_header_valid
+0801ac7c header_version
+
+# --- patches and sessions (sysex-spec.md, session-format.md)
+080176e8 patch_store_param
+0801c842 param_set
+0801b4e0 patch_mask_update
+0801aef4 ext_flash_read
+08018ca4 session_init
+08019664 session_ctl_load_globals
+08019494 session_ctl_save_globals
+08019ae4 session_ctl_patch_load
+08020210 session_ctl_patch_write
+08014d2e port_post
+08011fbc ui_button_event
+08013ac4 patch_view_render
+08014330 patch_view_pads
+08022fdc patch_view_set_page
+
+# --- vtables
+08026fb8 vt_synth_obj
+08026fe4 vt_midi_ctl
+08027068 vt_session_ctl
+0802709c vt_midiout
+080270c4 vt_midiout_transport
+080270e0 vt_midiout_clock
+080270ec vt_player_source_adapter
+080270fc vt_recorder_track0
+08027154 vt_rec_hub
+08027180 vt_note_adapter
+08027190 vt_transport_source_adapter
+080271ac vt_midi_note_adapter
+08027208 vt_transport
+0802722c vt_transport_base1
+08027240 vt_transport_events
+08027268 vt_router
+08027980 vt_note_sink
+08029f04 vt_merger
+08029f14 vt_recorder
+08029fa4 vt_player
+
+# --- tables and templates
+08027588 lane_ids_track0                42 u16 param ids
+0802775c lane_ids_track1                12 u16 param ids
+080283e0 swing_table
+08028868 patch_classic_mono
+08028d70 str_initial_session
+08028f6b patch_initial
+08028f5c str_image_tags                 TEST/MAIN/BOOT
+08029413 sysex_prefix_monostation
+08029ee2 sysex_prefix_novation
+08029edc sysex_identity_request
+08029ee7 sysex_identity_request_all
+08029f48 sync_out_masks
+08029f6c ticks_per_step
+0802a286 modseq_weights
+0802a62a param_table
+08026d98 session_defaults
+08029e9c default_step_range

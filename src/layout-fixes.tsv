@@ -6,16 +6,22 @@ F 0800c1d0                     # crt0 frame_dummy-style init, reached only throu
 F 080114e6                     # small setters, vtable targets
 F 080114ee
 F 0801493e
+F 0801eefc                     # vector handlers without a Ghidra function
 C 0801f4d8 0801f4dc            # b.w FUN_0801eefc, vector/vtable target
 F 0801f4d8
 C 0801f666 0801f678            # 16-bit counter decrement, vtable target
 F 0801f666
+F 08023fe0
 F 0802403c
+F 08024060
+F 08024062
+F 08024064
 C 08024066 0802406e            # fault handlers: `b .` loops, vector table targets
 F 08024066
 F 08024068
 F 0802406a
 F 0802406c
+F 0802406e
 F 080240b0
 C 08025ea8 08025eaa            # `b .` loop, pointer target
 F 08025ea8

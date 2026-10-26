@@ -16,7 +16,7 @@ Each user generates it locally from their own `firmware/*.syx`/`.bin` into `buil
 | `tools/ghidra/ExportLayout.java` | Ghidra post-script that writes `src/layout.tsv` |
 | `src/layout.tsv` | Ghidra's code/data map: addresses, kinds, data refs, function entries; no image bytes |
 | `src/layout-fixes.tsv` | hand corrections applied over it (same line syntax) |
-| `src/symbols.tsv` | optional `addr name` names (not created yet) |
+| `src/symbols.tsv` | `addr name [note]` names from `docs/*.md` (182: vectors, runtime, sequencer, recorder, MIDI, SysEx, vtables, tables) |
 
 ## Usage
 
@@ -42,7 +42,7 @@ To regenerate the layout after Ghidra changes:
 - **Disassembly.** objdump runs on each `C` range (`-Mforce-thumb`, `--adjust-vma`).
 - **PC-relative operands become labels:** branches (`b`/`bl`/`b<cond>`, `.n`/`.w`,
   `cbz`/`cbnz`), literal loads (`ldr*`, `vldr`, `ldrd`), and `add`/`sub pc` → `adr`.
-  Labels: functions are `.global` + `.thumb_func` with Ghidra names (`FUN_xxxxxxxx`),
+  Labels: functions are `.global` + `.thumb_func`, named from `src/symbols.tsv` or Ghidra (`FUN_xxxxxxxx`),
   code labels are `.L_xxxxxxxx`, data labels are `D_xxxxxxxx`.
 - **Probe assembly.** Every other instruction is assembled on its own, in IT groups, and
   kept as text only when its encoding matches the image. Otherwise it becomes
@@ -60,8 +60,10 @@ To regenerate the layout after Ghidra changes:
   global symbols, no fixed `.n` widths (so gas can relax branches), and a shift test that
   inserts padding and checks that every pointer and branch still resolves. Data words that
   only *look* like pointers (false positives) matter only once code moves.
-- **Names.** `src/symbols.tsv` should carry the names from `docs/*.md` (clock engine
-  `0x08017F1C`, SysEx dispatcher `0x080202A0`, track player `0x080234AC`, …).
+- **Names.** `src/symbols.tsv` replaces Ghidra's `FUN_`/`D_` labels. A name doesn't make
+  an address a function: function status comes from the layout (`F` lines). Each name must
+  sit on an instruction, or on data outside a pointer word, and must be unique, or
+  `generate` fails. Add a name when a doc identifies the function.
 - **Features.** The generated tree is thrown away and regenerated, so features must live
   in checked-in overlay files (our own `.s`/`.c`) that replace named functions or add code.
   Until then, `tools/fwpatch.py` patches stay the way to change the firmware.

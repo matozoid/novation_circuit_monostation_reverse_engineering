@@ -31,6 +31,21 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(units[-1].end - fwsrc.LOAD_ADDRESS, 129824)
 
 
+    def test_symbols_load(self):
+        names = fwsrc.load_symbols()
+        self.assertEqual(names[0x08017F1C], "clock_engine")
+        self.assertEqual(names[0x080202A0], "sysex_dispatch")
+
+    def test_symbols_rejects_duplicates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "symbols.tsv"
+            path.write_text("08000000 a\n08000004 a\n")
+            with self.assertRaises(ValueError):
+                fwsrc.load_symbols(path)
+            path.write_text("08000000 FUN_08000000\n")
+            with self.assertRaises(ValueError):
+                fwsrc.load_symbols(path)
+
 @unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not present")
 @unittest.skipUnless(HAVE_BINUTILS, "arm-none-eabi binutils not installed")
 class RoundTrip800Test(unittest.TestCase):

@@ -87,14 +87,27 @@ def load_layout(path=LAYOUT, fixes=LAYOUT_FIXES):
     return Layout(units, refs, functions)
 
 
+SYMBOL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.$]*$")
+
+
 def load_symbols(path=SYMBOLS):
-    """addr -> name from symbols.tsv (`addr name [comment]`), if present."""
+    """addr -> name from symbols.tsv (`addr name [comment]`), if present. A name only
+    renames the label at that address; whether it is a function comes from the layout."""
     names = {}
     if Path(path).exists():
-        for line in Path(path).read_text().splitlines():
+        for n, line in enumerate(Path(path).read_text().splitlines(), 1):
             f = line.split(None, 2)
-            if f and not f[0].startswith("#"):
-                names[int(f[0], 16)] = f[1]
+            if not f or f[0].startswith("#"):
+                continue
+            addr, name = int(f[0], 16), f[1]
+            if not SYMBOL_NAME.match(name) or name.startswith(("FUN_", "D_")):
+                raise ValueError(f"{path}:{n}: bad symbol name {name!r}")
+            if addr in names:
+                raise ValueError(f"{path}:{n}: {addr:#010x} named twice")
+            names[addr] = name
+        dup = {v for v in names.values() if list(names.values()).count(v) > 1}
+        if dup:
+            raise ValueError(f"{path}: names used twice: {', '.join(sorted(dup))}")
     return names
 
 
@@ -246,6 +259,8 @@ class Generator:
     def __init__(self, image, layout, names, code):
         self.image, self.layout, self.code = image, layout, code
         self.end = LOAD_ADDRESS + len(image)
+        self.functions = set(layout.functions)
+        self.symbols = names
         self.names = dict(layout.functions)
         self.names.update(names)
         self.insn_at = {i.addr: i for insns in code.values() for i in insns}
@@ -297,6 +312,21 @@ class Generator:
                 self.stats["inst"] += n not in good
         self.stats["insns"] = len(self.insn_at)
         self.plan_words()
+        self.plan_symbols()
+
+    def plan_symbols(self):
+        """Every name in symbols.tsv gets a label, referenced or not. It must sit on an
+        instruction or on data outside a pointer word."""
+        bad = []
+        for addr in sorted(self.symbols):
+            in_word = any(addr - k in self.words for k in (1, 2, 3))
+            if not LOAD_ADDRESS <= addr < self.end or in_word \
+                    or (self.unit_kind(addr) == "C" and addr not in self.insn_at):
+                bad.append(f"{addr:#010x} {self.symbols[addr]}")
+            else:
+                self.label(addr)
+        if bad:
+            raise ValueError("symbols not on an instruction or data boundary: " + ", ".join(bad))
 
     def plan_words(self):
         """Data words that hold image addresses become `.word label`: those Ghidra marks as
@@ -328,7 +358,7 @@ class Generator:
                 self.words[addr] = lab + suffix
 
     def is_function(self, addr):
-        return addr in self.names and addr in self.insn_at
+        return addr in self.functions and addr in self.insn_at
 
     def plan_pc(self, i):
         t = pc_target(i)
