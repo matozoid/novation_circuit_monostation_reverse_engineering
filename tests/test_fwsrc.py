@@ -14,6 +14,7 @@ import fwsyx  # noqa: E402
 FIRMWARE_800 = ROOT / "firmware" / "monostation-firmware-800.syx"
 HELLO = ROOT / "overlays" / "hello"
 HELLO_C = ROOT / "overlays" / "hello_c"
+RANDOMISE = ROOT / "overlays" / "randomise"
 HAVE_GCC = shutil.which("arm-none-eabi-gcc") is not None
 HAVE_BINUTILS = all(shutil.which(f"arm-none-eabi-{tool}")
                     for tool in ("as", "ld", "objcopy", "objdump"))
@@ -144,6 +145,18 @@ class Overlay800Test(unittest.TestCase):
         built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
         patched = fwpatch.build(ROOT / "patches" / "hello", self.image)[0]
         self.assertIsNone(fwsrc.first_difference(built, patched))
+
+    @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
+    def test_randomise_hooks_button_down(self):
+        """overlays/randomise (#39) changes only the version and the ui_root vtable's
+        button-down slot, which now points after the image."""
+        fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[RANDOMISE])
+        built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
+        changed = [i for i in range(len(self.image)) if built[i] != self.image[i]]
+        self.assertEqual(changed, [0x1B0, 0x1BB24, 0x1BB25, 0x1BB26])
+        self.assertEqual(built[0x1B0], 0x04)
+        slot = int.from_bytes(built[0x1BB24:0x1BB28], "little")
+        self.assertEqual(slot, 0x0802BB20 | 1)
 
     @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
     def test_c_overlay_has_no_bss(self):

@@ -241,6 +241,7 @@
 # --- tables and templates
 08027588 lane_ids_track0                42 u16 param ids
 0802775c lane_ids_track1                12 u16 param ids
+08027bd9 pad_levels                     16 levels 0..127 for pads (glide, velocity LEDs)
 080283e0 swing_table
 08028868 patch_classic_mono
 08028d70 str_initial_session

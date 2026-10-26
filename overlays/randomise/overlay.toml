@@ -1,0 +1,8 @@
+# #39 Randomise gate, glide and velocity: Mutate (Shift + Pattern Settings) in the
+# Velocity, Gate or Glide view of the Osc 1 or Osc 2 track gives each step with a note a
+# random value for that field only. In every other view, and on the mod-seq track, Mutate
+# stays stock and shuffles whole steps.
+base = 800
+version = 804
+sources = ["randomise.c"]
+replace = ["ui_button_event"]

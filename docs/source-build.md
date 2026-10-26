@@ -90,6 +90,11 @@ version 801) and `overlays/hello_c` the same in C (`void main(void) { stock_main
 which gcc makes a `b.w` tail call). `tests/test_fwsrc.py` checks that all three produce the
 same image, the one already run on the device, and that a C `static` variable fails to link.
 
+`overlays/randomise` (#39, version 804) is the first feature: it wraps `ui_button_event`
+so that Mutate in the Velocity, Gate or Glide view randomises only that step field. The
+only stock bytes it changes are the version and the `ui_root` vtable's button-down slot
+(`0x08027B24`).
+
 To regenerate the layout after Ghidra changes:
 
     "$GHIDRA_HOME/support/analyzeHeadless" ghidra-project monostation -process monostation-firmware-800.bin \
