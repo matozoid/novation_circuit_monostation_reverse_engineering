@@ -274,7 +274,13 @@ def find_port(mido, wanted, bootloader=False, wait=0):
     """The one app (or bootloader) port; polls up to `wait` seconds for it."""
     deadline = time.monotonic() + wait
     while True:
-        ins, outs = mido.get_input_names(), mido.get_output_names()
+        try:
+            ins, outs = mido.get_input_names(), mido.get_output_names()
+        except Exception as e:  # ALSA drops ports while the unit re-enumerates
+            if time.monotonic() >= deadline:
+                sys.exit(f"cannot list MIDI ports: {e}")
+            time.sleep(0.25)
+            continue
         hits = matching_ports([n for n in ins if n in outs], wanted, bootloader)
         if len(hits) == 1:
             return hits[0]
