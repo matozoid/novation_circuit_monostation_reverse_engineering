@@ -7,10 +7,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
+import fwpatch  # noqa: E402
 import fwsrc  # noqa: E402
 import fwsyx  # noqa: E402
 
 FIRMWARE_800 = ROOT / "firmware" / "monostation-firmware-800.syx"
+HELLO = ROOT / "overlays" / "hello"
 HAVE_BINUTILS = all(shutil.which(f"arm-none-eabi-{tool}")
                     for tool in ("as", "ld", "objcopy", "objdump"))
 
@@ -76,6 +78,82 @@ class LayoutTest(unittest.TestCase):
             path.write_text("08000000 FUN_08000000\n")
             with self.assertRaises(ValueError):
                 fwsrc.load_symbols(path)
+
+class OverlayTest(unittest.TestCase):
+    def write(self, tmp, toml):
+        (tmp / "overlay.toml").write_text(toml)
+        return tmp
+
+    def test_load(self):
+        ov = fwsrc.load_overlay(HELLO)
+        self.assertEqual((ov.base, ov.version, ov.sources, ov.replace),
+                         (800, 801, ["hello.s"], ["main"]))
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            for bad in ('base = 800\nsources = ["a.s"]\nreplce = ["main"]\n',   # typo
+                        'sources = ["a.s"]\n',                                  # no base
+                        'base = 800\nsources = []\n',
+                        'base = 800\nsources = ["../a.s"]\n',
+                        'base = 800\nversion = 10000\nsources = ["a.s"]\n'):
+                with self.assertRaises(ValueError, msg=bad):
+                    fwsrc.load_overlay(self.write(tmp, bad))
+
+    def test_apply(self):
+        image = bytes(fwsrc.IMAGE_HEADER) + b"MAIN\x00\x08" + bytes(10)
+        a = fwsrc.Overlay(Path("a"), 800, 801, ["a.s"], ["f"])
+        b = fwsrc.Overlay(Path("b"), 800, None, ["b.s"], ["g"])
+        out, replace = fwsrc.apply_overlays(image, [a, b])
+        self.assertEqual(fwsrc.image_version(out), 801)
+        self.assertEqual(replace, ["f", "g"])
+        self.assertEqual(fwsrc.apply_overlays(image, [b])[0], image)
+        for bad in ([a._replace(base=801)], [a, a._replace(replace=["h"], version=802)],
+                    [a, b._replace(replace=["f"])]):
+            with self.assertRaises(ValueError):
+                fwsrc.apply_overlays(image, bad)
+
+
+@unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not present")
+@unittest.skipUnless(HAVE_BINUTILS, "arm-none-eabi binutils not installed")
+class Overlay800Test(unittest.TestCase):
+    def setUp(self):
+        self.image = fwsyx.decode_image(FIRMWARE_800.read_bytes())
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        (self.tmp / "stock.bin").write_bytes(self.image)
+
+    def test_hello_equals_fwpatch(self):
+        """overlays/hello and patches/hello make the same image: the reset handler's
+        bl main reaches the overlay after the image, which tail-calls stock_main."""
+        fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[HELLO])
+        built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
+        patched = fwpatch.build(ROOT / "patches" / "hello", self.image)[0]
+        self.assertIsNone(fwsrc.first_difference(built, patched))
+        # without the overlay the same tree builds stock again
+        fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src")
+        self.assertFalse(list((self.tmp / "src").glob("zz_overlay_*.s")))
+        built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
+        self.assertIsNone(fwsrc.first_difference(built, self.image))
+
+    def test_overlay_must_be_thumb_function(self):
+        ov = self.tmp / "ov"
+        shutil.copytree(HELLO, ov)
+        hello = ov / "hello.s"
+        hello.write_text(hello.read_text().replace("    .thumb_func\n", "")
+                         .replace("    .type main, %function\n", ""))
+        fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[ov])
+        with self.assertRaisesRegex(ValueError, "not .thumb_func functions in overlay code: main"):
+            fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
+
+    def test_narrow_branch_cannot_redirect(self):
+        # pretend the beq target at 0x080126FE is a function
+        fixes = self.tmp / "fixes.tsv"
+        fixes.write_text(fwsrc.LAYOUT_FIXES.read_text() + "F 080126fe narrow_target\n")
+        ov = fwsrc.Overlay(self.tmp, 800, None, ["a.s"], ["narrow_target"])
+        with self.assertRaisesRegex(ValueError, "cannot redirect to the overlay: 0x080126f0 beq"):
+            fwsrc.plan_source(self.tmp / "stock.bin", fixes=fixes, overlays=[ov])
+        with self.assertRaisesRegex(ValueError, "unknown functions: no_such"):
+            fwsrc.plan_source(self.tmp / "stock.bin", overlays=[ov._replace(replace=["no_such"])])
+
 
 @unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not present")
 @unittest.skipUnless(HAVE_BINUTILS, "arm-none-eabi binutils not installed")

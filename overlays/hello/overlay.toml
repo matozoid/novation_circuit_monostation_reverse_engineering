@@ -1,0 +1,7 @@
+# #43 overlay hello world, the source-level twin of patches/hello: main is replaced by a
+# wrapper that tail-calls the stock body. If the device boots and answers 0x70 with 801,
+# the redirect (reset handler bl main -> overlay) and the header version work.
+base = 800
+version = 801
+sources = ["hello.s"]
+replace = ["main"]

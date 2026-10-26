@@ -17,6 +17,7 @@ Each user generates it locally from their own `firmware/*.syx`/`.bin` into `buil
 | `src/layout.tsv` | Ghidra's code/data map: addresses, kinds, data refs, function entries; no image bytes |
 | `src/layout-fixes.tsv` | hand corrections applied over it (same line syntax) |
 | `src/files.tsv` | `start end name [evidence]` address ranges, one source file each (see *Files*) |
+| `overlays/<name>/` | our own code: `overlay.toml` plus `.s` files that replace stock functions (see *Overlays*) |
 | `src/symbols.tsv` | `addr name [note]` names from `docs/*.md` (895: every function, plus vectors, vtables and tables; `docs/source-map.md` gives each function's purpose) |
 
 ## Usage
@@ -33,6 +34,49 @@ deletes `.s` files from an earlier run (first line `@ Generated …`). `--files 
 byte-identical on stock and is what code that moves needs (see *Relocation*).
 Build flags (`--fatal-warnings`): `-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard`. Needs
 `binutils-arm-none-eabi`. `tests/test_fwsrc.py` runs the round trip when the firmware is present.
+
+## Overlays
+
+An overlay is checked-in code of ours that replaces stock functions by name. It works on
+the generated tree, so features stay out of the generated source:
+
+    python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/fwsrc --overlay overlays/hello
+    python3 tools/fwsrc.py build build/fwsrc build/fwsrc/firmware.bin
+    python3 tools/bin2syx.py build/fwsrc/firmware.bin out.syx --version 801
+
+`overlays/<name>/overlay.toml`:
+
+| Key | Meaning |
+|-----|---------|
+| `base` | stock version the overlay is written for; must match the image header (800) |
+| `version` | optional: the BCD version written into the image header (`0x70` reply) |
+| `sources` | `.s` files in the overlay directory |
+| `replace` | stock function names (from `src/symbols.tsv`) the overlay defines |
+
+**Redirect, not move.** A replaced function's stock body stays at its address, renamed
+`stock_<name>`, so an overlay can wrap it (`b.w stock_<name>` for a tail call). The name
+goes to the overlay: every `bl`, wide `b`/`b<cond>` and pointer word (vtables, vectors)
+outside the stock body now names the overlay function, and nothing else in the image
+changes. References from inside the stock body (loops back to its entry) stay with it.
+A narrow branch, `cbz` or PC-relative load of a replaced entry cannot reach the code after
+the image, and `generate` fails with `cannot redirect to the overlay: <address> …`. On
+firmware 800 no function is reached that way, so every function is replaceable. Not
+detected: code that falls through into a replaced entry without a branch.
+
+`generate` copies the sources into the tree as `zz_overlay_<overlay>_<file>.s` (first line
+`@ Copied by …`, removed on the next run like generated files) and lists the replaced names
+in `overlays.txt`. `firmware.ld` then links all non-stock `.text`/`.rodata` after the
+image (`overlay_start`, 4-aligned; 0x0802BB20 on 800) and asserts there is no
+`.data`/`.bss` (the stock startup neither copies nor clears it for overlays) and that the
+code ends below `0x08080000`. `build` checks with `readelf` that each replaced name is a
+`.thumb_func` in the overlay code: a plain label would turn `bl` into `blx` to ARM state.
+`--overlay` can be repeated; two overlays may not replace the same name or set different
+versions. Overlay code is ours and is checked in; only `.s` for now (C needs
+`gcc-arm-none-eabi`).
+
+`overlays/hello` is the source twin of `patches/hello` (`main` wrapped by a tail call,
+version 801), and `tests/test_fwsrc.py` checks that both produce the same image, the one
+already run on the device.
 
 To regenerate the layout after Ghidra changes:
 
@@ -167,8 +211,8 @@ lines, not meaning: an insert inside a data structure (a table, the header) pass
   `generate` fails. Every function has a name and a line in `docs/source-map.md`;
   `python3 tools/fwsrc.py coverage [--list]` counts both, and a test keeps them complete.
   Rename in both files together.
-- **Features.** The generated tree is thrown away and regenerated, so features must live
-  in checked-in overlay files (our own `.s`/`.c`) that replace named functions or add code.
-  Until then, `tools/fwpatch.py` patches stay the way to change the firmware.
+- **Features.** The generated tree is thrown away and regenerated, so features live in
+  overlays (see *Overlays*). Overlays are `.s` only; C comes once `gcc-arm-none-eabi` is
+  installed, with a header of stock functions from `src/symbols.tsv`.
 - **Toolchain hint.** newlib crti `_init`/`_fini` sit at `0x0802AEC8`/`0x0802AED4`, which
   points to arm-none-eabi-gcc. That matters for a matching C decompilation later.

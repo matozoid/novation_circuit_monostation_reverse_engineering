@@ -10,6 +10,11 @@ files.tsv (which address ranges become which .s file; the rest goes into gap_*.s
     python3 tools/fwsrc.py build build/fwsrc build/fwsrc/firmware.bin
     cmp build/fwsrc/firmware.bin firmware/monostation-firmware-800.bin
     python3 tools/fwsrc.py coverage        # functions named and listed in docs/source-map.md
+    python3 tools/fwsrc.py generate IMAGE build/fwsrc --overlay overlays/hello   # our code
+
+An overlay (overlays/<name>/overlay.toml plus .s files) replaces stock functions by name:
+the stock body stays in place as stock_<name>, the overlay code is linked after the image
+and every bl, b.w and pointer word to the function now reaches the overlay instead.
 
 Code becomes Thumb-2 assembly: branch, literal-load and adr targets are labels, and data
 words that Ghidra marks as pointers into the image are `.word label`. Every instruction
@@ -22,6 +27,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -36,6 +42,10 @@ SOURCE_MAP = ROOT / "docs" / "source-map.md"
 CPU_FLAGS = ["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
 TOOL = "arm-none-eabi-"
 IMAGE_HEADER = 0x1AC    # "MAIN" + BCD version: the bootloader reads it at this image offset
+FLASH_END = 0x08080000  # end of sector 7, the last one the bootloader erases
+OVERLAY_TOML = "overlay.toml"
+OVERLAY_COPY = "@ Copied by tools/fwsrc.py from an overlay; edit the original:"
+OVERLAY_LIST = "overlays.txt"   # replaced names, for the build's check
 
 Unit = namedtuple("Unit", "kind start end dtype")      # kind: C, D or U
 Insn = namedtuple("Insn", "addr raw text")
@@ -152,6 +162,61 @@ def cover_files(files, end):
             out.append((start, stop, name))
         pos = max(pos, stop)
     return out
+
+
+Overlay = namedtuple("Overlay", "path base version sources replace")
+
+
+def load_overlay(directory):
+    """overlays/<name>/overlay.toml: base (stock version), optional version (written to the
+    image header), sources (.s files in the directory) and replace (stock function names)."""
+    directory = Path(directory)
+    path = directory / OVERLAY_TOML
+    with path.open("rb") as f:
+        t = tomllib.load(f)
+    unknown = set(t) - {"base", "version", "sources", "replace"}
+    if unknown:
+        raise ValueError(f"{path}: unknown keys {sorted(unknown)}")
+    if not isinstance(t.get("base"), int) or not t.get("sources"):
+        raise ValueError(f"{path}: needs base (stock version) and sources")
+    version = t.get("version")
+    if version is not None and not (isinstance(version, int) and 0 <= version <= 9999):
+        raise ValueError(f"{path}: version must fit four BCD digits")
+    for src in t["sources"]:
+        if not FILE_NAME.match(Path(src).stem) or Path(src).suffix != ".s" or "/" in src:
+            raise ValueError(f"{path}: source {src!r} is not a .s file in the overlay")
+    return Overlay(directory, t["base"], version, list(t["sources"]), list(t.get("replace", [])))
+
+
+def image_version(image):
+    """The BCD version in the image header: b'MAIN' 00 08 -> 800."""
+    header = image[IMAGE_HEADER:IMAGE_HEADER + 6]
+    if header[:4] != b"MAIN":
+        raise ValueError("image header tag MAIN not found")
+    return int(f"{int.from_bytes(header[4:], 'little'):x}")
+
+
+def apply_overlays(image, overlays):
+    """Check the overlays against the image and each other; returns (image with the new
+    header version, replaced names)."""
+    stock = image_version(image)
+    replace, version = [], None
+    for ov in overlays:
+        if ov.base != stock:
+            raise ValueError(f"{ov.path}: base {ov.base}, but the image is version {stock}")
+        for name in ov.replace:
+            if name in replace:
+                raise ValueError(f"{ov.path}: {name} is replaced by two overlays")
+            replace.append(name)
+        if ov.version is not None:
+            if version not in (None, ov.version):
+                raise ValueError(f"{ov.path}: version {ov.version}, another overlay says {version}")
+            version = ov.version
+    if version is not None:
+        image = bytearray(image)
+        image[IMAGE_HEADER + 4:IMAGE_HEADER + 6] = int(str(version), 16).to_bytes(2, "little")
+        image = bytes(image)
+    return image, replace
 
 
 def split_units(units, starts):
@@ -332,7 +397,7 @@ def probe(groups, workdir):
 
 class Generator:
     def __init__(self, image, layout, names, code, relax=False, pads=None, markers=False,
-                 files=()):
+                 files=(), replace=()):
         self.image, self.layout, self.code, self.relax = image, layout, code, relax
         self.pads = dict(pads or {})    # address -> bytes inserted before it (shift test)
         self.markers = markers          # label every line M_<address> (shift test)
@@ -346,6 +411,7 @@ class Generator:
         self.symbols = names
         self.names = dict(layout.functions)
         self.names.update(names)
+        self.replaced = self.plan_replace(replace)  # stock entry -> (overlay name, body end)
         self.insn_at = {i.addr: i for insns in code.values() for i in insns}
         self.unit_starts = [u.start for u in layout.units]
         self.labels = {}            # address -> label
@@ -353,6 +419,34 @@ class Generator:
         self.tables = {}            # jump-table entry address -> (directive, expression)
         self.tables_base = set()    # first entry of each jump table
         self.stats = {"inst": 0, "insns": 0, "words": 0, "tables": 0}
+
+    def plan_replace(self, replace):
+        """The stock body of a replaced function keeps its place as stock_<name>; the name
+        goes to the overlay. The body runs to the next function entry."""
+        by_name = {name: addr for addr, name in self.names.items()}
+        entries = sorted(self.functions)
+        out, bad = {}, []
+        for name in replace:
+            addr = by_name.get(name)
+            if addr is None or addr not in self.functions:
+                bad.append(name)
+                continue
+            n = bisect.bisect_right(entries, addr)
+            out[addr] = (name, entries[n] if n < len(entries) else self.end)
+            self.names[addr] = f"stock_{name}"
+            if addr in self.symbols:
+                self.symbols = {**self.symbols, addr: f"stock_{name}"}
+        if bad:
+            raise ValueError("overlay replaces unknown functions: " + ", ".join(bad))
+        return out
+
+    def redirect(self, src, target):
+        """The overlay's name when a reference at src to target must reach the overlay:
+        target is a replaced entry and src lies outside its stock body."""
+        if target not in self.replaced:
+            return None
+        name, end = self.replaced[target]
+        return None if target <= src < end else name
 
     def label(self, addr):
         """Label for an image address, or None when no unit boundary lies there."""
@@ -392,6 +486,7 @@ class Generator:
     def plan(self, workdir):
         """Choose the text of every instruction; collect labels."""
         self.text = {}
+        self.unredirectable = []    # references to a replaced function that cannot reach it
         plain = []
         for insns in self.code.values():
             for g in it_groups(insns):
@@ -418,6 +513,7 @@ class Generator:
         bad = [f"{name} starts inside a unit at {start:#010x}" for start, _, name in self.files
                if start not in self.insn_at and start not in self.unit_starts]
         bad += [f"reference across files: {c}" for c in self.crossing]
+        bad += [f"cannot redirect to the overlay: {c}" for c in getattr(self, "unredirectable", [])]
         if bad:
             raise ValueError("; ".join(bad))
 
@@ -473,6 +569,10 @@ class Generator:
             value = target = self.word_at(addr)
             if not LOAD_ADDRESS <= value < self.end:
                 continue
+            if value & 1 and (name := self.redirect(addr, value - 1)) \
+                    and self.is_function(value - 1):
+                self.words[addr] = name         # an overlay .thumb_func: the linker sets bit 0
+                continue
             if value & 1 and value - 1 in self.insn_at:
                 target = value - 1
                 lab = self.label(target)
@@ -499,6 +599,15 @@ class Generator:
             return
         kind, target = t
         lab = self.label(target) if target is not None else None
+        name = self.redirect(i.addr, target)
+        if name is not None:
+            # bl and the wide branches reach the overlay after the image; narrow branches,
+            # cbz and PC-relative loads of the entry do not
+            if kind != "branch" or len(i.raw) != 4:
+                self.unredirectable.append(f"{i.addr:#010x} {COMMENT.sub('', i.text)} "
+                                           f"-> {self.replaced[target][0]}")
+            self.text[i.addr] = rewrite(i, kind, name, relax=False)
+            return
         if lab is None:
             self.text[i.addr] = inst(i)
             self.stats["inst"] += 1
@@ -645,8 +754,23 @@ class Generator:
             pos = stop
 
 
-def linker_script(files):
+def linker_script(files, overlays=False):
     sections = "\n".join(f"        KEEP(*(.text.{name}))" for _, _, name in files)
+    if overlays:
+        # overlay code after the image; read-only: the stock startup neither copies .data
+        # nor clears .bss for it
+        sections += """
+        . = ALIGN(4);
+        overlay_start = .;
+        *(.text .text.* .rodata .rodata.*)
+        overlay_end = .;
+    }
+    .data :
+    {
+        *(.data .data.* .bss .bss.* COMMON)"""
+    checks = f"""
+ASSERT(SIZEOF(.data) == 0, "overlays cannot use .data or .bss")
+ASSERT(overlay_end <= {FLASH_END:#x}, "overlays do not fit in the flash")""" if overlays else ""
     return f"""\
 /* Generated by tools/fwsrc.py. */
 SECTIONS
@@ -658,41 +782,53 @@ SECTIONS
     }}
 }}
 ASSERT(image_header == {LOAD_ADDRESS + IMAGE_HEADER:#x},
-       "image header moved: the bootloader reads it at image offset {IMAGE_HEADER:#x}")
+       "image header moved: the bootloader reads it at image offset {IMAGE_HEADER:#x}"){checks}
 """
 
 
 def plan_source(image_path, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
-                files_path=FILES, **options):
+                files_path=FILES, overlays=(), **options):
     """A Generator with every instruction and label planned; options go to Generator."""
-    image = Path(image_path).read_bytes()
+    image, replace = apply_overlays(Path(image_path).read_bytes(), overlays)
     layout = load_layout(layout_path, fixes)
     check_layout(layout, len(image))
     files = load_files(files_path)
     layout.units = split_units(layout.units, [f[0] for f in files])
     code = disassemble(image_path, layout)
-    gen = Generator(image, layout, load_symbols(symbols_path), code, files=files, **options)
+    gen = Generator(image, layout, load_symbols(symbols_path), code, files=files,
+                    replace=replace, **options)
     with tempfile.TemporaryDirectory() as tmp:
         gen.plan(tmp)
     return gen
 
 
-def write_source(gen, outdir):
+def write_source(gen, outdir, overlays=()):
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    for old in outdir.glob("*.s"):         # only files an earlier run generated
+    for old in outdir.glob("*.s"):         # only files an earlier run generated or copied
         with old.open() as f:
-            if f.readline().rstrip("\n") == GENERATED:
+            if f.readline().rstrip("\n").startswith((GENERATED, OVERLAY_COPY)):
                 old.unlink()
+    (outdir / OVERLAY_LIST).unlink(missing_ok=True)
     for name, text in gen.emit().items():
         (outdir / f"{name}.s").write_text(text)
-    (outdir / "firmware.ld").write_text(linker_script(gen.files))
+    for ov in overlays:
+        for src in ov.sources:
+            # sorted after every generated file, so the overlays link in the given order
+            dest = outdir / f"zz_overlay_{ov.path.resolve().name}_{src}"
+            dest.write_text(f"{OVERLAY_COPY} {ov.path / src}\n" + (ov.path / src).read_text())
+    if overlays:
+        (outdir / OVERLAY_LIST).write_text(
+            "".join(f"{name}\n" for name, _ in gen.replaced.values()))
+    (outdir / "firmware.ld").write_text(linker_script(gen.files, bool(overlays)))
 
 
 def generate(image_path, outdir, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
-             files_path=FILES, relax=False):
-    gen = plan_source(image_path, layout_path, symbols_path, fixes, files_path, relax=relax)
-    write_source(gen, outdir)
+             files_path=FILES, relax=False, overlays=()):
+    overlays = [load_overlay(d) if not isinstance(d, Overlay) else d for d in overlays]
+    gen = plan_source(image_path, layout_path, symbols_path, fixes, files_path,
+                      overlays=overlays, relax=relax)
+    write_source(gen, outdir, overlays)
     return dict(gen.stats, files=len(gen.files), exported=len(gen.exported))
 
 
@@ -707,8 +843,30 @@ def build(srcdir, out_bin):
     elf = srcdir / "firmware.elf"
     subprocess.run([TOOL + "ld", "-T", str(srcdir / "firmware.ld"), "-o", str(elf), *objs],
                    check=True)
+    check_overlays(srcdir, elf)
     subprocess.run([TOOL + "objcopy", "-O", "binary", str(elf), str(out_bin)], check=True)
     return Path(out_bin).read_bytes()
+
+
+def check_overlays(srcdir, elf):
+    """Each replaced name must be a Thumb function in the overlay code: otherwise bl would
+    turn into blx to ARM state, or land in the stock image."""
+    listed = srcdir / OVERLAY_LIST
+    if not listed.exists():
+        return
+    names = listed.read_text().split()
+    # readelf, not nm: nm clears the Thumb bit of .thumb_func symbols
+    table = subprocess.run([TOOL + "readelf", "-sW", str(elf)], check=True,
+                           capture_output=True, text=True).stdout
+    syms = {f[7]: (int(f[1], 16), f[3]) for f in map(str.split, table.splitlines())
+            if len(f) == 8 and f[6].isdigit()}
+    start, end = syms["overlay_start"][0], syms["overlay_end"][0]
+    bad = [name for name in names
+           if name not in syms or syms[name][1] != "FUNC" or not syms[name][0] & 1
+           or not start <= syms[name][0] - 1 < end]
+    if bad:
+        raise ValueError("overlay names that are not .thumb_func functions in overlay "
+                         "code: " + ", ".join(bad))
 
 
 # --- shift test: move code, check that every reference follows ----------------------------
@@ -841,6 +999,8 @@ def main(argv=None):
     g.add_argument("--files", type=Path, default=FILES)
     g.add_argument("--relax", action="store_true",
                    help="no fixed .n/.w widths: gas picks them (for code that moves)")
+    g.add_argument("--overlay", type=Path, action="append", default=[], metavar="DIR",
+                   help="overlay directory with overlay.toml (repeatable)")
     t = sub.add_parser("shift", help="insert bytes, build, check every reference follows")
     t.add_argument("image", type=Path)
     t.add_argument("--pad", action="append", required=True, metavar="ADDR:N",
@@ -860,8 +1020,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.cmd == "generate":
-        stats = generate(args.image, args.outdir, args.layout, args.symbols,
-                         files_path=args.files, relax=args.relax)
+        try:
+            stats = generate(args.image, args.outdir, args.layout, args.symbols,
+                             files_path=args.files, relax=args.relax, overlays=args.overlay)
+        except ValueError as e:
+            sys.exit(str(e))
         print(f"{args.outdir}: {stats['insns']} instructions ({stats['inst']} as .inst), "
               f"{stats['words']} pointer words, {stats['files']} files "
               f"({stats['exported']} labels used across files)")
@@ -892,7 +1055,10 @@ def main(argv=None):
             sys.exit(f"{len(errors)} of {count} lines wrong after the shift")
         print(f"{count} lines checked: every reference follows the shift")
     else:
-        data = build(args.srcdir, args.out)
+        try:
+            data = build(args.srcdir, args.out)
+        except ValueError as e:
+            sys.exit(str(e))
         print(f"{args.out}: {len(data)} bytes")
         if args.compare:
             ref = args.compare.read_bytes()
