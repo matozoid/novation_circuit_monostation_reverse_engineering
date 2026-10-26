@@ -13,6 +13,8 @@ import fwsyx  # noqa: E402
 
 FIRMWARE_800 = ROOT / "firmware" / "monostation-firmware-800.syx"
 HELLO = ROOT / "overlays" / "hello"
+HELLO_C = ROOT / "overlays" / "hello_c"
+HAVE_GCC = shutil.which("arm-none-eabi-gcc") is not None
 HAVE_BINUTILS = all(shutil.which(f"arm-none-eabi-{tool}")
                     for tool in ("as", "ld", "objcopy", "objdump"))
 
@@ -133,6 +135,25 @@ class Overlay800Test(unittest.TestCase):
         self.assertFalse(list((self.tmp / "src").glob("zz_overlay_*.s")))
         built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
         self.assertIsNone(fwsrc.first_difference(built, self.image))
+
+    @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
+    def test_hello_c_equals_hello(self):
+        """The C twin: gcc's tail call (in .text.startup, the name of a stock section)
+        gives the same image."""
+        fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[HELLO_C])
+        built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
+        patched = fwpatch.build(ROOT / "patches" / "hello", self.image)[0]
+        self.assertIsNone(fwsrc.first_difference(built, patched))
+
+    @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
+    def test_c_overlay_has_no_bss(self):
+        ov = self.tmp / "ov"
+        shutil.copytree(HELLO_C, ov)
+        (ov / "hello.c").write_text('#include "firmware.h"\nstatic int calls;\n'
+                                    'void main(void) { calls++; stock_main(); }\n')
+        fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[ov])
+        with self.assertRaises(fwsrc.subprocess.CalledProcessError):
+            fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
 
     def test_overlay_must_be_thumb_function(self):
         ov = self.tmp / "ov"

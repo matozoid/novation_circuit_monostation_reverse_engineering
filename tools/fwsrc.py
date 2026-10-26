@@ -45,7 +45,13 @@ IMAGE_HEADER = 0x1AC    # "MAIN" + BCD version: the bootloader reads it at this 
 FLASH_END = 0x08080000  # end of sector 7, the last one the bootloader erases
 OVERLAY_TOML = "overlay.toml"
 OVERLAY_COPY = "@ Copied by tools/fwsrc.py from an overlay; edit the original:"
-OVERLAY_LIST = "overlays.txt"   # replaced names, for the build's check
+OVERLAY_COPY_C = "/* Copied by tools/fwsrc.py from an overlay; edit the original: */"
+OVERLAY_LIST = "overlays.txt"   # `replace NAME` and `include DIR` lines, for the build
+OVERLAY_PREFIX = "zz_overlay_"  # sorted after every generated file
+OVERLAY_INCLUDE = ROOT / "overlays" / "include"     # shared headers for C overlays
+CC_FLAGS = ["-std=gnu17", "-Os", "-ffreestanding", "-fno-common", "-fno-exceptions",
+            "-fno-unwind-tables", "-fno-asynchronous-unwind-tables", "-Wall", "-Wextra",
+            "-Werror=implicit-function-declaration"]
 
 Unit = namedtuple("Unit", "kind start end dtype")      # kind: C, D or U
 Insn = namedtuple("Insn", "addr raw text")
@@ -169,7 +175,8 @@ Overlay = namedtuple("Overlay", "path base version sources replace")
 
 def load_overlay(directory):
     """overlays/<name>/overlay.toml: base (stock version), optional version (written to the
-    image header), sources (.s files in the directory) and replace (stock function names)."""
+    image header), sources (.s and .c files in the directory) and replace (stock function
+    names)."""
     directory = Path(directory)
     path = directory / OVERLAY_TOML
     with path.open("rb") as f:
@@ -183,8 +190,9 @@ def load_overlay(directory):
     if version is not None and not (isinstance(version, int) and 0 <= version <= 9999):
         raise ValueError(f"{path}: version must fit four BCD digits")
     for src in t["sources"]:
-        if not FILE_NAME.match(Path(src).stem) or Path(src).suffix != ".s" or "/" in src:
-            raise ValueError(f"{path}: source {src!r} is not a .s file in the overlay")
+        if not FILE_NAME.match(Path(src).stem) or Path(src).suffix not in (".s", ".c") \
+                or "/" in src:
+            raise ValueError(f"{path}: source {src!r} is not a .s or .c file in the overlay")
     return Overlay(directory, t["base"], version, list(t["sources"]), list(t.get("replace", [])))
 
 
@@ -755,7 +763,9 @@ class Generator:
 
 
 def linker_script(files, overlays=False):
-    sections = "\n".join(f"        KEEP(*(.text.{name}))" for _, _, name in files)
+    # overlay objects may have a section of the same name (gcc's .text.startup)
+    sections = "\n".join(f"        KEEP(*(EXCLUDE_FILE(*{OVERLAY_PREFIX}*) .text.{name}))"
+                         for _, _, name in files)
     if overlays:
         # overlay code after the image; read-only: the stock startup neither copies .data
         # nor clears .bss for it
@@ -805,9 +815,9 @@ def plan_source(image_path, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYO
 def write_source(gen, outdir, overlays=()):
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    for old in outdir.glob("*.s"):         # only files an earlier run generated or copied
-        with old.open() as f:
-            if f.readline().rstrip("\n").startswith((GENERATED, OVERLAY_COPY)):
+    for old in [*outdir.glob("*.s"), *outdir.glob("*.c")]:   # only files an earlier run
+        with old.open() as f:                                # generated or copied
+            if f.readline().rstrip("\n").startswith((GENERATED, OVERLAY_COPY, OVERLAY_COPY_C)):
                 old.unlink()
     (outdir / OVERLAY_LIST).unlink(missing_ok=True)
     for name, text in gen.emit().items():
@@ -815,11 +825,16 @@ def write_source(gen, outdir, overlays=()):
     for ov in overlays:
         for src in ov.sources:
             # sorted after every generated file, so the overlays link in the given order
-            dest = outdir / f"zz_overlay_{ov.path.resolve().name}_{src}"
-            dest.write_text(f"{OVERLAY_COPY} {ov.path / src}\n" + (ov.path / src).read_text())
+            dest = outdir / f"{OVERLAY_PREFIX}{ov.path.resolve().name}_{src}"
+            orig = (ov.path / src).resolve()
+            head = f"{OVERLAY_COPY} {orig}\n" if src.endswith(".s") else \
+                f"{OVERLAY_COPY_C}\n#line 1 \"{orig}\"\n"     # errors name the original
+            dest.write_text(head + orig.read_text())
     if overlays:
+        dirs = [OVERLAY_INCLUDE] + [ov.path.resolve() for ov in overlays]
         (outdir / OVERLAY_LIST).write_text(
-            "".join(f"{name}\n" for name, _ in gen.replaced.values()))
+            "".join(f"replace {name}\n" for name, _ in gen.replaced.values())
+            + "".join(f"include {d}\n" for d in dirs))
     (outdir / "firmware.ld").write_text(linker_script(gen.files, bool(overlays)))
 
 
@@ -832,6 +847,12 @@ def generate(image_path, outdir, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes
     return dict(gen.stats, files=len(gen.files), exported=len(gen.exported))
 
 
+def overlay_list(srcdir, kind):
+    path = Path(srcdir) / OVERLAY_LIST
+    lines = path.read_text().splitlines() if path.exists() else []
+    return [line.split(" ", 1)[1] for line in lines if line.startswith(kind + " ")]
+
+
 def build(srcdir, out_bin):
     srcdir = Path(srcdir)
     objs = []
@@ -840,9 +861,21 @@ def build(srcdir, out_bin):
         subprocess.run([TOOL + "as", *CPU_FLAGS, "--fatal-warnings", "-o", str(o), str(s)],
                        check=True)
         objs.append(str(o))
+    libs = []
+    c_sources = sorted(srcdir.glob(f"{OVERLAY_PREFIX}*.c"))
+    if c_sources:
+        includes = [f"-I{d}" for d in overlay_list(srcdir, "include")]
+        for c in c_sources:
+            o = c.with_suffix(".o")
+            subprocess.run([TOOL + "gcc", *CPU_FLAGS, *CC_FLAGS, *includes, "-c", "-o", str(o),
+                            str(c)], check=True)
+            objs.append(str(o))
+        # helpers gcc calls (64-bit division, double arithmetic): only those the image lacks
+        libs.append(subprocess.run([TOOL + "gcc", *CPU_FLAGS, "-print-libgcc-file-name"],
+                                   check=True, capture_output=True, text=True).stdout.strip())
     elf = srcdir / "firmware.elf"
-    subprocess.run([TOOL + "ld", "-T", str(srcdir / "firmware.ld"), "-o", str(elf), *objs],
-                   check=True)
+    subprocess.run([TOOL + "ld", "-T", str(srcdir / "firmware.ld"), "-o", str(elf), *objs,
+                    *libs], check=True)
     check_overlays(srcdir, elf)
     subprocess.run([TOOL + "objcopy", "-O", "binary", str(elf), str(out_bin)], check=True)
     return Path(out_bin).read_bytes()
@@ -851,10 +884,9 @@ def build(srcdir, out_bin):
 def check_overlays(srcdir, elf):
     """Each replaced name must be a Thumb function in the overlay code: otherwise bl would
     turn into blx to ARM state, or land in the stock image."""
-    listed = srcdir / OVERLAY_LIST
-    if not listed.exists():
+    if not (srcdir / OVERLAY_LIST).exists():
         return
-    names = listed.read_text().split()
+    names = overlay_list(srcdir, "replace")
     # readelf, not nm: nm clears the Thumb bit of .thumb_func symbols
     table = subprocess.run([TOOL + "readelf", "-sW", str(elf)], check=True,
                            capture_output=True, text=True).stdout
@@ -1059,6 +1091,8 @@ def main(argv=None):
             data = build(args.srcdir, args.out)
         except ValueError as e:
             sys.exit(str(e))
+        except subprocess.CalledProcessError as e:
+            sys.exit(f"{Path(e.cmd[0]).name} failed")      # its messages are above
         print(f"{args.out}: {len(data)} bytes")
         if args.compare:
             ref = args.compare.read_bytes()

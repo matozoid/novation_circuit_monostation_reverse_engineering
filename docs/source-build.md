@@ -17,7 +17,8 @@ Each user generates it locally from their own `firmware/*.syx`/`.bin` into `buil
 | `src/layout.tsv` | Ghidra's code/data map: addresses, kinds, data refs, function entries; no image bytes |
 | `src/layout-fixes.tsv` | hand corrections applied over it (same line syntax) |
 | `src/files.tsv` | `start end name [evidence]` address ranges, one source file each (see *Files*) |
-| `overlays/<name>/` | our own code: `overlay.toml` plus `.s` files that replace stock functions (see *Overlays*) |
+| `overlays/<name>/` | our own code: `overlay.toml` plus `.s`/`.c` files that replace stock functions (see *Overlays*) |
+| `overlays/include/firmware.h` | prototypes of stock functions for C overlays |
 | `src/symbols.tsv` | `addr name [note]` names from `docs/*.md` (895: every function, plus vectors, vtables and tables; `docs/source-map.md` gives each function's purpose) |
 
 ## Usage
@@ -50,7 +51,7 @@ the generated tree, so features stay out of the generated source:
 |-----|---------|
 | `base` | stock version the overlay is written for; must match the image header (800) |
 | `version` | optional: the BCD version written into the image header (`0x70` reply) |
-| `sources` | `.s` files in the overlay directory |
+| `sources` | `.s` and `.c` files in the overlay directory |
 | `replace` | stock function names (from `src/symbols.tsv`) the overlay defines |
 
 **Redirect, not move.** A replaced function's stock body stays at its address, renamed
@@ -63,20 +64,31 @@ the image, and `generate` fails with `cannot redirect to the overlay: <address> 
 firmware 800 no function is reached that way, so every function is replaceable. Not
 detected: code that falls through into a replaced entry without a branch.
 
-`generate` copies the sources into the tree as `zz_overlay_<overlay>_<file>.s` (first line
-`@ Copied by …`, removed on the next run like generated files) and lists the replaced names
-in `overlays.txt`. `firmware.ld` then links all non-stock `.text`/`.rodata` after the
-image (`overlay_start`, 4-aligned; 0x0802BB20 on 800) and asserts there is no
+`generate` copies the sources into the tree as `zz_overlay_<overlay>_<file>` (first line
+`@ Copied by …` or `/* Copied by … */`, removed on the next run like generated files; C
+copies start with `#line 1 "<original>"`, so errors name the original) and writes
+`overlays.txt` (`replace NAME` and `include DIR` lines). `firmware.ld` then links all
+non-stock `.text`/`.rodata` after the image (stock sections exclude `zz_overlay_*`
+objects: gcc puts `main` in `.text.startup`, the section of the stock `startup` file) (`overlay_start`, 4-aligned; 0x0802BB20 on 800) and asserts there is no
 `.data`/`.bss` (the stock startup neither copies nor clears it for overlays) and that the
 code ends below `0x08080000`. `build` checks with `readelf` that each replaced name is a
 `.thumb_func` in the overlay code: a plain label would turn `bl` into `blx` to ARM state.
 `--overlay` can be repeated; two overlays may not replace the same name or set different
-versions. Overlay code is ours and is checked in; only `.s` for now (C needs
-`gcc-arm-none-eabi`).
+versions. Overlay code is ours and is checked in.
+
+**C overlays.** `build` compiles `.c` with `arm-none-eabi-gcc` (`gcc-arm-none-eabi`), the
+CPU flags above and `-std=gnu17 -Os -ffreestanding -fno-common -Wall -Wextra
+-Werror=implicit-function-declaration`, no unwind tables, with `-I overlays/include` and
+`-I` each overlay directory. Every stock name is a global in the generated tree, so a
+declaration (in `firmware.h` or the overlay) is enough to call it; argument types come
+from `docs/source-map.md` and the decompiles. libgcc is linked last, so helpers gcc calls
+(64-bit division, double arithmetic) come from it only when the image lacks them. No
+`.data`/`.bss`: use `const` data or the free RAM in `docs/hardware.md`.
 
 `overlays/hello` is the source twin of `patches/hello` (`main` wrapped by a tail call,
-version 801), and `tests/test_fwsrc.py` checks that both produce the same image, the one
-already run on the device.
+version 801) and `overlays/hello_c` the same in C (`void main(void) { stock_main(); }`,
+which gcc makes a `b.w` tail call). `tests/test_fwsrc.py` checks that all three produce the
+same image, the one already run on the device, and that a C `static` variable fails to link.
 
 To regenerate the layout after Ghidra changes:
 
@@ -212,7 +224,7 @@ lines, not meaning: an insert inside a data structure (a table, the header) pass
   `python3 tools/fwsrc.py coverage [--list]` counts both, and a test keeps them complete.
   Rename in both files together.
 - **Features.** The generated tree is thrown away and regenerated, so features live in
-  overlays (see *Overlays*). Overlays are `.s` only; C comes once `gcc-arm-none-eabi` is
-  installed, with a header of stock functions from `src/symbols.tsv`.
+  overlays (see *Overlays*), in `.s` or C. `firmware.h` holds few prototypes yet; add them
+  as arguments are pinned down.
 - **Toolchain hint.** newlib crti `_init`/`_fini` sit at `0x0802AEC8`/`0x0802AED4`, which
   points to arm-none-eabi-gcc. That matters for a matching C decompilation later.
