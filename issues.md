@@ -308,7 +308,7 @@ The firmware's patch store has 128 slots (`0x2000`–`0x12000`, 512 bytes each).
 - **Hardware checks** (step-by-step plan: `docs/hw-test-patch-slots.md`):
   - dump `0x2000`/`0x10000` (cmd `0x78`) to see whether slots 64–127 hold data on a stock unit;
   - try a slot write, then a `0x40` request, to slot 64.
-- **Feature candidate:** patch the page setter, the Oct LED logic and pad rendering to allow 4 pages, giving 128 patches. Depends on #17.
+- **Feature:** 128 patches from the panel is #54.
 - **Program change 64–127 on the Osc 1 channel was expected to select these slots** (no 0–63 clamp found in the setter or the load handler; `docs/sysex-spec.md` *Patch store*). Hardware says otherwise: see test 4 below.
 - **Hardware results (2026-10-25, stock unit, bootloader 740 / firmware 800; tests 0–3 of the plan, `~/ms-dumps/report.json`):**
   - The `0x78` dumps are served by the **bootloader** only; the app ignores them. `tools/hwtest_slots.py` reboots with `0x71` first, like Components.
@@ -330,7 +330,7 @@ The LFO is digital, so new shapes (S&H variants, random, ramp) are firmware-only
 Candidates: per-step probability, ratchets, extra scales, and longer or chained patterns. Before deciding scope, measure the remaining RAM and flash headroom and check the session format constraints (#13).
 
 ### #23 Feature request intake
-Collect the features the user actually wants and turn each one into an issue once #10 shows what is feasible. The first external list became #32–#42. Owner forums and reviews (2026-10-26) added #44–#53.
+Collect the features the user actually wants and turn each one into an issue once #10 shows what is feasible. The first external list became #32–#42. Owner forums and reviews (2026-10-26) added #44–#53. #54 split off from #31.
 
 ## Feature requests (external list, 2026-10-25)
 
@@ -420,3 +420,11 @@ The blog review says "Pulse width has to be modulated". The patch has `osc1_pw`/
 
 ### #53 Record patch changes into the sequencer
 Patch Flip (v1.2) assigns patches to steps by hand, one step at a time. Wanted: while recording, a press on the patch-select page is written to the current step as a patch change, so a pattern of patch changes can be played in live, e.g. a drum beat played on kick/snare/hat patches. Needs: where Patch Flip keeps its per-step patch numbers in the session (#13, `docs/session-format.md`), the recording path that writes notes on the current step (#33), and a hook on the patch-select pads during record. Patch loads must be fast enough to follow 16th notes; measure the time from pad press to new sound.
+
+### #54 128 patches from the panel
+The patch store holds 128 slots, but the panel reaches only 64 (2 pages, Oct ↓/↑). Wanted: all 128 selectable and savable from the unit. Facts and tests are in #31. Needs:
+- the page setter `FUN_08022fdc`, the Oct LED logic and the pad rendering extended to 4 pages;
+- the load path fixed: program change ≥ 64 loads the built-in `Initial Patch` instead of the flash slot (#31 test 4). Trace where that happens (load handler `FUN_08019AE4` port `+0x34`, program setter `FUN_0801C842`); the panel probably goes the same way;
+- a check that the save path writes slots 64–127 from the panel (SysEx writes already work);
+- a decision on how pages 3–4 interact with Components and `.monostationpack` banks, which know 64 patches only: back up slots 64–127 with the `0x78` dump (`tools/sessionsyx.py`), or leave them out of Components' view.
+Sessions and Patch Flip store patch numbers; check that numbers ≥ 64 survive there (#13).

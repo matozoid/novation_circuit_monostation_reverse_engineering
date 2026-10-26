@@ -111,11 +111,29 @@ Never commit it.
 
 ## Documentation
 
-- `docs/hardware.md`: MCU, memory map, flash sectors, free RAM.
-- `docs/bootloader.md`, `docs/update-protocol.md`: bootloader and firmware updates.
-- `docs/sequencer.md`: clock, patterns, note routing.
-- `docs/sysex-spec.md`, `docs/sysex-handlers.md`: patch format and SysEx commands.
-- `issues.md`: open work, feature ideas and established facts.
+For owners:
+
+- [Entering the bootloader by hand](docs/update-protocol.md#entering-the-bootloader-by-hand)
+  and [Recovery](docs/update-protocol.md#recovery): bootloader mode, reading the version
+  lights, and retrying an update that failed.
+- [Patch SysEx](docs/sysex-spec.md): the 136-byte patch format, `.monostationpack` banks,
+  how to request a patch, and the 64 hidden patch slots.
+- [Session format](docs/session-format.md) and [session transport](docs/session-transport.md):
+  what is in a session and how session backups travel over SysEx.
+- [Patch slots 64–127 on the unit](docs/hw-test-patch-slots.md): what the hidden slots
+  hold and what program change can reach.
+
+For modders:
+
+- [Firmware source build](docs/source-build.md): generating source and writing overlays.
+- [Source map](docs/source-map.md): what each stock function does.
+- [Sequencer](docs/sequencer.md): clock, patterns, note routing.
+- [Hardware](docs/hardware.md): MCU, memory map, flash sectors, free RAM.
+- [Bootloader](docs/bootloader.md), [update protocol](docs/update-protocol.md) and
+  [firmware container](docs/firmware-container.md): how firmware gets onto the unit.
+- [Binary patching](docs/patching.md), [SysEx handlers](docs/sysex-handlers.md),
+  [firmware map](docs/firmware-map.md).
+- [issues.md](issues.md): open work, feature ideas and established facts.
 
 ## Tests
 
