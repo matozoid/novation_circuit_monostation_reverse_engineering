@@ -22,6 +22,10 @@ uint32_t rng_read(void);            /* hardware RNG, 0 on timeout */
 
 extern const uint8_t pad_levels[16]; /* 0, 8, 17, ..., 127: glide and velocity pad levels */
 
+/* Index into the keyboard layout's pad-to-note table (layout = keyboard view +0x30,
+ * notes at layout +0x14, 0 = no key) for a pad of the 16 (32 in Expand view). */
+uint8_t keyboard_pad_to_note(void *keyboard_view, unsigned pad);
+
 /* ui_button_event(ui, button): the UI's button-down router (docs/source-map.md). */
 void ui_button_event(void *ui, unsigned button);
 void stock_ui_button_event(void *ui, unsigned button);

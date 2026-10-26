@@ -14,14 +14,20 @@
 #define UI_FORWARD      0x15e   /* byte: forward every button to the view at +0x60 */
 
 /* mode view */
+#define MV_KEYBOARDS    0x20    /* per-track keyboard views (Note and Expand) */
 #define MV_TRACKS       0x68    /* per-track step objects, Osc 1 and Osc 2 only */
 #define MV_TRACK        0x74
 #define MV_SUBVIEW      0x75
 #define TRACK_STEPS     0x0c    /* cell holding a pointer to the pattern's 16 steps */
 
+/* keyboard view */
+#define KV_LAYOUT       0x30
+#define LAYOUT_NOTES    0x14    /* pad-to-note table, indexed by keyboard_pad_to_note */
+#define EXPAND_PADS     32
+
 #define BUTTON_MUTATE   0x1d    /* Pattern Settings; Mutate with Shift */
 
-enum { SUBVIEW_VELOCITY = 1, SUBVIEW_GATE = 2, SUBVIEW_GLIDE = 3 };
+enum { SUBVIEW_VELOCITY = 1, SUBVIEW_GATE = 2, SUBVIEW_GLIDE = 3, SUBVIEW_EXPAND = 5 };
 
 struct step {                   /* docs/session-format.md "Pattern" */
     uint8_t note;               /* 0 = empty */
@@ -37,9 +43,30 @@ static unsigned random_below(unsigned n)
     return rng_read() % n;
 }
 
-static void randomise(struct step *step, unsigned subview, unsigned max_gate)
+/* The distinct notes on the Expand view's pads: the current scale over its four octaves
+ * (two for Chromatic), relative to C; the router adds the root note on playback. */
+static unsigned expand_notes(void *keyboard_view, uint8_t *notes)
+{
+    const uint8_t *table = (const uint8_t *)FIELD(keyboard_view, KV_LAYOUT, void *) + LAYOUT_NOTES;
+    unsigned count = 0;
+    for (unsigned pad = 0; pad < EXPAND_PADS; pad++) {
+        uint8_t note = table[keyboard_pad_to_note(keyboard_view, pad)];
+        unsigned i = 0;
+        while (i < count && notes[i] != note)
+            i++;
+        if (note && i == count)
+            notes[count++] = note;
+    }
+    return count;
+}
+
+static void randomise(struct step *step, unsigned subview, unsigned max_gate,
+                      const uint8_t *notes, unsigned note_count)
 {
     switch (subview) {
+    case SUBVIEW_EXPAND:
+        step->note = notes[random_below(note_count)];
+        break;
     case SUBVIEW_VELOCITY: {
         /* The velocity view's pad levels: (pad + 1) * 8, 127 for the top pad. */
         unsigned level = random_below(16) + 1;
@@ -64,17 +91,26 @@ static int mutate_field(void *ui)
         return 0;
     if (!*(uint8_t *)cell_read(FIELD(FIELD(ui, UI_SHIFT, void *), 0x10, void *)))
         return 0;
-    const uint8_t *gate = cell_read(FIELD(ui, UI_MUTATE_GATE, void *));
-    if (gate[0] || gate[2] == 5 || gate[2] == 6)
-        return 0;
-
     void *mode_view = FIELD(ui, UI_MODE_VIEW, void *);
     if (FIELD(ui, UI_ACTIVE_VIEW, void *) != mode_view)
         return 0;
     unsigned track = FIELD(mode_view, MV_TRACK, uint8_t);
     unsigned subview = FIELD(mode_view, MV_SUBVIEW, uint8_t);
-    if (track > 1 || subview < SUBVIEW_VELOCITY || subview > SUBVIEW_GLIDE)
+    if (track > 1 || subview < SUBVIEW_VELOCITY ||
+        (subview > SUBVIEW_GLIDE && subview != SUBVIEW_EXPAND))
         return 0;
+    /* Byte 2 is the subview of the packed view id: stock ignores Mutate in the Expand
+     * view (5), which hides the pattern; we handle it. */
+    const uint8_t *gate = cell_read(FIELD(ui, UI_MUTATE_GATE, void *));
+    if (gate[0] || (gate[2] == 5 && subview != SUBVIEW_EXPAND) || gate[2] == 6)
+        return 0;
+    uint8_t pitches[EXPAND_PADS];
+    unsigned pitch_count = 0;
+    if (subview == SUBVIEW_EXPAND) {
+        pitch_count = expand_notes(FIELD(mode_view, MV_KEYBOARDS + 4 * track, void *), pitches);
+        if (!pitch_count)
+            return 0;
+    }
 
     /* What stock does for every button but 0x14, 0x15 and 0x17 before dispatching. */
     void *view = FIELD(ui, UI_VIEW_38, void *);
@@ -96,7 +132,7 @@ static int mutate_field(void *ui)
         max_gate = 96;
     for (unsigned i = 0; i < 16; i++)
         if (steps[i].note)
-            randomise(&steps[i], subview, max_gate);
+            randomise(&steps[i], subview, max_gate, pitches, pitch_count);
     /* One random note keeps the longest gate, so the range doesn't shrink press by press. */
     if (subview == SUBVIEW_GATE && notes) {
         unsigned keep = random_below(notes);
