@@ -17,7 +17,7 @@ Each user generates it locally from their own `firmware/*.syx`/`.bin` into `buil
 | `src/layout.tsv` | Ghidra's code/data map: addresses, kinds, data refs, function entries; no image bytes |
 | `src/layout-fixes.tsv` | hand corrections applied over it (same line syntax) |
 | `src/files.tsv` | `start end name [evidence]` address ranges, one source file each (see *Files*) |
-| `src/symbols.tsv` | `addr name [note]` names from `docs/*.md` (183: vectors, runtime, sequencer, recorder, MIDI, SysEx, image header, vtables, tables) |
+| `src/symbols.tsv` | `addr name [note]` names from `docs/*.md` (230: vectors, runtime, libraries, sequencer, recorder, MIDI, SysEx, image header, vtables, tables) |
 
 ## Usage
 
@@ -75,17 +75,23 @@ source-file names:
 | `vectors` | `0800C000`–`0800C1AC` | vector table, 107 words up to the image header |
 | `image_header` | `0800C1AC`–`0800C1D0` | `MAIN` + BCD version, read by the bootloader |
 | `crtbegin` | `0800C1D0`–`0800C230` | `__do_global_dtors_aux`, `frame_dummy` (the `.fini`/`.init_array` entries) |
+| `syscalls` | `0801EEAC`–`0801EEFC` | newlib stubs `_read` … `_close` |
+| `stm32f4xx_it` | `08023A78`–`08024070` | IRQ and fault handlers, in ST's `stm32f4xx_it.c` order reversed (`NMI_Handler` last) |
 | `startup` | `08025E60`–`08025EAC` | `Reset_Handler` + `Default_Handler` (CMSIS `startup_stm32f4xx.s`) |
-| `rodata` | `08026D98`–`0802AEC8` | constant data after the last function and its pool |
+| `libstdcxx_*`, `libc_*` | `08025EAC`–`08026D94` | one file per library object (`docs/firmware-map.md` *Runtime libraries*) |
+| `rodata` | `08026D94`–`0802AE30` | app constant data; `D_08026D94` is read by app code |
+| `rodata_libc_*` | `0802AE30`–`0802AEC8` | `_global_impure_ptr`, `__sf_fake_*`, printf strings |
 | `crti` | `0802AEC8`–`0802AEE0` | `_init`, `_fini` (newlib crti/crtn) |
 | `init_array` / `fini_array` | `0802AEE0`–`0802AEEC` | `frame_dummy` + one static constructor (`0x080256F4`); `__do_global_dtors_aux` |
-| `data` | `0802AEEC`–`0802BB20` | `.data` load image (`_sidata`); `Reset_Handler` copies it to `0x20000000`–`0x20000C18` |
+| `data` | `0802AEEC`–`0802BAA0` | `.data` load image (`_sidata`); `Reset_Handler` copies `0x0802AEEC`–`0x0802BB04` to `0x20000000`–`0x20000C18` |
+| `data_libc_impure` | `0802BAA0`–`0802BB04` | `impure_data` and `_impure_ptr` at the end of `.data` |
+| `image_tail` | `0802BB04`–`0802BB20` | 28 unexplained bytes up to the image end |
 
 `.bss` runs to `0x200035B8`. `Reset_Handler` calls `0x0801A848`, then
 `0x08025EE0` (`__libc_init_array`), then `main`.
 
 Rules, checked by `generate`:
-- A file starts at an instruction or at a layout unit.
+- A file starts at an instruction or at a layout unit. Undefined (`U`) units are split where a file starts inside them.
 - Only wide (32-bit) branches and data words may cross files. A narrow branch, a literal
   load, `adr` or a jump table that would cross is an error ("reference across files"):
   those are resolved by the assembler, so they must stay in one object. On firmware 800 no
@@ -99,7 +105,8 @@ Rules, checked by `generate`:
   has a literal load or `adr` (gas warns about `Align(PC, 4)` in a less aligned section),
   must start and end 4-aligned; otherwise `generate` fails. Code-only files need 2. This is
   also a clue to the real compile units: an object with a literal pool starts and ends
-  4-aligned.
+  4-aligned. Another clue: `stm32f4xx_it.c`'s handlers appear in reverse source order,
+  so GCC probably emitted every unit's functions last to first.
 
 A split into 829 files, one per function where these rules allow, also builds
 byte-identical in both modes and passes the shift test.
@@ -139,8 +146,7 @@ lines, not meaning: an insert inside a data structure (a table, the header) pass
 ## Limits and next steps
 
 - **Relocation.** The shift test passes across files, so code can move. Still to come:
-  ranges for the code itself (subsystems; the IRQ handlers cluster at
-  `0x08023A78`–`0x0802406E`). Data words that only *look* like pointers (false positives)
+  ranges for the app code, which is still in the `gap_*` files. Data words that only *look* like pointers (false positives)
   would be rewritten wrongly when code moves; pointers at unaligned offsets in packed data
   are not found at all.
 - **Names.** `src/symbols.tsv` replaces Ghidra's `FUN_`/`D_` labels. A name doesn't make

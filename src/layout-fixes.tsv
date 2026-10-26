@@ -25,6 +25,10 @@ F 0802406e
 F 080240b0
 C 08025ea8 08025eaa            # `b .` loop, pointer target
 F 08025ea8
+F 080260e4                     # newlib _cleanup_r, __sclose, __sflush_r, printf: reached
+F 080262f6                     # through pointers and tail calls only
+F 08026484
+F 080267a0
 D 08027cb2 08027d0e            # byte table 00 01 02 ...: Ghidra disassembled it
 D 0802825a 080282fc            # byte table 8e 8e 8d ...: Ghidra disassembled it
 D 0802a62e 0802a678            # synth parameter table (0x0802A62A): Ghidra disassembled it

@@ -152,6 +152,18 @@ def cover_files(files, end):
     return out
 
 
+def split_units(units, starts):
+    """Undefined (U) units split where a file starts inside them: their bytes can go to
+    either file."""
+    out = []
+    for u in units:
+        for a in sorted(a for a in starts if u.kind == "U" and u.start < a < u.end):
+            out.append(u._replace(end=a))
+            u = u._replace(start=a)
+        out.append(u)
+    return out
+
+
 def check_layout(layout, image_size):
     pos = LOAD_ADDRESS
     for u in layout.units:
@@ -398,8 +410,8 @@ class Generator:
         self.plan_files()
 
     def plan_files(self):
-        """Files must start on an instruction or a data unit, and only wide branches and data
-        may cross files:
+        """Files must start on an instruction or a data unit (undefined bytes are split for
+        them), and only wide branches and data may cross files:
         literal loads, adr, narrow branches and jump tables stay inside one file."""
         bad = [f"{name} starts inside a unit at {start:#010x}" for start, _, name in self.files
                if start not in self.insn_at and start not in self.unit_starts]
@@ -654,9 +666,10 @@ def plan_source(image_path, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYO
     image = Path(image_path).read_bytes()
     layout = load_layout(layout_path, fixes)
     check_layout(layout, len(image))
+    files = load_files(files_path)
+    layout.units = split_units(layout.units, [f[0] for f in files])
     code = disassemble(image_path, layout)
-    gen = Generator(image, layout, load_symbols(symbols_path), code,
-                    files=load_files(files_path), **options)
+    gen = Generator(image, layout, load_symbols(symbols_path), code, files=files, **options)
     with tempfile.TemporaryDirectory() as tmp:
         gen.plan(tmp)
     return gen

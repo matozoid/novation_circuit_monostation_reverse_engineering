@@ -46,6 +46,8 @@ This tight cluster emits the debug format strings and is the input-event dispatc
 | `0x080179A0` | `Button %d changed state to %d` |
 | `0x080179D8` | `Pad %d changed state to %d with velocity %d` |
 
+Each handler tail-calls `printf` with its string (`FUN_08017910`–`0x080179D8`). The output goes nowhere: the `_write` stub returns the length without sending anything (*Runtime libraries*). Pointing `_write` at a SysEx sender would turn these into an input-event log.
+
 Hardware: GPIOA–E matrix scan for pads/buttons (12 refs GPIOE, 11 GPIOC, 10 GPIOD), ADC1 (`0x40012000`) for pots/sliders, and EXTI15_10 (ISR `0x08023A79`) for asynchronous edges (encoder detents / external sync input).
 
 ### UI output (LEDs / RGB pads) — SPI
@@ -62,6 +64,32 @@ TIM5 (32-bit, ISR `0x0801F545`, 10 kHz) is the system time base: its 1 ms channe
 
 ### Persistent storage — FLASH_IF `0x40023C00`, Backup SRAM `0x40024000`
 On-chip flash program/erase (FLASH_IF, 2 refs at `0x0801A930`, `0x08028890`) saves patches/sessions; Backup SRAM (7 refs) holds state across power cycles. Default blobs `"Initial Patch"`, `"Classic Mono"`, `"Initial Session"`, `"User Session"` are referenced from `0x0800EEF8`–`0x0801B5C0` (patch/session init + storage layer).
+
+## Runtime libraries
+
+The toolchain is arm-none-eabi-gcc with **newlib-nano** and libstdc++. Their code fills `0x08025EAC`–`0x08026D94`, right after the startup file. Their constant data sits at the end of `.rodata` (`0x0802AE30`–`0x0802AEC8`), and their `.data` sits at the end of the `.data` image. The functions are identified by code shape, call graph and the data they touch. The image has no symbols. `src/files.tsv` gives one source file per library object, and `src/symbols.tsv` has the names.
+
+| Range | Object | Functions |
+|-------|--------|-----------|
+| `08025EAC`–`08025EE0` | libstdc++ `new_handler`, `new_opv`, `new_op` | `get_new_handler` (`__new_handler` `0x200035A8`), `operator new[]`, `operator new` (`malloc`, retried through the handler) |
+| `08025EE0`–`08025F3C` | `init`, `malloc` | `__libc_init_array` (empty `.preinit_array`, `_init`, `.init_array`), `malloc` → `_malloc_r(_impure_ptr, n)` |
+| `08025F3C`–`08026080` | `memset`, `nano-freer`, `nano-mallocr` | byte-loop `memset`, `_free_r`, `_malloc_r` (first fit on the free list at `0x200035B0`, else `_sbrk_r`) |
+| `08026080`–`080260E4` | `sbrkr`, `writer`, `closer` | `_sbrk_r`, `_write_r`, `_close_r` (errno at `0x200035B4`) |
+| `080260E4`–`08026300` | `findfp`, `fwalk`, `stdio` | `_cleanup_r`, `std`, `__sfmoreglue`, `__sinit`, `__sfp`; `_fwalk_reent`; `__sread`/`__swrite`/`__sseek`/`__sclose` |
+| `08026300`–`080266CC` | `wbuf`, `wsetup`, `fflush`, `lseekr`, `makebuf` | `__swbuf_r`, `__swsetup_r`, `__sflush_r`, `_fflush_r`, `_lseek_r`, `__swhatbuf_r`, `__smakebuf_r` |
+| `080266CC`–`080267A0` | `readr`, `fstatr`, `isattyr`, `memcmp`, `memcpy`, `memmove` | byte-loop string functions |
+| `080267A0`–`08026D94` | `printf`, `nano-vfprintf`, `nano-vfprintf_i` | `printf`, `__sfputc_r`, `__sfputs_r`, `_vfprintf_r`, `_printf_common`, `_printf_i` |
+| `0802AE30`–`0802AEC8` (rodata) | `impure`, `findfp`, `nano-vfprintf*` | `_global_impure_ptr`, `__sf_fake_stdin/stdout/stderr`, `"#-0+ "`, `"hlL"`, `"efgEFG"`, the hex digit strings |
+| `0802BAA0`–`0802BB04` (`.data` load) | `impure` | `impure_data` (`0x20000BB4`, 0x60-byte nano `_reent`: fake FILEs, locale `"C"`) and `_impure_ptr` (`0x20000C14`) |
+
+The syscall stubs are app code, `0x0801EEAC`–`0x0801EEFC`, just before the USB code:
+- `_read` returns 0. `_fstat` reports `S_IFCHR`.
+- `_sbrk` grows the heap up to `0x200235B8`, and hits `bkpt #1` when it runs out (`docs/hardware.md` *Free RAM*).
+- `_write` returns the length and sends nothing. `_lseek` returns 0, `_isatty` returns 1, `_close` returns -1.
+
+App code calls only `operator new`, `operator new[]`, `memcpy`, `memset`, `memcmp`, `memmove` and the five input-event `printf`s, plus `__libc_init_array` from `Reset_Handler`. Everything else in the table is pulled in by `printf`.
+
+The 28 bytes after the `.data` image (`0x0802BB04`–`0x0802BB20`, `8 × FF` then zeros) are unexplained.
 
 ## Still to isolate (needs Ghidra function graph — #9/#10 follow-up)
 - **Sequencer engine**: mapped in `docs/sequencer.md` (clock engine, transport, step advance, track players). Also mapped there: note routing (router, per-track mergers, MIDI note out, synth engine entry) and MIDI clock/transport in and out. Still open: the synth engine internals, the record paths, and which USB/DIN parser feeds the MIDI-in parser `FUN_080186B8`.

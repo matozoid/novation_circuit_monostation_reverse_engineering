@@ -35,15 +35,64 @@
 0800c2d0 main                           main loop, soft-timer table 0x20003230
 0800e1f8 app_construct                  builds the object graph, reads settings and patches
 0800fb5c ui_construct
-08025ec0 operator_new
-0801eebc _sbrk
-08025f3c memset
-08026752 memcpy
-0802aec8 _init
-0802aed4 _fini
 08024070 soft_timers_run                sequencer.md Time base
 0801e1ec delay_systick_wraps            sysex-handlers.md
 0801ab9c rng_read                       hardware RNG
+
+# --- runtime libraries: libstdc++, newlib-nano and its syscall stubs (firmware-map.md Runtime libraries)
+0801eeac _read
+0801eeb0 _fstat
+0801eebc _sbrk
+0801eee8 _write                         returns the length: printf output is dropped
+0801eeec _lseek
+0801eef0 _isatty
+0801eef4 _close
+08025eac get_new_handler
+08025ebc operator_new_array
+08025ec0 operator_new
+08025ee0 __libc_init_array
+08025f2c malloc
+08025f3c memset
+08025f4c _free_r
+08025fd8 _malloc_r
+08026080 _sbrk_r
+080260a0 _write_r
+080260c4 _close_r
+080260e4 _cleanup_r
+080260f0 std
+08026138 __sfmoreglue
+08026164 __sinit
+080261c4 __sfp
+0802623c _fwalk_reent
+08026278 __sread
+0802629a __swrite
+080262d2 __sseek
+080262f6 __sclose
+08026300 __swbuf_r
+080263a8 __swsetup_r
+08026484 __sflush_r
+08026594 _fflush_r
+080265e8 _lseek_r
+0802660c __swhatbuf_r
+08026654 __smakebuf_r
+080266cc _read_r
+080266f0 _fstat_r
+08026714 _isatty_r
+08026734 memcmp
+08026752 memcpy
+08026768 memmove
+080267a0 printf                         5 debug messages for input events, firmware-map.md
+080267d0 __sfputc_r
+08026800 __sfputs_r
+08026824 _vfprintf_r
+08026a5c _printf_common
+08026b48 _printf_i
+0802ae30 _global_impure_ptr
+0802ae34 __sf_fake_stdin
+0802ae54 __sf_fake_stdout
+0802ae74 __sf_fake_stderr
+0802aec8 _init
+0802aed4 _fini
 
 # --- observable cells (sequencer.md Observable state)
 080231f8 cell_read

@@ -7,9 +7,44 @@
 0800c000 0800c1ac vectors                vector table: 107 words up to the image header
 0800c1ac 0800c1d0 image_header           "MAIN" + BCD version, read by the bootloader (sysex-handlers.md)
 0800c1d0 0800c230 crtbegin               __do_global_dtors_aux, frame_dummy: the .fini/.init_array entries
+0801eeac 0801eefc syscalls               newlib stubs: _read, _fstat (S_IFCHR), _sbrk (limit 0x200235B8, bkpt #1), _write (drops output), _lseek, _isatty, _close
+08023a78 08024070 stm32f4xx_it           IRQ and fault handlers in ST's stm32f4xx_it.c order, reversed (NMI_Handler last)
 08025e60 08025eac startup                Reset_Handler + Default_Handler (CMSIS startup_stm32f4xx.s)
-08026d98 0802aec8 rodata                 constant data after the last function and its pool: session_defaults, vtables, tables, strings
+08025eac 08025ebc libstdcxx_new_handler  std::get_new_handler: loads __new_handler (0x200035A8) with dmb
+08025ebc 08025ec0 libstdcxx_new_opv      operator new[]: b.w operator new
+08025ec0 08025ee0 libstdcxx_new_op       operator new: malloc, retried through the new handler
+08025ee0 08025f2c libc_init              __libc_init_array: .preinit_array (empty), _init, .init_array
+08025f2c 08025f3c libc_malloc            malloc: _malloc_r(_impure_ptr, n)
+08025f3c 08025f4c libc_memset            byte loop (newlib-nano)
+08025f4c 08025fd8 libc_nano_freer        _free_r: nano-malloc free list at 0x200035B0
+08025fd8 08026080 libc_nano_mallocr      _malloc_r: first fit, else _sbrk_r
+08026080 080260a0 libc_sbrkr             _sbrk_r: _sbrk, errno at 0x200035B4
+080260a0 080260c4 libc_writer            _write_r
+080260c4 080260e4 libc_closer            _close_r
+080260e4 0802623c libc_findfp            _cleanup_r, std, __sfmoreglue, __sinit, __sfp
+0802623c 08026278 libc_fwalk             _fwalk_reent
+08026278 08026300 libc_stdio             __sread, __swrite, __sseek, __sclose (std's FILE callbacks)
+08026300 080263a8 libc_wbuf              __swbuf_r: __swsetup_r, _fflush_r
+080263a8 08026484 libc_wsetup            __swsetup_r: frees the ungetc buffer, __smakebuf_r
+08026484 080265e8 libc_fflush            __sflush_r, _fflush_r
+080265e8 0802660c libc_lseekr            _lseek_r
+0802660c 080266cc libc_makebuf           __swhatbuf_r (_fstat_r, S_IFCHR), __smakebuf_r
+080266cc 080266f0 libc_readr             _read_r
+080266f0 08026714 libc_fstatr            _fstat_r
+08026714 08026734 libc_isattyr           _isatty_r
+08026734 08026752 libc_memcmp            byte loop
+08026752 08026768 libc_memcpy            byte loop
+08026768 080267a0 libc_memmove           byte loops, backwards on overlap
+080267a0 080267d0 libc_printf            printf: __sinit, _vfprintf_r on stdout
+080267d0 08026a5c libc_nano_vfprintf     __sfputc_r, __sfputs_r, _vfprintf_r
+08026a5c 08026d94 libc_nano_vfprintf_i   _printf_common, _printf_i
+08026d94 0802ae30 rodata                 app constant data after the library code (D_08026d94 is read by app code): session_defaults, vtables, tables, strings
+0802ae30 0802ae34 rodata_libc_impure     _global_impure_ptr -> impure_data (0x20000BB4); its "C" (0x0802AE2D) stays in rodata, strings are merged
+0802ae34 0802ae94 rodata_libc_findfp     __sf_fake_stdin/stdout/stderr, 3 x 32 zero bytes
+0802ae94 0802aec8 rodata_libc_vfprintf   "#-0+ ", "hlL", "efgEFG" (_vfprintf_r), hex digits (_printf_i); one file: strings end unaligned
 0802aec8 0802aee0 crti                   _init, _fini (newlib crti/crtn)
 0802aee0 0802aee8 init_array             frame_dummy, one static constructor (0x080256F4)
 0802aee8 0802aeec fini_array             __do_global_dtors_aux
-0802aeec 0802bb20 data                   .data load image: Reset_Handler copies it to 0x20000000-0x20000C18
+0802aeec 0802baa0 data                   app .data load image: Reset_Handler copies 0x0802AEEC-0x0802BB04 to 0x20000000-0x20000C18
+0802baa0 0802bb04 data_libc_impure       impure_data (0x20000BB4: fake stdin/stdout/stderr, locale "C") and _impure_ptr (0x20000C14)
+0802bb04 0802bb20 image_tail             28 bytes past .data (8 x ff, then zeros) up to the image end; unknown

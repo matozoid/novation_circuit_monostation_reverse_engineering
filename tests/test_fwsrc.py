@@ -49,6 +49,12 @@ class LayoutTest(unittest.TestCase):
                 with self.assertRaises(ValueError, msg=bad):
                     fwsrc.load_files(path)
 
+    def test_split_units(self):
+        units = [fwsrc.Unit("U", 0x100, 0x200, None), fwsrc.Unit("D", 0x200, 0x300, "byte")]
+        out = fwsrc.split_units(units, [0x140, 0x200, 0x240])
+        self.assertEqual([(u.kind, u.start, u.end) for u in out],
+                         [("U", 0x100, 0x140), ("U", 0x140, 0x200), ("D", 0x200, 0x300)])
+
     def test_symbols_load(self):
         names = fwsrc.load_symbols()
         self.assertEqual(names[0x08017F1C], "clock_engine")
