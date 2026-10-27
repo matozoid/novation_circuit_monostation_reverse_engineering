@@ -73,8 +73,9 @@ objects: gcc puts `main` in `.text.startup`, the section of the stock `startup` 
 `.data`/`.bss` (the stock startup neither copies nor clears it for overlays) and that the
 code ends below `0x08080000`. `build` checks with `readelf` that each replaced name is a
 `.thumb_func` in the overlay code: a plain label would turn `bl` into `blx` to ARM state.
-`--overlay` can be repeated; two overlays may not replace the same name or set different
-versions. Overlay code is ours and is checked in.
+`--overlay` can be repeated; two overlays may not replace the same name. Overlays that set
+different versions need `generate --version N`, which sets the header version for the
+build and overrides the overlays' own. Overlay code is ours and is checked in.
 
 **C overlays.** `build` compiles `.c` with `arm-none-eabi-gcc` (`gcc-arm-none-eabi`), the
 CPU flags above and `-std=gnu17 -Os -ffreestanding -fno-common -Wall -Wextra

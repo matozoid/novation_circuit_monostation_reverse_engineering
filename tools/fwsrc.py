@@ -204,11 +204,12 @@ def image_version(image):
     return int(f"{int.from_bytes(header[4:], 'little'):x}")
 
 
-def apply_overlays(image, overlays):
+def apply_overlays(image, overlays, version=None):
     """Check the overlays against the image and each other; returns (image with the new
-    header version, replaced names)."""
+    header version, replaced names). A given version overrides the overlays' own, so
+    overlays with different versions can be built together."""
     stock = image_version(image)
-    replace, version = [], None
+    replace, own = [], None
     for ov in overlays:
         if ov.base != stock:
             raise ValueError(f"{ov.path}: base {ov.base}, but the image is version {stock}")
@@ -216,11 +217,16 @@ def apply_overlays(image, overlays):
             if name in replace:
                 raise ValueError(f"{ov.path}: {name} is replaced by two overlays")
             replace.append(name)
-        if ov.version is not None:
-            if version not in (None, ov.version):
-                raise ValueError(f"{ov.path}: version {ov.version}, another overlay says {version}")
-            version = ov.version
+        if ov.version is not None and version is None:
+            if own not in (None, ov.version):
+                raise ValueError(f"{ov.path}: version {ov.version}, another overlay says {own}"
+                                 " (give the build one with --version)")
+            own = ov.version
+    if version is None:
+        version = own
     if version is not None:
+        if not 0 <= version <= 9999:
+            raise ValueError(f"version {version} must fit four BCD digits")
         image = bytearray(image)
         image[IMAGE_HEADER + 4:IMAGE_HEADER + 6] = int(str(version), 16).to_bytes(2, "little")
         image = bytes(image)
@@ -797,9 +803,9 @@ ASSERT(image_header == {LOAD_ADDRESS + IMAGE_HEADER:#x},
 
 
 def plan_source(image_path, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
-                files_path=FILES, overlays=(), **options):
+                files_path=FILES, overlays=(), version=None, **options):
     """A Generator with every instruction and label planned; options go to Generator."""
-    image, replace = apply_overlays(Path(image_path).read_bytes(), overlays)
+    image, replace = apply_overlays(Path(image_path).read_bytes(), overlays, version)
     layout = load_layout(layout_path, fixes)
     check_layout(layout, len(image))
     files = load_files(files_path)
@@ -839,10 +845,10 @@ def write_source(gen, outdir, overlays=()):
 
 
 def generate(image_path, outdir, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
-             files_path=FILES, relax=False, overlays=()):
+             files_path=FILES, relax=False, overlays=(), version=None):
     overlays = [load_overlay(d) if not isinstance(d, Overlay) else d for d in overlays]
     gen = plan_source(image_path, layout_path, symbols_path, fixes, files_path,
-                      overlays=overlays, relax=relax)
+                      overlays=overlays, version=version, relax=relax)
     write_source(gen, outdir, overlays)
     return dict(gen.stats, files=len(gen.files), exported=len(gen.exported))
 
@@ -1033,6 +1039,8 @@ def main(argv=None):
                    help="no fixed .n/.w widths: gas picks them (for code that moves)")
     g.add_argument("--overlay", type=Path, action="append", default=[], metavar="DIR",
                    help="overlay directory with overlay.toml (repeatable)")
+    g.add_argument("--version", type=int, metavar="N",
+                   help="header version for the build, overriding the overlays' own")
     t = sub.add_parser("shift", help="insert bytes, build, check every reference follows")
     t.add_argument("image", type=Path)
     t.add_argument("--pad", action="append", required=True, metavar="ADDR:N",
@@ -1054,7 +1062,8 @@ def main(argv=None):
     if args.cmd == "generate":
         try:
             stats = generate(args.image, args.outdir, args.layout, args.symbols,
-                             files_path=args.files, relax=args.relax, overlays=args.overlay)
+                             files_path=args.files, relax=args.relax, overlays=args.overlay,
+                             version=args.version)
         except ValueError as e:
             sys.exit(str(e))
         print(f"{args.outdir}: {stats['insns']} instructions ({stats['inst']} as .inst), "

@@ -114,6 +114,11 @@ class OverlayTest(unittest.TestCase):
                     [a, b._replace(replace=["f"])]):
             with self.assertRaises(ValueError):
                 fwsrc.apply_overlays(image, bad)
+        c = a._replace(path=Path("c"), replace=["h"], version=802)
+        self.assertEqual(fwsrc.image_version(fwsrc.apply_overlays(image, [a, c], 803)[0]), 803)
+        self.assertEqual(fwsrc.image_version(fwsrc.apply_overlays(image, [b], 804)[0]), 804)
+        with self.assertRaises(ValueError):
+            fwsrc.apply_overlays(image, [b], 10000)
 
 
 @unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not present")

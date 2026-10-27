@@ -54,9 +54,8 @@ Transpose the playing sequence from the keys, the way many monosynth sequencers 
 3. Hold Shift and tap the key of the pattern's first note to go back.
 
 The notes stay in the scale, and nothing is saved: the pattern itself doesn't change.
-This mod is a separate firmware (`overlays/transpose`, build 751) and doesn't include
-the Mutate feature. Build it like the quick start below, with `--overlay
-overlays/transpose`, `build/tr` and `--version 751`.
+On its own this mod is `overlays/transpose` (build 751). To get both features in one
+firmware (build 752), see the quick start below.
 
 ## What you need
 
@@ -84,7 +83,13 @@ Build the modded firmware:
     python3 tools/fwsrc.py build build/rand build/rand/firmware.bin
     python3 tools/bin2syx.py build/rand/firmware.bin firmware/randomise-750.syx --version 750
 
-Flash it:
+For both features (Mutate and live transpose) in one firmware, build 752:
+
+    python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/both --overlay overlays/randomise --overlay overlays/transpose --version 752
+    python3 tools/fwsrc.py build build/both build/both/firmware.bin
+    python3 tools/bin2syx.py build/both/firmware.bin firmware/mods-752.syx --version 752
+
+Flash it (or `firmware/mods-752.syx` for both features):
 
     .venv/bin/python tools/flash.py firmware/randomise-750.syx
 
@@ -93,7 +98,7 @@ The flasher checks the file, then waits for the unit's bootloader:
 1. Switch the Mono Station off.
 2. Hold **Scales + Note + Velocity** and switch it on.
 3. The flasher sends the firmware, waits for the unit to restart and checks that it
-   reports version 750.
+   reports the new version (750, or 752 for both).
 
 Go back to stock firmware 1.2 at any time: connect the unit to Novation Components and
 accept its firmware update, or flash it the same way:
