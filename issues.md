@@ -26,13 +26,15 @@ Facts already established (2026-10-24), referenced by the issues below:
 Write a script that pulls `app.asar` out of both the Windows nupkg and the macOS `.dmg`, then extracts every Mono Station asset (firmware, session, init patch, PNG manuals if useful) into `firmware/`. Record the SHA-256 of each file. It must never execute vendor code.
 - **Done when:** running the script from a clean checkout reproduces `monostation-firmware-800.syx` with a known hash.
 
-### #3 Archive all historical Mono Station firmware versions
+### #3 Archive all historical Mono Station firmware versions — PARTLY DONE (list and features; only 1.2 archived)
 Parse the firmware catalogue embedded in `app.asar` and list every `product: "monostation"` entry (id, build, version, release notes). Download each `.syx`. Older builds are useful for diffing and for rollback.
 - **Done when:** a `docs/firmware-versions.md` table exists and the blobs sit in `firmware/` with hashes.
 
 Found so far: the catalogue has two Mono Station entries. Id 8 is build 800 (v1.2), identical to the bundled file. Id 9 is build 745 (v1.1) with `url: null`, and `/firmwares/9/file` returns HTTP 500. An older build would have to come from another source: older Components versions, the S3 `circuit-content` bucket, or the community.
 
 **Decided (2026-10-25):** look for older builds in older Components releases, extracted statically.
+
+**Status (2026-10-27):** `docs/firmware-versions.md` lists the three versions (1.0 launch, 1.1 build 745, 1.2 build 800) with the features each added, from the catalogue's release notes and Novation's v1.2 guide, plus the hashes of the 1.2 files. Still open: a 1.0 or 1.1 binary, and the 1.0 build number.
 
 ### #4 Reverse the firmware-update protocol from Components JS — DONE (host side; hardware capture pending)
 Find the Mono Station updater in `app.asar`. Relevant markers: `WAITING_FOR_PACKET_REQUEST`, `FIRMWARE_TRANSFER_IN_PROGRESS`, `deviceIsInBootloader`, `sendToMainApplication`, `maxWaitForResetTimeout`. Document:

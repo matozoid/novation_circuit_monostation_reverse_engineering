@@ -137,6 +137,8 @@ Never commit it.
 
 For owners:
 
+- [Official firmware versions](docs/firmware-versions.md): 1.0, 1.1 and 1.2, their build
+  numbers and what each added.
 - [Entering the bootloader by hand](docs/update-protocol.md#entering-the-bootloader-by-hand)
   and [Recovery](docs/update-protocol.md#recovery): bootloader mode, reading the version
   lights, and retrying an update that failed.
