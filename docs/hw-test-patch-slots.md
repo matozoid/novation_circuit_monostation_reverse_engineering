@@ -23,7 +23,7 @@ What the script does:
 
 On Linux the dumps are read from the ALSA rawmidi device (`/dev/snd/midiC*D*`, found through `/proc/asound`), like `amidi`. Through the sequencer, a session dump lost blocks to input overruns. The script polls the device before sending each request, because rawmidi input starts only on the first poll or read. The dumps and `report.json` are written to the output directory. The manual steps below do the same with `amidi`.
 
-**Results (2026-10-25):** slots 64–127 all hold `Initial Patch`. Test 4 showed that **PC ≥ 64 doesn't load the flash slot**: with `Min 3rd` written to slot 64, PC 64 still loaded the built-in `Initial Patch`. The first run's "PC 64 loads slot 64" was a false positive, because slot 64 held `Initial Patch` anyway. Test 5: only `40 00` answers, with the current patch. Trigger: 1 = retrigger, 0 = legato. Details are in #12 and #31.
+**Results (2026-10-25):** slots 64–127 all hold `Initial Patch`. Test 4 showed that **PC ≥ 64 doesn't load the flash slot**: with `Min 3rd` written to slot 64, PC 64 still loaded the built-in `Initial Patch`. Test 5: only `40 00` answers, with the current patch. Trigger: 1 = retrigger, 0 = legato. Details are in #12 and #31.
 
 ## Setup
 

@@ -104,9 +104,9 @@ From the user guide (v1.2, appendix *Bootloader Mode*, p. 90):
 2. Hold **Scales**, **Note** and **Velocity**.
 3. Power it on.
 
-The guide's picture shows the buttons Osc 1, Osc 2, Mod Seq, Oct ↓, Oct ↑, Clear, Save and Sessions, with Osc 1 and Osc 2 lit. Pressing Osc 1 or Osc 2 shows a firmware element's version number as a binary pad pattern. **Observed (2026-10-25), with patch `hello` (version 801) flashed:** Osc 2 lit four pad rows as `00001000`, `00000001`, `00000000`, `00000000`. That is the app's header version, BCD `0x0801` from image offset `0x1B0`, high byte first. So the bootloader reads the app's `MAIN` header itself. Rows 3–4 are probably the next two header bytes (`0x1B2`–`0x1B3`, `00 00`), but that isn't tested. Osc 1 shows `00000111 01000000`: the bootloader's version 740 (BCD `0x0740`) in the same format, presumably from its own header at `0x080001AC`. **Play** exits and reboots into the application. The guide calls this an "engineering mode" for updating firmware, **and factory patches**, when a normal update fails. Novation's support article on bootloader mode gives the same combination.
+The guide's picture shows the buttons Osc 1, Osc 2, Mod Seq, Oct ↓, Oct ↑, Clear, Save and Sessions, with Osc 1 and Osc 2 lit. Pressing Osc 1 or Osc 2 shows a firmware element's version number as a binary pad pattern. **Reading the lights:** each pad row is one byte, high byte first, and the version is BCD. Osc 2 shows the app's header version: stock 800 lights `00001000 00000000`, a build 801 lights `00001000 00000001`. Osc 1 shows the bootloader's 740 as `00000111 01000000`. Rows 3–4 are `00000000`. **Play** exits and reboots into the application. The guide calls this an "engineering mode" for updating firmware, **and factory patches**, when a normal update fails. Novation's support article on bootloader mode gives the same combination.
 
-The application has no code for this. Its only jump to `0x08000000` is the SysEx reboot (`docs/sysex-handlers.md`). So the bootloader must read the buttons itself before it starts the app, and **the combination should work even when the application image is broken.** Inferred, not yet tried on hardware.
+The bootloader checks the buttons itself before it starts the app (`docs/bootloader.md` *Boot*), so **the combination works even when the application image is broken.**
 
 The application has other power-on combinations, which are not bootloader entries:
 - **Shift:** System Settings;
@@ -116,9 +116,3 @@ The application has other power-on combinations, which are not bootloader entrie
 ## Recovery
 
 - **Recovery path.** Components starts directly at step 3 when the bootloader port is already present, for example when the unit was booted into the bootloader by hand. A failed transfer can be retried that way, provided the bootloader region itself is untouched.
-
-## Not yet known
-
-- Whether the bootloader's button check really runs before any check of the app image. This needs a test on hardware.
-- The exact ack timing and whether the counter equals the packet index, which needs a capture of a real update.
-- ~~What the bootloader checks~~: answered statically in `docs/bootloader.md` (only `00 7F`, 44-byte blocks and the header tag).

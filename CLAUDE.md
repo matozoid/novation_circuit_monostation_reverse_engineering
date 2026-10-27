@@ -8,7 +8,7 @@ Ask the user to make decisions.
 
 ## Project state
 
-Reverse-engineering project for the Novation Circuit Mono Station. Goal: reverse engineer the firmware and add new features to it. Feature work is tracked in GitHub issues (`gh issue list`); `issues.md` holds tooling and research issues, established facts about the firmware container, and the table mapping old feature numbers (#19–#54, used in commits and docs) to GitHub issue numbers. There is no source code, build system, or test suite yet — only reference inputs. Tooling language: Python 3, stdlib only (in `tools/`). The one exception: tools that talk to the device (flasher #16, `tools/hwtest_slots.py`) use `mido` + `python-rtmidi`, imported inside `main()` so tests stay stdlib-only.
+Reverse-engineering project for the Novation Circuit Mono Station. Goal: reverse engineer the firmware and add new features to it. Feature work is tracked in GitHub issues (`gh issue list`); `issues.md` holds tooling and research issues, established facts about the firmware container, and the table mapping old feature numbers (#19–#54, used in commits and docs) to GitHub issue numbers. Tooling language: Python 3, stdlib only (in `tools/`). The one exception: tools that talk to the device (flasher #16, `tools/hwtest_slots.py`) use `mido` + `python-rtmidi`, imported inside `main()` so tests stay stdlib-only.
 
 - Run tests: `python3 -m unittest discover -s tests -v` (single test: `python3 -m unittest tests.test_fwsyx.Firmware800Test.test_vector_table`). Firmware tests skip when `firmware/monostation-firmware-800.syx` is absent; `firmware/` is git-ignored and must currently be filled by hand (#2).
 - Decode firmware: `python3 tools/syx2bin.py firmware/monostation-firmware-800.syx firmware/monostation-firmware-800.bin` → raw Cortex-M image at `0x0800C000`. Container format: `docs/firmware-container.md`.
@@ -27,17 +27,16 @@ Hardware: decoded image is a 129,824-byte Cortex-M4F app at load base `0x0800C00
 
 | File | What it is |
 |------|------------|
-| `CircuitMonoStationPatchSysExFormat.pdf` | Community spec (rev. 2020-06-30, by "chaocrator") of the single-patch SysEx dump. Offsets are right; its "MSB" bytes are the value's low bit (see `docs/sysex-spec.md`). |
 | `circuit-mono-station-midi-parameters-v1.pdf` | Novation's official MIDI parameter list (v3, Aug 2017): CC / CC(8) / NRPN numbers, ranges, defaults, value tables. All 74 synth params match the firmware table at `0x0802A62A`. |
 | `circuit-mono-station-ug-en-v1-2.pdf` | User guide v1.2. Bootloader Mode is on p. 90. |
-| `Components-1.72.5-Setup.exe` / `Components-1.72.5-universal.dmg` | Novation Components editor/librarian (Windows / macOS). Likely contains the full SysEx protocol, patch parsing, and firmware update logic (Components is Electron/web-based — look for bundled JS). |
+| `Components-1.72.5-Setup.exe` / `Components-1.72.5-universal.dmg` | Novation Components editor/librarian (Windows / macOS). Electron app; its bundled JS holds the SysEx, patch and firmware-update code (see *Extracting Components code* below). |
 | `NovationUsbMidi_2.22.0.10_Installer.exe`, `novationusbmidi_2.30.0_84.exe` | Novation Windows USB-MIDI driver installers, two versions. |
 
 These are large (~500 MB total), untrusted vendor binaries. Never execute them. Extract each into its own fresh directory outside the repo root (e.g. scratchpad) with tools like `7z`, `innoextract`, `dmg2img`/`7z`, `asar extract`, and analyse statically.
 
 ## Patch SysEx format
 
-**Spec: `docs/sysex-spec.md`**, which supersedes the community PDF. The Mono Station has **one** patch format: the **136-byte** message `F0 00 20 29 01 61 <type> <slot> 00` + 126-byte patch + `F7`. It is used on the wire, in `.monostationpack` files (a ZIP holding `patches.syx`, a 64×136 = 8704-byte bank) and, without the framing, in firmware memory. Components' Mono Station validator accepts only 136 bytes. Message type: `0`=current patch, `1`=slot write, `0x40`=request. Mono Station device id is `01 61`; the original Circuit is `01 60`.
+**Spec: `docs/sysex-spec.md`**, which supersedes the community PDF (rev. 2020-06-30 by "chaocrator", removed from the repo; its "MSB" bytes are the value's low bit). The Mono Station has **one** patch format: the **136-byte** message `F0 00 20 29 01 61 <type> <slot> 00` + 126-byte patch + `F7`. It is used on the wire, in `.monostationpack` files (a ZIP holding `patches.syx`, a 64×136 = 8704-byte bank) and, without the framing, in firmware memory. Components' Mono Station validator accepts only 136 bytes. Message type: `0`=current patch, `1`=slot write, `0x40`=request. Mono Station device id is `01 61`; the original Circuit is `01 60`.
 
 - Read a pack/bank: `python3 tools/patchbank.py list Roboo.monostationpack`; decode one patch's params: `python3 tools/patchbank.py show <pack> <slot|name>` (`tools/patchbank.py`: framing, name@9, category@25 / genre@26 (indices into `CATEGORIES`/`GENRES`, Components' Circuit tables), slot, and the synth param map `PARAMS`).
 - Split-pair decode (resolved, #12): params the firmware sends as CC + LSB-CC (`CC(8)` in the MIDI PDF) take two bytes, `value = byte[off] << 1 | byte[off+1] >> 6`. So the `0x00`/`0x40` byte is the **low bit**, not `+128`. Signed ones subtract the firmware table's centre: 128 for coarse and pitch/cutoff mod depths, 100 for fine tune. `tests/test_patchbank.py` checks `PARAMS` against the firmware table at `0x0802A62A` and the PDF.

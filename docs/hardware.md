@@ -6,12 +6,11 @@ Most of this comes from the decoded application image (`tools/syx2bin.py`). The 
 
 **STM32F42x/43x** (ARM Cortex-M4F, Thumb-2), read from a unit with patch memread v803 (#24): `DBGMCU_IDCODE` (`0xE0042000`) = `0x20016419`, i.e. DEV_ID **`0x419`** (STM32F42x/43x) and REV_ID `0x2001` (silicon revision 3). `FLASHSIZE` (`0x1FFF7A22`) = **512 KB**, which fits an STM32F429xE/F439xE-class part. The exact part and package (GPIO A–E only suggests 100 pins) are still open; a teardown photo would settle them.
 
-The earlier F405 guess came from the code alone, and it was wrong. An F42x has everything the code uses (CCM, DAC, OTG_HS + OTG_FS) plus parts it leaves unused: SAI, LTDC, Ethernet and GPIO F–K. What the code gives:
+What the code uses (the F42x also has SAI, LTDC, Ethernet and GPIO F–K, which the code leaves unused):
 
 - Initial SP `0x10010000` = top of the 64 KB **CCM** RAM at `0x10000000` (F40x/41x/42x/43x only).
 - **DAC** (`0x40007400`), which fits a synth that drives analogue oscillator/filter CV.
 - USB **OTG_HS** (`0x40040000`) and OTG_FS (`0x50000000`).
-- No SAI, Ethernet or GPIO F+ references. These are unused peripherals, not missing ones.
 - The heap runs into **SRAM3** (`0x20020000`+), which exists only on F42x/43x (*Free RAM*).
 
 Option bytes: **RDP level 0** (no read-out protection) and no write-protected sectors. Flash past the app is erased up to `0x0807FFFF`. ST system-ROM bootloader ID (`0x1FFF76DE`) = `0x91`.
@@ -67,4 +66,4 @@ From the code plus the RAM dumps of a running unit (patch memread, `tools/p40dum
 
 RCC `0x40023800`, FLASH_IF `0x40023C00`, DMA1/DMA2 `0x40026000/400`, GPIOA–E, TIM1–4/9–11, DAC `0x40007400`, ADC1 `0x40012000`, SPI1/4 + SPI2/3 (I2S), USART1/6, PWR `0x40007000`, SYSCFG `0x40013800`, USB OTG FS `0x50000000`, USB OTG HS `0x40040000`.
 
-(`0x4xxxxxxx` values in the bit-band alias range and `0xFxxxxxxx` "literals" in the earlier scans are Thumb instruction halfwords / sign-extended constants, not peripheral pointers — ignored.)
+(`tools/fwmap.py` ignores `0x4xxxxxxx` values in the bit-band alias range and `0xFxxxxxxx` values: they are instruction halfwords or sign-extended constants, not peripheral pointers.)

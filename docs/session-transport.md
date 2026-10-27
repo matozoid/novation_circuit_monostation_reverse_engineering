@@ -47,7 +47,7 @@ From `0x78` dumps of a stock unit (bootloader 740, firmware 800), cross-checked 
 
 | range | content |
 |-------|---------|
-| `0x0000`–`0x0043` | 32 little-endian u16 values (100, 131, 131, 131, 124, 134, …, mostly near 128), then their **zlib CRC-32** (LE) at `0x40`. Probably a per-unit calibration or trim table. **Never erase or overwrite it**; back it up first. |
+| `0x0000`–`0x0043` | 32 little-endian u16 values (100, 131, 131, 131, 124, 134, …, mostly near 128), then their **zlib CRC-32** (LE) at `0x40`. The per-unit **calibration table**, written by the factory calibration runner (`power_calib_task`, `calibration_crc`, `nor_async_write`; `docs/source-map.md`). **Never erase or overwrite it**; back it up first. |
 | `0x0044`–`0x0FFF` | `FF` |
 | `0x1000`–`0x1017` | the 24-byte **System Settings record**: `08 00 00 00 00 00 00 00 2E 02 00 00 00 00 00 00 01 00 00 00 FF 00 00 00` on this unit. Layout below. |
 | `0x1018`–`0x1FFF` | `FF` |
