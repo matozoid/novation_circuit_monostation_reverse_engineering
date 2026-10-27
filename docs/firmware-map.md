@@ -56,6 +56,9 @@ Driven over SPI (SPI4 `0x40013400` 3 refs, SPI1 `0x40013000` 1 ref) to LED/pad d
 ### Analogue engine (CV / gate out) — DAC `0x40007400`, TIM6_DAC ISR `0x08023B99`
 Internal 2-channel DAC streamed at audio/control rate via TIM6 trigger + DMA. The synth needs many CV targets (osc1/osc2 pitch, pulse width, filter cutoff, VCA, distortion, aux CV), so an **external** multi-channel DAC over SPI/I2S is likely in addition to the internal DAC; SPI2/I2S2 (`0x40003800`) and SPI3/I2S3 (`0x40003C00`) are referenced. DMA1/DMA2 streams feed these converters.
 
+**Control signals are computed digitally at 2 kHz.** `engine_tick_2khz` (`0x0801BDC4`) calls `synth_engine_update` (`0x0801D208`), which glides pitch (`osc_glide_step`), runs the envelope and sums modulation into CV values; `osc_pitch_cv_update` (`0x080252D4`) converts pitch to DAC and TIM1/TIM3 values with the unit's calibration.
+- **Envelope (ADSR):** digital. `synth_update_envelope` (`0x08021CA4`) turns params `0x20`–`0x23` into coefficients in a struct at `0x200006E0`: attack rate `+0xC`, decay rate `+0x10`, sustain level `+0x12`, release rate `+0x14`. `synth_engine_update` steps it: `+2` is the gate request (1 = note on → attack, 2 = note off → release, then cleared), `+1` the stage (0 attack, 1 decay, 2 sustain, 3 release), `+0x18` the 32-bit level, and `+0x1E`/`+0x20`/`+0x22` its scaled outputs. `synth_release_start` (`0x080218EC`) requests release.
+
 ### ADC — ADC1 `0x40012000` (+ DMA)
 Pot/slider reads and CV/gate inputs.
 
