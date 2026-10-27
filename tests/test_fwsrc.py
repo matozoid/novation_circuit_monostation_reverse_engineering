@@ -167,15 +167,18 @@ class Overlay800Test(unittest.TestCase):
     @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
     def test_transpose_hooks_pads_and_router(self):
         """overlays/transpose (#48) changes only the version, the router vtable's note-on
-        and note-off slots and the ui_root vtable's pad-down slot."""
+        and note-off slots, the ui_root vtable's pad-down slot, the Shift LED's subscriber
+        slot, the LED frame and session-read callbacks and the calls of keyboard_leds_render."""
         fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[TRANSPOSE])
         built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
         self.assertEqual(built[0x1B0:0x1B2], b"\x51\x07")
-        for slot in (0x1B268, 0x1B26C, 0x1BB1C):
+        slots = (0x1B268, 0x1B26C, 0x1BB1C, 0x1B6E4, 0x3B1C, 0xD658)
+        for slot in slots:
             target = int.from_bytes(built[slot:slot + 4], "little")
             self.assertGreaterEqual(target, 0x0802BB20, hex(slot))
+        led_calls = (0x6FFC, 0x7140, 0x7160, 0x71FA, 0x16A6C, 0x19B66)
         changed = {i for i in range(len(self.image)) if built[i] != self.image[i]}
-        allowed = {0x1B0, 0x1B1} | {s + k for s in (0x1B268, 0x1B26C, 0x1BB1C) for k in range(4)}
+        allowed = {0x1B0, 0x1B1} | {s + k for s in slots + led_calls for k in range(4)}
         self.assertLessEqual(changed, allowed)
 
     @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")

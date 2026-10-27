@@ -26,6 +26,25 @@ extern const uint8_t pad_levels[16]; /* 0, 8, 17, ..., 127: glide and velocity p
  * notes at layout +0x14, 0 = no key) for a pad of the 16 (32 in Expand view). */
 uint8_t keyboard_pad_to_note(void *keyboard_view, unsigned pad);
 
+/* Keyboard view LEDs: one entry of the layout (0-0xdf) in its scale/sounding colour. */
+void keyboard_leds_render(void *keyboard_view, unsigned entry);
+void stock_keyboard_leds_render(void *keyboard_view, unsigned entry);
+
+/* Cell subscriber of a flag LED (this = LED object +0xc): colour 0x0d/0x0e from its flag.
+ * The Shift LED (ui +0x10) is one. */
+void flag_led_render_thunk(void *subscriber);
+void stock_flag_led_render_thunk(void *subscriber);
+
+/* Per LED frame (from the main loop): animates the palette, resolves the colour indices
+ * of the LED buffers; returns 1. */
+int led_frame_compose(void *leds, unsigned frame, void *ui);
+int stock_led_frame_compose(void *leds, unsigned frame, void *ui);
+
+/* Callback of the session read from flash (session control in r3; r0-r2 from the
+ * flash driver): checks the magic, then loads the session's globals or a default one. */
+void session_ctl_on_save_done(unsigned r0, unsigned r1, unsigned r2, void *session_ctl);
+void stock_session_ctl_on_save_done(unsigned r0, unsigned r1, unsigned r2, void *session_ctl);
+
 /* ui_button_event(ui, button): the UI's button-down router (docs/source-map.md). */
 void ui_button_event(void *ui, unsigned button);
 void stock_ui_button_event(void *ui, unsigned button);

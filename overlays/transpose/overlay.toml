@@ -1,9 +1,12 @@
 # #48 Live transpose: in the Note or Expand view of the Osc 1 or Osc 2 track, hold Shift
 # and tap a key. Both Osc tracks' sequences then play that many scale degrees away from
 # the first note of that track's pattern; tapping that note's key resets. The tapped key
-# doesn't sound, and nothing is saved.
+# doesn't sound, nothing is saved, and loading a session resets it. While Shift is held,
+# the reset key blinks yellow and the current transpose key blue.
 base = 800
 # Below 800 (firmware 1.2) and above 745 (1.1), so Components offers to restore stock 1.2.
 version = 751
 sources = ["transpose.c"]
-replace = ["ui_root_pad_down", "router_note_on", "router_note_off"]
+replace = ["ui_root_pad_down", "router_note_on", "router_note_off",
+           "keyboard_leds_render", "flag_led_render_thunk",
+           "led_frame_compose", "session_ctl_on_save_done"]

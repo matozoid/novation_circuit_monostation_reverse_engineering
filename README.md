@@ -53,7 +53,11 @@ Transpose the playing sequence from the keys, the way many monosynth sequencers 
    track's pattern.
 3. Hold Shift and tap the key of the pattern's first note to go back.
 
-The notes stay in the scale, and nothing is saved: the pattern itself doesn't change.
+While you hold Shift, the key of the pattern's first note blinks yellow, and the key
+you transposed to blinks blue.
+
+The notes stay in the scale, and nothing is saved: the pattern itself doesn't change,
+and loading another session starts it untransposed.
 On its own this mod is `overlays/transpose` (build 751). To get both features in one
 firmware (build 752), see the quick start below.
 
