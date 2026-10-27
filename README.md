@@ -157,7 +157,7 @@ For modders:
   [firmware container](docs/firmware-container.md): how firmware gets onto the unit.
 - [Binary patching](docs/patching.md), [SysEx handlers](docs/sysex-handlers.md),
   [firmware map](docs/firmware-map.md).
-- [issues.md](issues.md): open work, feature ideas and established facts.
+- [issues.md](issues.md): tooling and research issues and established facts. Feature work is in [GitHub issues](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues).
 
 ## Tests
 

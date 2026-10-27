@@ -296,135 +296,39 @@ With a tested recovery path in place, send malformed firmware (wrong checksum, w
 
 ---
 
-## New features (candidates — scope after #10)
-
-### #19 Patch dump request / bulk backup over SysEx
-**Existing support found (#27):** the stock firmware already serves bulk dumps on request: `F0 00 20 29 00 78 <start: 8 nibbles> <length: 8 nibbles> F7`. All sessions are `0x12000`/`0x2D6000` and all patches are `0x2000`/`0x8000` (`sessionsyx.request()`). The current-patch request is message type `0x40` (#12). What remains here is anything finer-grained, such as a single session, if the firmware refuses arbitrary ranges.
-
-Original note: if the firmware does not already support it (see #12), add a command that dumps the current patch or session on request, so editors can sync without Components.
-
-### #31 Patch slots 64–127
-The firmware's patch store has 128 slots (`0x2000`–`0x12000`, 512 bytes each). The boot scan, the save path, the load handler and the "used slot" mask all accept `< 0x80`. Only the patch view limits slots to 64: Oct ↓/↑ set page 0/1 via `FUN_08022fdc`. Details: `docs/sysex-spec.md` *Patch store*.
-- **Hardware checks** (step-by-step plan: `docs/hw-test-patch-slots.md`):
-  - dump `0x2000`/`0x10000` (cmd `0x78`) to see whether slots 64–127 hold data on a stock unit;
-  - try a slot write, then a `0x40` request, to slot 64.
-- **Feature:** 128 patches from the panel is #54.
-- **Program change 64–127 on the Osc 1 channel was expected to select these slots** (no 0–63 clamp found in the setter or the load handler; `docs/sysex-spec.md` *Patch store*). Hardware says otherwise: see test 4 below.
-- **Hardware results (2026-10-25, stock unit, bootloader 740 / firmware 800; tests 0–3 of the plan, `~/ms-dumps/report.json`):**
-  - The `0x78` dumps are served by the **bootloader** only; the app ignores them. `tools/hwtest_slots.py` reboots with `0x71` first, like Components.
-  - The bootloader accepts `0x2000`/`0x10000`: a full 128-slot dump, header echoing that range, CRC ok. Slots 0–63 match the 64-slot backup.
-  - **Slots 64–127 all hold `Initial Patch`, byte for byte.** There is no hidden factory or test bank (#8), and no `FF` slots, so the boot scan counts them as unused.
-  - ~~PC 64 on ch 1 loads slot 64~~ **Corrected by test 4:** PC 64 gave the init sound and lit no pad, but slot 64 held `Initial Patch` too, so that didn't prove where it loaded from. PC 63 (control) loaded slot 63 and lit page 2's last pad.
-  - **Test 4 (slot write, 2026-10-25):** a type-1 write put `Min 3rd` (a copy of slot 32) into flash slot 64, confirmed with `p 0x40` reads. Afterwards PC 64 still loaded `Initial Patch`, also after a power cycle, and so did PC 96, 104 and 127. PC 32 loaded `Min 3rd`, so the readback method works. **PC ≥ 64 loads the built-in `Initial Patch` template and doesn't read flash.** PC 96 and 104 rule out a wrap to 0–63 (slots 32 and 40 hold data). Slot 64 was restored to `Initial Patch` afterwards.
-  - Where the template comes from isn't traced. The load handler `FUN_08019AE4` reads flash for any slot `< 0x80` on its port `+0x18`, but its port `+0x34` copies `Initial Patch` with no slot argument. The setter `FUN_0801C842` posts the program through a port chain (`FUN_08014D2E`) that wasn't resolved statically. So hidden slots can be written and dumped, but not loaded without a patch (#17).
-  - Test 5: the `0x40` request answers only `40 00`, with the current patch (#12).
-  - Second run: dumps of one slot, one session and `0x0`/`0x2000` all work, so the range is free-form. External flash above the sessions (`0x2E8000`–`0x1000000`) is all `FF`, so the factory patches aren't stored there (#8). The storage map is in `docs/session-transport.md`.
-
-### #20 Expose SysEx-only parameters via CC/NRPN
-Map parameters missing from the CC table (#14) to free CC or NRPN numbers.
-
-### #21 Additional LFO waveforms / modulation options
-The LFO is digital, so new shapes (S&H variants, random, ramp) are firmware-only additions. Feasibility depends on the LFO code (#10).
-
-### #22 Sequencer enhancements
-Candidates: per-step probability, ratchets, extra scales, and longer or chained patterns. Before deciding scope, measure the remaining RAM and flash headroom and check the session format constraints (#13).
-
-### #23 Feature request intake
-Collect the features the user actually wants and turn each one into an issue once #10 shows what is feasible. The first external list became #32–#42. Owner forums and reviews (2026-10-26) added #44–#53. #54 split off from #31.
-
-## Feature requests (external list, 2026-10-25)
-
-From a third-party wish list, one issue per item. All of them depend on #17 (patching infrastructure) and on free RAM and flash. Anything that stores new per-step data has to fit the session format (#13, `docs/session-format.md`) or extend it in a way Components still accepts.
-
-### #32 Micro-step note timing (off-grid notes, trills, ratchets)
-Move notes off the 16-step grid and allow repeats within a step. The session already has a finer grid for automation: each lane holds 96 values, 16 steps × 6 micro-steps. Note steps have no such field yet. Check first whether the playback routine `FUN_080234AC` can schedule a note at micro-step resolution, and where a per-step offset or repeat count could live. *Found (`docs/sequencer.md`):* note-ons fire only when the step cell changes, but note-offs already run on a tick-resolution delta list (8 slots), which a delayed note-on or ratchet could share. Overlaps the ratchet idea in #22. Owners ask for ratchets too (2026-10-26); a repeat count per step that reuses the note-off delta list is the smallest first step.
-
-### #33 Unquantised recording
-Record live notes at their real timing instead of snapping them to the nearest step. Needs #32's micro-step offset, or something like it, for storage. The live-input path into the recorder is mapped (`docs/sequencer.md` *Note routing*: keys and MIDI in reach `FUN_0802345C`, which forwards to per-track recorders built by `FUN_08021128`). *Found (`docs/sequencer.md` *Recording*):* a note-on only makes the note pending. The recorder places it at the next half-step crossing, so it snaps to the nearest step (`FUN_08021844`, half of `ticks[rate]`). On release, `FUN_08021334` writes note, velocity and gate. The gate is already measured in micro-steps (1/6 step). The raw 16-bit start tick stays in the recorder's per-note slot, so the off-grid offset is available right where the step is written, and the stock code throws it away. A patch needs only a place to store that offset (#32) and a playback change that delays the note-on.
-
-### #34 Step-time recording (SH-101 style)
-Enter notes one after another from the keyboard pads, each one moving to the next step, with no transport running. A UI mode only. It writes the same step data as normal step editing, so the session format is unchanged.
-
-### #35 Per-step probability and mutation (Launchpad Pro style)
-Per-step trigger probability, plus Launchpad Pro-style mutation of a pattern's notes. Needs a per-step probability field (session format) and a random source at playback. The firmware already has a random generator for the random play direction: `FUN_0801AB9C` reads the hardware RNG at `0x50060800` (`docs/sequencer.md`). Same as the probability candidate in #22. The stock Mutate re-sequences the notes of a pattern (user guide p. 54).
-
-### #36 Arpeggiator
-The user guide documents no arpeggiator. Needs:
-- a held-note buffer;
-- arp modes (up, down, up/down, random, as played) and an octave range;
-- a rate synced to the sequencer clock (24 PPQN tick cell, internal or MIDI-slaved: `docs/sequencer.md` *MIDI clock and transport*);
-- a UI entry point (a Shift combination or a free button) and a home for its settings, in the patch's reserved bytes 27–40 or in the session.
-
-### #37 Roll / looper performance effect
-A momentary beat-repeat: while held, repeat the last 1/4, 1/8, … of the playback at the clock rate. It could be done by looping the sequencer's step position (`FUN_0801B698` computes it) instead of buffering audio, which avoids needing audio RAM.
-
-### #38 Decouple the Osc 2 track from Osc 2
-Let sequencer track 1 (the Osc 2 track, `docs/session-format.md`) drive only its MIDI output, so it can sequence an external synth without also playing oscillator 2. Probably a per-session or per-pattern flag that playback checks before passing track 1's notes to the synth engine. Find where track 1's notes reach Osc 2 and where they are sent to MIDI. *Found:* sequencer notes go through a note router and a per-track merger (vtable `0x08029F04`) whose outputs are MIDI out (`FUN_08018B48`), the synth engine (`FUN_080226BC`) and the recorder. The split point for #38 is the track-1 merger's stage 1 → stage 2 forward (`docs/sequencer.md` *Note routing*).
-
-### #39 Randomise gate, glide and velocity patterns
-A randomise action for each per-step property (gate length, glide, velocity) on its own, leaving the notes in place. This is unlike Mutate, which re-sequences the notes. It needs no new storage, only a UI action and a random fill of the existing step fields. The step layout (#13) must be known first. *Status:* `overlays/randomise` (C, v750; below 800 so Components offers stock 1.2, above 1.1's 745) makes Mutate (Shift + Pattern Settings, button `0x1d`) context-sensitive. In the Velocity, Gate or Glide view of the Osc 1 or Osc 2 track, each of the 16 steps that has a note gets a random value for that field only: velocity from the velocity pads' levels (8…127); gate from 1/6 step up to the longest gate already on a note, at least one step (set one long step first for longer gates); one random note step keeps that longest gate, so the range stays the same press after press; glide none half the time, otherwise one of glide levels 1–15 (`pad_levels`). In the Expand view (Shift + Note), where stock ignores Mutate (packed view id byte 2 = 5 in the Mutate gate cell), each note step gets a pitch picked from the distinct notes on the 32 expand pads, i.e. the current scale over the keyboard's four octaves (two for Chromatic): the keyboard view is `mode view + 0x20 + 4 × track` (`mode_view_source` modes 0/5), its layout `+0x30` holds the pad-to-note table at `+0x14`, indexed by `keyboard_pad_to_note`. Steps hold notes relative to C; the router snaps sequencer notes to the scale and adds the root on playback (`docs/sequencer.md` *Note routing*). In the Note view, the Pattern Settings view and on the mod-seq track, Mutate stays stock (stock Mutate shuffles whole steps and their automation, `pattern_ctl_on_cell`). The wrapper copies the stock checks: lock bit, button forwarding, Shift, the Mutate gate cell, and the mode view being the active view. It edits the steps through the track's step cell, as Shift+Oct transpose does. Verified in Unicorn with fake UI objects and tried on the unit (velocity, gate, glide, Expand pitch).
-
-### #40 Per-step modulation shapes on the mod sequencer
-Choose a shape for each mod-sequencer step (step, ramp up/down, curve, …) instead of one global smooth on/off. Today byte 3 of a pattern is the smooth flag, and the mod-sequence output `FUN_08023998` crossfades from one step to the next with weight table `0x0802A286` (`docs/session-format.md`). A per-step shape needs storage, perhaps in unused bits of the mod step records, and more weight tables or a computed curve.
-
-### #41 AFX mode / per-key overlays
-Per-key parameter overlays, as on Bass Station II's AFX mode: each key recalls its own set of patch parameters. Components implements this only for Bass Station II (`frontend/constants/bass-station-ii/afx-overlay-midi-config`, `docs/bass-station-ii.md` *Overlays*), so there is nothing Mono Station-specific to reuse. Needs storage for one overlay per key and a hook in note-on that applies it. The biggest item on the list, so check RAM and flash headroom first.
-
-### #42 Fast LFO mode (audio-rate)
-An LFO range that reaches well into the audio band. LFO rate is an 8-bit parameter (0–255, CC(8); `tools/patchbank.py` `PARAMS`). A fast mode could be a flag that scales the rate. Questions:
-- how often the LFO is updated (the control-rate tick);
-- whether the destinations it modulates are applied at audio rate or per block.
-
-Find the LFO code and its rate table first. Related to #21.
-
 ### #43 Firmware source tree
 Turn the image into source that can be edited and rebuilt, so features can be written as code rather than patches. Plan: byte-identical reassemblable assembly first, then split it by subsystem and convert functions to C one at a time. Each converted function is marked matching, or "equivalent, not matching". The source is Novation's code, so it is generated locally and never checked in; only the generator and metadata are committed (`docs/source-build.md`). *Status:* `tools/fwsrc.py` rebuilds firmware 800 byte for byte from generated assembly. All 40,476 instructions are text (no `.inst`), branch, literal and adr targets are labels, and 1,444 data words are symbolic pointers. `src/symbols.tsv` names 230 documented functions, vectors, library functions, vtables and tables (`clock_engine`, `sysex_dispatch`, `player_on_cell`, …). The source is relocatable: jump tables are symbolic, data keeps its alignment, `generate --relax` leaves branch widths to gas (also byte-identical), and `fwsrc.py shift` inserts bytes and checks that every branch, literal, table and pointer follows. `src/files.tsv` splits the source into files: vectors, image header, crt, syscalls, `stm32f4xx_it`, startup, one file per libstdc++/newlib-nano object (`docs/firmware-map.md` *Runtime libraries*), rodata and `.data`, split into app and libc parts. The app code is split into 60 `cu_<start>` files at the `00 00` linker fills between input sections (no `-ffunction-sections`, so each is one or more compile units), leaving no gap files; only wide branches and data cross files, and files with literal pools must be 4-aligned. Overlays (`overlays/<name>/`, `generate --overlay`) replace stock functions by name: the stock body stays as `stock_<name>` and every wide branch and pointer is redirected to our code after the image; `overlays/hello` builds the same image as the device-tested `patches/hello`. Overlays can be `.s` or C (`overlays/hello_c`, same image). Next: finer compile-unit boundaries inside the app files, prototypes in `overlays/include/firmware.h`.
 
-## Feature requests (owner forums and reviews, 2026-10-26)
+## New features
 
-Collected from owner posts and reviews; requests already tracked (micro-steps/ratchets #32, unquantised and step-time recording #33/#34, probability #35, arpeggiator #36, roll #37, Osc 2 track for external gear #38, per-step mod shapes #40, AFX mode #41) are not repeated. Already shipped by Novation and so dropped: per-step patch changes (Patch Flip, v1.2) and a reset for mod depths (v1.1). Out of reach for firmware: a screen, delay/reverb or drums (the audio path is analogue), USB audio, bus or battery power. Sources:
-- Gearspace thread *Novation Circuit Mono Station* (wish list on p. 4–5 and 10–12): https://gearspace.com/board/electronic-music-instruments-and-electronic-music-production/1149981-novation-circuit-mono-station-11.html
-- ModWiggler thread: https://www.modwiggler.com/forum/viewtopic.php?t=224260&start=25
-- *Women and Dreams* blog review (2025-10): http://women-and-dreams.blogspot.com/2025/10/novation-circuit-mono-station-fat-bread.html
-- SonicScoop review: https://sonicscoop.com/new-gear-review-circuit-mono-station-novation/
-- Elektronauts thread: https://www.elektronauts.com/t/novation-circuit-monostation/38578 and *DT controlling CC midi for Circuit Mono Station*: https://www.elektronauts.com/t/dt-controlling-cc-midi-for-circuit-mono-station/132747
+Feature work is tracked in [GitHub issues](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues). File new requests there. The feature issues below were moved there on 2026-10-27, and GitHub gave them new numbers. Commits, docs and the issues above still use the old numbers.
 
-Gearspace and ModWiggler refuse automated fetches, so their items come from search snippets; read the threads by hand before scoping.
-
-### #44 Sequencer track routing (Osc 2 follows the Osc 1 track)
-Owners ask for the opposite of #38: let both oscillators play from the Osc 1 track, so the Osc 2 track is free for external MIDI. One ModWiggler user mailed Novation for it ("osc1 seq for 0-coast/midi out, osc2 seq for monostation and mod seq for DFAM/CV"), and a reviewer wished for freely assignable sequencer channels. General form: a per-session map from track (Osc 1, Osc 2, Mod) to destinations (Osc 1, Osc 2, MIDI channel, CV/gate). Same split point as #38: the per-track merger stages (`docs/sequencer.md` *Note routing*).
-
-### #45 Play the keys without interrupting the sequence
-Pressing a key while a pattern plays takes over the oscillator ("pressing keys interrupts the sequence", "no way to cue up notes silently"). Options: audition notes silently while the pattern plays, or play the keys on top of the sequence, which only works for Osc 2 while Osc 1 plays. Look at where live keys and sequencer notes meet in the note router (`FUN_0802345C`, `docs/sequencer.md`).
-
-### #46 Edit a pattern while a chain plays
-The pattern view follows the playing pattern: to edit pattern 1 of a 1-2-3-4 chain, you wait for the chain to loop back to it. Wanted: pin the view to a chosen pattern while playback keeps running. It needs the view to read a "viewed pattern" instead of the playing one, and the step editors to write there.
-
-### #47 Flexible pattern chains
-Chains step through adjacent patterns in order only; reviewers compare this unfavourably with the Circuit. Wanted: any order, and a repeat count per pattern (e.g. 1-1-1-2). Needs storage per chain entry in the session (#13, `docs/session-format.md`) and a change where the step position wraps (`FUN_0801B698`).
-
-### #48 Live transpose of the sequence
-Transpose the playing pattern from the keyboard or by incoming MIDI notes, the way many monosynth sequencers do (requested in the blog review). Hold a key or a Shift combination to set the offset, then add it to sequencer notes on their way to the oscillators and MIDI out. The offset must stay in the selected scale. *Status:* `overlays/transpose` (C, v751) does it from the keys. In the Note or Expand view of the Osc 1 or Osc 2 track, Shift + a key (which doesn't sound) sets a transpose in scale degrees: the distinct layout notes between the first note of that track's pattern (empty pattern: `0x48`, the lower row's first key at the default octave `0x40`) and the tapped key. Tapping the first note's key resets. A fixed reference such as middle C was tried first; on sessions whose patterns sit octaves away from it, every visible key moved the pattern by octaves. Both Osc tracks follow; played keys, MIDI in and the mod-seq track don't, and nothing is saved (state in CCM `0x10000000`, magic word). `ui_root_pad_down` catches the tap when Shift is held and `mode_view_target` is the keyboard view (in the Note view pads 16–31 go to the step view); it doesn't set the pad's bit in `ui + 0xc4`, so stock `ui_root_pad_up` ignores the release. `router_note_on`/`router_note_off` on channels 3 and 4 (sequencer, Osc 1/2) move the note by degrees through the router's scale (`router + 8`: lowest, highest, 2-bit mask; out-of-range notes fold by an octave) before stock mapping, and remember the sent note per track and note so note-off matches across a change. Keyboard layout facts: index `(0x45 − octave) × 8 × (Chromatic ? 2 : 1) + pad`, octave cell `0x3A`–`0x45` with default `0x40`; scale rows start at `144 − 12 × row`. Verified in Unicorn and on the unit. LED feedback: while Shift is held, `keyboard_leds_render` (wrapped; stock draws first) paints the reference key yellow (colour `0x07`) and the target key (the reference stepped through the layout's notes) blue (`0x27`); cyan `0x38` was too close to the Note view's steps. They blink against their stock colour, 400 ms each way, timed by the 1 ms count at `0x200007E4` (TIM5 ch3 channel struct `0x200007D4` + 0x10); a wrapped `led_frame_compose` repaints when the phase flips, and Shift or a tap restarts it lit. The palette's own animated entries (`0x04`, `0x09`, `0x0a`, `0x0d`, `0x29`–`0x2c`, driven by the TIM1 LED-scan frame counter `0x200004a4 + 0x64`; period 0x60 frames, triangle tables `0x0802810B`/`0x08028708`/`0x080280AB`, square `frame % 12 < 6`) were tried: the yellow-white pulse was too fast to look at. The Shift LED's cell subscriber `flag_led_render_thunk` (vtable `0x080276E4`, object `ui + 0x10`, checked against the ui at `0x20001494`) repaints the 0xE0 entries when Shift changes; a tap repaints too. Palette: `0x0802AB24` maps track offset (`kv + 0x58`: Osc 1 `0x0f`, Osc 2 `0x18`) + state to colour indices, whose RGB is `.data` `0x200002a0` (Osc 1 magenta `0x1a`, Osc 2 green `0x10`, sounding white `0x01`). Loading a session resets the transpose: `session_ctl_on_save_done` (`0x08019AEC`) is in fact the completion callback of the session read that `session_ctl_save_globals` starts (`FUN_0801b0bc`, sector `n × 0x16 + 0x12`, ctl in r3), so the wrapper zeroes the degrees and passes r0–r3 through. Verified in Unicorn and on the unit (build 752). Open: transpose from MIDI-in notes. Combined with `overlays/randomise` as build 752 (`fwsrc.py generate --version 752`, which overrides the overlays' versions); tried on the unit.
-
-### #49 MIDI-in notes outside the scale
-Incoming MIDI notes are forced into the selected scale, so you must switch to chromatic to play every note from an external keyboard or DAW. Wanted: a setting where MIDI notes bypass the scale and keys and the sequencer keep it. Find the scale mapping on the MIDI-in path (`midi_in_out`, `docs/source-map.md`).
-
-### #50 Pattern select and program change out over MIDI
-A session can be chosen by program change on channel 16, but a pattern can't be chosen over MIDI (Elektronauts), and the unit never sends program changes. Wanted: pattern select from MIDI (CC or program change per track) and, optionally, program change out when a patch or session changes, so an external sequencer or DAW can follow and drive song structure.
-
-### #51 Second LFO
-One LFO and one envelope are the main modulation complaint ("you can't combine a slow-running filter sweep with fast-moving pulse width modulation"). The LFO is digital, so a second LFO with its own rate, shape and depth row in the mod matrix is firmware-only, if CPU time and the per-destination control rate allow it. Related to #21 and #42. Needs patch storage, perhaps in the reserved bytes 27–40.
-
-### #52 Static pulse width
-The blog review says "Pulse width has to be modulated". The patch has `osc1_pw`/`osc2_pw` (offsets 43/52, `tools/patchbank.py`), so first check on the unit and in the firmware how they are set from the panel and what they do without modulation. If a fixed width can't be dialled in today, map it to a knob or Shift combination.
-
-### #53 Record patch changes into the sequencer
-Patch Flip (v1.2) assigns patches to steps by hand, one step at a time. Wanted: while recording, a press on the patch-select page is written to the current step as a patch change, so a pattern of patch changes can be played in live, e.g. a drum beat played on kick/snare/hat patches. Needs: where Patch Flip keeps its per-step patch numbers in the session (#13, `docs/session-format.md`), the recording path that writes notes on the current step (#33), and a hook on the patch-select pads during record. Patch loads must be fast enough to follow 16th notes; measure the time from pad press to new sound.
-
-### #54 128 patches from the panel
-The patch store holds 128 slots, but the panel reaches only 64 (2 pages, Oct ↓/↑). Wanted: all 128 selectable and savable from the unit. Facts and tests are in #31. Needs:
-- the page setter `FUN_08022fdc`, the Oct LED logic and the pad rendering extended to 4 pages;
-- the load path fixed: program change ≥ 64 loads the built-in `Initial Patch` instead of the flash slot (#31 test 4). Trace where that happens (load handler `FUN_08019AE4` port `+0x34`, program setter `FUN_0801C842`); the panel probably goes the same way;
-- a check that the save path writes slots 64–127 from the panel (SysEx writes already work);
-- a decision on how pages 3–4 interact with Components and `.monostationpack` banks, which know 64 patches only: back up slots 64–127 with the `0x78` dump (`tools/sessionsyx.py`), or leave them out of Components' view.
-Sessions and Patch Flip store patch numbers; check that numbers ≥ 64 survive there (#13).
+| Old | Feature | GitHub |
+|-----|---------|--------|
+| #19 | Patch dump request / bulk backup over SysEx | [#1](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/1) |
+| #20 | Expose SysEx-only parameters via CC/NRPN | [#2](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/2) |
+| #21 | Additional LFO waveforms / modulation options | [#3](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/3) |
+| #22 | Sequencer enhancements | [#4](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/4) |
+| #31 | Patch slots 64–127 | [#5](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/5) |
+| #32 | Micro-step note timing (off-grid notes, trills, ratchets) | [#6](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/6) |
+| #33 | Unquantised recording | [#7](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/7) |
+| #34 | Step-time recording (SH-101 style) | [#8](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/8) |
+| #35 | Per-step probability and mutation (Launchpad Pro style) | [#9](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/9) |
+| #36 | Arpeggiator | [#10](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/10) |
+| #37 | Roll / looper performance effect | [#11](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/11) |
+| #38 | Decouple the Osc 2 track from Osc 2 | [#12](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/12) |
+| #39 | Randomise gate, glide and velocity patterns | [#13](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/13) |
+| #40 | Per-step modulation shapes on the mod sequencer | [#14](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/14) |
+| #41 | AFX mode / per-key overlays | [#15](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/15) |
+| #42 | Fast LFO mode (audio-rate) | [#16](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/16) |
+| #44 | Sequencer track routing (Osc 2 follows the Osc 1 track) | [#17](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/17) |
+| #45 | Play the keys without interrupting the sequence | [#18](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/18) |
+| #46 | Edit a pattern while a chain plays | [#19](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/19) |
+| #47 | Flexible pattern chains | [#20](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/20) |
+| #48 | Live transpose of the sequence | [#21](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/21) |
+| #49 | MIDI-in notes outside the scale | [#22](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/22) |
+| #50 | Pattern select and program change out over MIDI | [#23](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/23) |
+| #51 | Second LFO | [#24](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/24) |
+| #52 | Static pulse width | [#25](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/25) |
+| #53 | Record patch changes into the sequencer | [#26](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/26) |
+| #54 | 128 patches from the panel | [#27](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues/27) |
