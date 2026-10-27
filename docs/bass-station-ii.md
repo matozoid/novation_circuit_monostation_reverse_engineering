@@ -1,6 +1,6 @@
 # Bass Station II patch SysEx (reference only)
 
-**This is not a Circuit Mono Station format.** Every piece of it lives in Components' Bass Station II modules (#26). It is kept here because the work is correct for that product, and because the codec idea may matter if a later Mono Station firmware adopts something similar. For the Mono Station's real patch format see `docs/sysex-spec.md`.
+**This is not a Circuit Mono Station format.** Every piece of it lives in Components' Bass Station II modules. It is kept here because the work is correct for that product, and because the codec idea may matter if a later Mono Station firmware adopts something similar. For the Mono Station's real patch format see `docs/sysex-spec.md`.
 
 ## Provenance
 

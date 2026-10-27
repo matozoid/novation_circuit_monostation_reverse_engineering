@@ -1,5 +1,5 @@
 // Ghidra post-script: decompile the function containing a given address and
-// print the C to stdout. For investigating specific subsystems (#10 follow-ups).
+// print the C to stdout. For investigating specific subsystems.
 //   analyzeHeadless ghidra-project monostation -process monostation-firmware-800.bin \
 //     -noanalysis -scriptPath tools/ghidra -postScript DecompileFunc.java 0x0800e1f8
 // @category Monostation

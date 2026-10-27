@@ -1,6 +1,6 @@
 # Firmware update protocol
 
-How Components 1.72.5 sends a firmware `.syx` file to a Circuit Mono Station (#4). The message formats are described in `docs/firmware-container.md`.
+How Components 1.72.5 sends a firmware `.syx` file to a Circuit Mono Station. The message formats are described in `docs/firmware-container.md`.
 
 Sources, all in `app.asar` → `ember-dist/assets/`:
 - the generic updater class `s1` in `main-*.js`, next to the `WAITING_FOR_PACKET_REQUEST` state enum;
@@ -76,14 +76,14 @@ Mono Station update config (`o1` defaults overridden by the device class):
    - It first waits until the device is connected, reports a firmware version, and no longer needs an update. That proves the new image booted and answers `0x70` with the new version.
    - It then waits until the application port ("present") is back.
 
-## Consequences for our own flasher (#16)
+## Consequences for our own flasher
 
 - **The `0x76` trailer is never sent.** The loop stops at the `0x73` packet, and in the stock 800 file that packet is the second to last, followed by `0x76`. So the bootloader must finish the update on `0x73`, the vector-table block at offset 0. It then reboots, since Components next waits for the new version to be reported. The bootloader doesn't verify a checksum either. It keeps a word sum that nothing reads, and `0x73` boots the new image at once (`docs/bootloader.md`). `tools/bin2syx.py` should keep writing a correct trailer anyway.
 - **The `0x73` block must come last.** A flasher must not send anything after it, or must at least expect the device to have left the bootloader.
-- **Reboot.** The app accepts any `0x71` with `00 7F` at bytes 6–7 (or a bare `0x60`), writes `2` to backup SRAM and jumps to the bootloader without a system reset (`docs/sysex-handlers.md`). A patched image must keep that path to stay updatable without the manual entry (#29).
-- **Version digits.** The bootloader sees the `0x71` start message with the version digits. The bootloader doesn't look at them: `0x71` only needs `00 7F` at bytes 6–7 (`docs/bootloader.md`). Components itself only offers an update when the running version is below 800. That version comes from the image header (`MAIN` + BCD at image offset `0x1B0`), not from the container digits. A modified image that reports a version of 800 or higher won't be "updated" by Components, which matters for restoring stock (#15).
+- **Reboot.** The app accepts any `0x71` with `00 7F` at bytes 6–7 (or a bare `0x60`), writes `2` to backup SRAM and jumps to the bootloader without a system reset (`docs/sysex-handlers.md`). A patched image must keep that path to stay updatable without the manual entry (*Entering the bootloader by hand*).
+- **Version digits.** The bootloader sees the `0x71` start message with the version digits. The bootloader doesn't look at them: `0x71` only needs `00 7F` at bytes 6–7 (`docs/bootloader.md`). Components itself only offers an update when the running version is below 800. That version comes from the image header (`MAIN` + BCD at image offset `0x1B0`), not from the container digits. A modified image that reports a version of 800 or higher won't be "updated" by Components, which matters for restoring stock (*Recovery*).
 - **Pacing.** Wait for each ack: the 10-byte `0x72` reply with an increasing counter. Do not stream. Use a timeout of at least 10 s per packet.
-## Our flasher (`tools/flash.py`, #16)
+## Our flasher (`tools/flash.py`)
 
 `python3 tools/flash.py <firmware.syx> [--port NAME] [--yes]` implements the sequence above. It needs mido + python-rtmidi.
 1. It decodes and checks the file first: message order (`0x71`, `0x72`…, one `0x73`, `0x76`), 44-byte data messages, product id `00 7F`, the trailer checksum, the `MAIN` header version, an image end at or below `0x08080000` (the bootloader's erase limit), and a vector table with the stack in RAM and a Thumb reset vector inside the image.

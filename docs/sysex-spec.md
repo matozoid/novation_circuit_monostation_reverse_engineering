@@ -6,7 +6,7 @@ This supersedes the community PDF (`CircuitMonoStationPatchSysExFormat.pdf`, rev
 - the patch model, `frontend/models/monostation/patch`;
 - the validator, `frontend/utils/monostation/validate-patch-sysex`, which accepts exactly 136 bytes.
 
-> **Not Mono Station:** the "154-byte modern wire", the "122-byte legacy wire", the `kD` parameter array and the `RX`/`OX`/`UX` codec all belong to Components' **Bass Station II** modules (#26). They are kept as a reference in `docs/bass-station-ii.md` and `tools/bassstation2_patch.py`.
+> **Not Mono Station:** the "154-byte modern wire", the "122-byte legacy wire", the `kD` parameter array and the `RX`/`OX`/`UX` codec all belong to Components' **Bass Station II** modules (`docs/bass-station-ii.md`). They are kept as a reference in `docs/bass-station-ii.md` and `tools/bassstation2_patch.py`.
 
 The Mono Station **device id (bytes 4–5) is `01 61`** (validator `yte`: `t[4]===1 && t[5]===97`; confirmed by the bank and the firmware). The original Novation **Circuit** uses `01 60`, and Bass Station II uses `00 33`.
 
@@ -87,7 +87,7 @@ The YBC "Big City Flippin' Grooves" pack ships a `.syx` bank plus 64 "Patch Deta
 - **Re-Trigger is always shown unlit**: Animals (byte 27 = 1, the only YBC patch with it set) and 808 Cow (byte 27 = 0) look the same. Like glide, the editor doesn't read byte 27.
 
 ### Request a patch
-`F0 00 20 29 01 61 40 00 00 F7` — message type `0x40` requests the **current working patch**. On hardware (2026-10-25) the reply is a 136-byte type-0 message (`F0 00 20 29 01 61 00 00 00` + patch + `F7`) holding the current edit buffer, not slot 0's stored data. Other slot bytes (1, 40, 63, 64, 127) get no reply, so this can't sweep a bank; the bootloader's `0x78` dump does that (`docs/session-transport.md`). A type-1 slot write does work, including to slot 64 (#12).
+`F0 00 20 29 01 61 40 00 00 F7` — message type `0x40` requests the **current working patch**. On hardware (2026-10-25) the reply is a 136-byte type-0 message (`F0 00 20 29 01 61 00 00 00` + patch + `F7`) holding the current edit buffer, not slot 0's stored data. Other slot bytes (1, 40, 63, 64, 127) get no reply, so this can't sweep a bank; the bootloader's `0x78` dump does that (`docs/session-transport.md`). A type-1 slot write does work, including to slot 64.
 
 ## Reference data
 
@@ -103,7 +103,7 @@ The firmware's patch store has **128 slots** of 512 bytes at external-flash `0x2
 
 Only the panel stops at 64. The patch view (render `FUN_08013ac4`, pads `FUN_08014330`) shows 32 pads, and slot = page × 32 + pad. Oct ↓ / Oct ↑ (button events `0x14` / `0x15` in `FUN_08011FBC`) call `FUN_08022fdc(view, 0)` / `(view, 1)`, so the page is only ever 0 or 1. The render does mask the page with `& 7` and lights the Oct LEDs by `page == 0` vs `page != 0`.
 
-So slots 64–127 are probably left over from a 4-page design. A type-1 SysEx slot write reaches them (tested on slot 64), and a patched page setter could too (#31). Program change doesn't load them (below).
+So slots 64–127 are probably left over from a 4-page design. A type-1 SysEx slot write reaches them (tested on slot 64), and a patched page setter could too (#5). Program change doesn't load them (below).
 
 **Program change doesn't reach them, although the code path suggests it would.** The MIDI PDF documents program change 0–63 on the Osc 1 channel, but the firmware doesn't clamp it:
 - The MIDI-in router at `0x080186B8` (missed by Ghidra; registered from the UI constructor `FUN_0800FB5C` via literal `DAT_0800FB04`) dispatches on `status & 0xF0`.
@@ -112,10 +112,10 @@ So slots 64–127 are probably left over from a 4-page design. A type-1 SysEx sl
   - base 0 → `set(0x50, program, 1)`, the patch-number setter `FUN_0801C842`, with no range check, so on to `FUN_08019AE4` (`< 0x80`);
   - base `0x20` → `FUN_08014D2E(obj + 0x2C, program)`, session select (PDF: 0–31 instant, 64–95 queued).
 
-On hardware (#31), with `Min 3rd` written to flash slot 64, PC 64, 96, 104 and 127 all loaded the built-in `Initial Patch`, also after a power cycle. The path that substitutes the template isn't traced: the load handler `FUN_08019AE4` has a port (`+0x34`) that copies `Initial Patch` with no slot argument, and the setter posts through a port chain (`FUN_08014D2E`) not yet resolved.
+On hardware (#5, `docs/hw-test-patch-slots.md`), with `Min 3rd` written to flash slot 64, PC 64, 96, 104 and 127 all loaded the built-in `Initial Patch`, also after a power cycle. The path that substitutes the template isn't traced: the load handler `FUN_08019AE4` has a port (`+0x34`) that copies `Initial Patch` with no slot argument, and the setter posts through a port chain (`FUN_08014D2E`) not yet resolved.
 
 ## Open items
 - Coarse tune spans −128…127. The user guide gives the range as ±1 octave (p. 18 control list and the oscillator section), so about 10.7 steps per semitone. Whether the engine quantises to semitones is not traced.
 - Request message (`0x40`): confirmed on hardware, current patch only (`40 00`).
 - Why program change ≥ 64 loads the `Initial Patch` template instead of the flash slot.
-- The in-session patch copy is covered by #13 (`docs/session-format.md`).
+- The in-session patch copy is in `docs/session-format.md`.

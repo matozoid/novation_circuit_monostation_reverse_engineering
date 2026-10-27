@@ -2,7 +2,7 @@
 """Read memory through the app's 'p' 0x40 op 2 command, 256 bytes per request.
 
 On stock firmware this reads the external SPI flash (addresses below 0x800000). With
-patch memread (patches/memread, #24) the same command also reads MCU memory: flash
+patch memread (patches/memread) the same command also reads MCU memory: flash
 0x08000000-0x080FFFFF (the bootloader is 0x08000000-0x0800BFFF), system memory and OTP,
 option bytes, CCM, SRAM1-3, backup SRAM and (v803) DBGMCU_IDCODE at 0xE0042000.
 

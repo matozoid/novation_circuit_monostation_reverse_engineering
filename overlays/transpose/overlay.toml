@@ -1,4 +1,4 @@
-# #48 Live transpose: in the Note or Expand view of the Osc 1 or Osc 2 track, hold Shift
+# #21 Live transpose: in the Note or Expand view of the Osc 1 or Osc 2 track, hold Shift
 # and tap a key. Both Osc tracks' sequences then play that many scale degrees away from
 # the first note of that track's pattern; tapping that note's key resets. The tapped key
 # doesn't sound, nothing is saved, and loading a session resets it. While Shift is held,

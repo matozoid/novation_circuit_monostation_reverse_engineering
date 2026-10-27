@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Automated hardware test for patch slots 64-127 (#31, docs/hw-test-patch-slots.md).
+"""Automated hardware test for patch slots 64-127 (#5, docs/hw-test-patch-slots.md).
 
 Runs the read-only tests 0-3 of the plan against a connected Mono Station.
 The storage dumps (0x78) are served by the bootloader, not the app, so the
@@ -18,7 +18,7 @@ does), runs tests 0-1 there, then asks you to press Play to return to the app:
 Nothing is written to the device's flash. The only 'p' 0x40 operation sent is
 op 2 (read). Dumps and report.json go to the output directory.
 
-MIDI I/O uses mido + python-rtmidi (the #16 exception to stdlib-only); the
+MIDI I/O uses mido + python-rtmidi (the device-tool exception to stdlib-only); the
 helpers above main() are stdlib-only and unit-tested. On Linux the 0x78 dumps
 bypass mido and read the ALSA rawmidi device (/dev/snd/midiCcDd), as amidi
 does: through the ALSA sequencer, a 3 MB session dump loses blocks to input

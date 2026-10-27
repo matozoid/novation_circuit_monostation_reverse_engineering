@@ -1,4 +1,4 @@
-# Binary patching (#17)
+# Binary patching
 
 `tools/fwpatch.py` builds a patched firmware image from assembly source and a declarative hook list. Patches are source, not hex blobs.
 
@@ -54,4 +54,6 @@ Every hook needs `expect`, which must be as long as what the hook writes. Hooks 
 
 ## Flashing
 
-Encode with `--syx` and send it through the bootloader (#16, `docs/update-protocol.md`). To go back, reflash stock `monostation-firmware-800.syx`. Bump `version` so the device and Components show that a patched image is running. A `version` below 800 makes Components offer the stock update.
+Encode with `--syx` and send it through the bootloader (`tools/flash.py`, `docs/update-protocol.md`). To go back, reflash stock `monostation-firmware-800.syx`. Bump `version` so the device and Components show that a patched image is running. A `version` below 800 makes Components offer the stock update.
+
+**Tested on hardware:** `patches/hello` (version 801) routes the reset handler's call to main (`0x08025E8E`) through injected code at `0x0802BB20`. Flashed with `tools/flash.py`, the app reported (740, 801), the unit worked normally, and the bootloader's Osc 2 lights showed 801. Stock 800 was then restored the same way. So the bootloader accepts an image longer than stock, and the whole build → flash → verify → restore path works.

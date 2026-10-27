@@ -1,6 +1,6 @@
 # Application SysEx handlers (firmware 800)
 
-What the running application does with incoming SysEx, from static analysis of firmware 800 (#30). The dispatcher is `FUN_080202a0`. The host side of the update protocol is in `docs/update-protocol.md`.
+What the running application does with incoming SysEx, from static analysis of firmware 800. The dispatcher is `FUN_080202a0`. The host side of the update protocol is in `docs/update-protocol.md`.
 
 The dispatcher matches the start of each message against four prefixes, in this order:
 
@@ -25,7 +25,7 @@ Each image has a header at offset `0x1AC` from its base: a 4-byte tag, then the 
 
 When it isn't valid, every version field reports 0. The bootloader most likely runs the same check before it starts the app, but that code is not in the file.
 
-**For patched images:** the version that Components sees is bytes `0x1B0`–`0x1B1` of the decoded image. The six digits in the container's `0x71` start message are separate. To make Components offer a restore to stock (#15), a modified image can report a version below 800 by changing those two bytes. Keep the `MAIN` tag, or the app reports version 0 and refuses `0x61`.
+**For patched images:** the version that Components sees is bytes `0x1B0`–`0x1B1` of the decoded image. The six digits in the container's `0x71` start message are separate. To make Components offer a restore to stock (`docs/update-protocol.md` *Recovery*), a modified image can report a version below 800 by changing those two bytes. Keep the `MAIN` tag, or the app reports version 0 and refuses `0x61`.
 
 ## Product-independent commands (`F0 00 20 29 00 …`)
 
@@ -110,7 +110,7 @@ The reply echoes the first 10 bytes of the request.
 | `1` | program the data, sent as nibble pairs, high nibble first (SPI page program `0x02`) | 11 bytes |
 | `2` | read 256 bytes (SPI fast read `0x0B`) | 523 bytes: 10-byte header, 512 nibbles high-first, `F7` |
 
-The addresses are in the external SPI NOR flash that holds patches and sessions, the same address space as the session dump's storage start addresses (patches `0x2000`, sessions `0x12000`). **This is not MCU flash, so it can't dump the bootloader on stock firmware.** Patch `patches/memread` adds MCU memory to op 2 (#24). It can dump or restore the whole patch and session store, and op `0` erases user data, so treat writes and erases as destructive.
+The addresses are in the external SPI NOR flash that holds patches and sessions, the same address space as the session dump's storage start addresses (patches `0x2000`, sessions `0x12000`). **This is not MCU flash, so it can't dump the bootloader on stock firmware.** Patch `patches/memread` adds MCU memory to op 2 (`docs/bootloader.md`). It can dump or restore the whole patch and session store, and op `0` erases user data, so treat writes and erases as destructive.
 
 **Op 2 on hardware (2026-10-25):** reads at `0x0`, `0x1000`, `0x2000`, `0xA000`, `0x11F00`, `0x12000`, `0x2E7F00`, `0x2E8000`, `0x400000` and `0x7FFF00` match the bootloader's `0x78` dumps byte for byte. From **`0x800000`** up, the reply is still 523 bytes but doesn't read flash. It changes from one request to the next and echoes the previous reply's nibbles (`0F`, `F7`), so the app sends its stale reply buffer. The bound check isn't traced yet. Ops 0 and 1 are untested.
 

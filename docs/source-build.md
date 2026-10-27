@@ -1,4 +1,4 @@
-# Firmware source build (#43)
+# Firmware source build (#59)
 
 `tools/fwsrc.py` turns the stock app image into Thumb-2 assembly that GNU as/ld rebuild
 **byte for byte**, split into files by `src/files.tsv`. It is the first step towards a full
@@ -91,7 +91,7 @@ version 801) and `overlays/hello_c` the same in C (`void main(void) { stock_main
 which gcc makes a `b.w` tail call). `tests/test_fwsrc.py` checks that all three produce the
 same image, the one already run on the device, and that a C `static` variable fails to link.
 
-`overlays/randomise` (#39, version 750: below stock 800, so Components offers to restore 1.2) is the first feature: it wraps `ui_button_event`
+`overlays/randomise` (#13, version 750: below stock 800, so Components offers to restore 1.2) is the first feature: it wraps `ui_button_event`
 so that Mutate in the Velocity, Gate or Glide view randomises only that step field, and
 in the Expand view only the notes' pitch. The
 only stock bytes it changes are the version and the `ui_root` vtable's button-down slot

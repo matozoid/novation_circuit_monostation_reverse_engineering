@@ -1,4 +1,4 @@
-# #43 C overlay hello world: overlays/hello written in C. gcc turns the call into a tail
+# C overlay hello world: overlays/hello written in C. gcc turns the call into a tail
 # call (b.w stock_main), so the image equals overlays/hello and patches/hello.
 base = 800
 version = 801

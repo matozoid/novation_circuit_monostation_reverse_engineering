@@ -123,7 +123,7 @@ Called by the tick for each track when its step is due. With the pattern footer 
 
 It writes the new pattern/step through the cells and returns 1 when the pattern changed.
 
-**Random source:** `FUN_0801AB9C` reads the **hardware RNG** (`0x50060800`, waits for DRDY, rejects repeats). Usable as-is for probability / mutation features (#35, #39).
+**Random source:** `FUN_0801AB9C` reads the **hardware RNG** (`0x50060800`, waits for DRDY, rejects repeats). Usable as-is for probability / mutation features (#9, #13).
 
 ## MIDI clock and transport
 
@@ -199,7 +199,7 @@ Three players, 0x10C bytes each, built in `FUN_0800E1F8` by `FUN_08020EA0`. Play
 - **step cell** (`+0x1C`): plays the step: patch change (step byte 4, param id `0x50`), the step parameter (byte 3), the automation lanes (with the smoothing table at `0x08023930`) through `param_sink->vtable[0](id, value, smooth)`, then the note: `note_sink->vtable[0](note, velocity)` (velocity 0 → 96) and schedules its note-off after `gate × ticks_per_step / 6` ticks (gate clamped to 1–96).
 - **transport cells** (`+0x34`, or `+0x20` going to 0): all notes off, lanes reset.
 
-Notes are therefore only on the tick grid; the gate already has micro-step (tick) resolution. A per-step note offset (#32) could reuse the same delta list to schedule delayed note-ons.
+Notes are therefore only on the tick grid; the gate already has micro-step (tick) resolution. A per-step note offset (#6) could reuse the same delta list to schedule delayed note-ons.
 
 ### Note routing
 
@@ -236,9 +236,9 @@ Sequencer notes take this path (all objects built in `FUN_0800E1F8`):
 
 So the mod track (2) never reaches MIDI out. Sequencer playback is not recorded (stage 3 has no sequencer input), so recording live input over a playing pattern doesn't feed back on itself.
 
-**#38 (track 1 to MIDI only):** the split point is merger stage 1 → stage 2 for track 1. Skipping that forward (merger input 3 on the track-1 merger) sends keys and sequencer notes of track 1 only to MIDI out, while MIDI in still plays Osc 2. A hook in `FUN_080178F0` on `track == 1` would also mute MIDI-in notes on Osc 2. Which behaviour is wanted is a design choice.
+**#12 (track 1 to MIDI only):** the split point is merger stage 1 → stage 2 for track 1. Skipping that forward (merger input 3 on the track-1 merger) sends keys and sequencer notes of track 1 only to MIDI out, while MIDI in still plays Osc 2. A hook in `FUN_080178F0` on `track == 1` would also mute MIDI-in notes on Osc 2. Which behaviour is wanted is a design choice.
 
-## Recording (#33)
+## Recording (#7)
 
 Live input reaches the recorder hub through merger stage 3 (above). The hub (0x18 bytes, vtable `0x08027154`) is:
 
@@ -289,7 +289,7 @@ Recorder vtable `0x080270FC`:
 - byte 1 = velocity if `+0x284` is set;
 - byte 2 = gate = `(release − start)` in micro-steps (`6 × whole steps + remainder × 6 / ticks_per_step`), capped at 96 and at least 1. `ticks_per_step` comes from the pattern's own sync rate (footer byte 1, pattern `+0x81`).
 
-It then clears the held bit. When the note's pattern matches cell `+0x14`, the caller commits `+0x48`. The raw start time stays in the slot, so **the off-grid offset (`start − step start`) is known at write time and just discarded**. That is the hook point for #33.
+It then clears the held bit. When the note's pattern matches cell `+0x14`, the caller commits `+0x48`. The raw start time stays in the slot, so **the off-grid offset (`start − step start`) is known at write time and just discarded**. That is the hook point for #7.
 
 **Automation**: on each tick the observer walks the lanes whose bit is set in `+0x2C`. Once a knob has moved during recording, its lane stays selected until recording stops. The micro-step comes from the tick-in-step: it is used directly at 1/16 (6 ticks per step), looked up in table `DAT_080175C0` for the faster rates, and is `tick × 6 / ticks` for the slower ones. With a new value, `FUN_08023266(lane, step, micro, v)` writes it and sets the mask bit. Without one, `FUN_0802323C` clears the micro-step, so only change points stay. When the clock skipped one or two micro-steps since the last write (rates faster than 1/16), the gap is filled by linear interpolation (`(a + b) / 2`, or `(2a + b) / 3` and `(a + 2b) / 3`). At slower rates nothing is interpolated.
 
@@ -301,5 +301,5 @@ It then clears the held bit. When the note's pattern matches cell `+0x14`, the c
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
-- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#34): which UI handlers write step cells.
+- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#8): which UI handlers write step cells.
 - The 6th sync-out mask `0x80810` (the guide lists only 5 rates). Bits 0–1 of the MIDI settings byte: no reader found yet.

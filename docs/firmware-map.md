@@ -1,6 +1,6 @@
 # Firmware subsystem map
 
-Addresses are from a **static** scan of the decoded application image (`firmware/monostation-firmware-800.bin`, load base `0x0800C000`): the vector table, word-aligned peripheral-register literals, debug format strings and their literal-pool cross-references, plus spot Thumb-2 disassembly. Function boundaries are approximate until Ghidra auto-analysis (#9) runs; entries below are handler entry points or the tightest xref cluster for each subsystem. See `docs/hardware.md` for the memory map and MCU.
+Addresses are from a **static** scan of the decoded application image (`firmware/monostation-firmware-800.bin`, load base `0x0800C000`): the vector table, word-aligned peripheral-register literals, debug format strings and their literal-pool cross-references, plus spot Thumb-2 disassembly. Entries below are handler entry points or the tightest xref cluster for each subsystem; exact function boundaries are in `docs/source-map.md`. See `docs/hardware.md` for the memory map and MCU.
 
 ## Active interrupt vectors
 
@@ -104,7 +104,7 @@ The 28 bytes after the `.data` image (`0x0802BB04`–`0x0802BB20`, `8 × FF` the
 
 Still open: which SPI port drives the LEDs and which the DAC, the role of USART6, the synth engine internals beyond the envelope, and which USB/DIN parser feeds the MIDI-in parser `FUN_080186B8`.
 
-## Ghidra auto-analysis (#9)
+## Ghidra auto-analysis
 
 `tools/ghidra/import_firmware.sh` imports the image, runs `MapMemory.java` (memory map + reset-handler seed) and leaves the DB in `ghidra-project/` (git-ignored). `ExportMap.java` writes the full function listing to `docs/ghidra-functions.txt`; `DecompileFunc.java <addr>…` prints decompiled C for investigation. (Ghidra 12.x headless has no Jython, so these are Java GhidraScripts, not Python.)
 
@@ -115,8 +115,8 @@ Auto-analysis finds 467 functions; with the vtable targets and push-prologue fun
 | `FUN_08025E60` | Reset handler (CMSIS startup) |
 | `FUN_08025F3C` | `memset(dst, val, len)` |
 | `FUN_08026752` | `memcpy(dst, src, len)` |
-| `FUN_08018CA4` | **Session initialiser** — builds the "Initial Session" struct in RAM out to offset `0x155DE` (≈87.9 KB, matching the 90,112-byte `.monostationsession`); layout decoded in `docs/session-format.md` (#13). |
-| `FUN_0800E1F8`, `FUN_0801B4E0` | reference the "Initial Patch" default — patch load/init; drive #12. |
+| `FUN_08018CA4` | **Session initialiser** — builds the "Initial Session" struct in RAM out to offset `0x155DE` (≈87.9 KB, matching the 90,112-byte `.monostationsession`); layout decoded in `docs/session-format.md`. |
+| `FUN_0800E1F8`, `FUN_0801B4E0` | reference the "Initial Patch" default — patch load/init (`docs/sysex-spec.md`). |
 | `FUN_0800C2D0` | `main`: the main loop and its soft-timer table at `0x20003230`. |
 | `FUN_0800FB5C` | `ui_construct`: builds the views and the UI root. |
 

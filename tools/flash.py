@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flash a firmware .syx to a Circuit Mono Station through its bootloader (#16).
+"""Flash a firmware .syx to a Circuit Mono Station through its bootloader (docs/update-protocol.md).
 
 Follows Components' updater (docs/update-protocol.md): send the 0x71 start, then each
 data packet after the bootloader acknowledges the previous one, and stop after the

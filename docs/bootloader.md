@@ -1,4 +1,4 @@
-# Bootloader 740 (#24, #25)
+# Bootloader 740
 
 Static analysis of the bootloader dumped from a unit with patch memread (`firmware/bootloader-740.bin`, 48 KiB at `0x08000000`, SHA-256 `3df50875dd055853c5e154a397bb43a17d0427417273ff8b4cd54b77cb5a12af`). Code and data end at `0x08007003`; the rest is `FF`.
 
@@ -57,7 +57,7 @@ Messages starting `F0 00 20 29 01 61` (Mono Station patch traffic) are ignored. 
 | `0x76` | Only 24-byte messages: something with an external-flash checksum, not the firmware trailer. The `0x76` trailer of a `.syx` (a shorter message) is ignored. |
 | `0x78` | External-flash dump: `0x77` header, `0x79` blocks, `0x7A` CRC-32 (`FUN_08004a30`, reflected polynomial `EDB88320`). |
 
-The word sum at `0x20001F00` is written only by `0x71` and `0x72`; nothing reads it. **So the firmware checksum is never verified**, and that is why our flasher (#16) can skip the trailer.
+The word sum at `0x20001F00` is written only by `0x71` and `0x72`; nothing reads it. **So the firmware checksum is never verified**, and that is why our flasher (`tools/flash.py`) can skip the trailer.
 
 ## Flash driver (object at `0x200003DC`)
 

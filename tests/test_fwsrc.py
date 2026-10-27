@@ -154,7 +154,7 @@ class Overlay800Test(unittest.TestCase):
 
     @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
     def test_randomise_hooks_button_down(self):
-        """overlays/randomise (#39) changes only the version and the ui_root vtable's
+        """overlays/randomise (#13) changes only the version and the ui_root vtable's
         button-down slot, which now points after the image."""
         fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[RANDOMISE])
         built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
@@ -166,7 +166,7 @@ class Overlay800Test(unittest.TestCase):
 
     @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
     def test_transpose_hooks_pads_and_router(self):
-        """overlays/transpose (#48) changes only the version, the router vtable's note-on
+        """overlays/transpose (#21) changes only the version, the router vtable's note-on
         and note-off slots, the ui_root vtable's pad-down slot, the Shift LED's subscriber
         slot, the LED frame and session-read callbacks and the calls of keyboard_leds_render."""
         fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[TRANSPOSE])

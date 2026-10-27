@@ -1,4 +1,4 @@
-# #18 hello world: report version 801 and route the call to main through patch code.
+# Hello world: report version 801 and route the call to main through patch code.
 # If the device boots and answers 0x70 with 801, the header edit, the code injection
 # and the branch hook all work.
 base = 800

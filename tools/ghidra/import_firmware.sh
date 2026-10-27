@@ -4,7 +4,7 @@
 # Usage: GHIDRA_HOME=/opt/ghidra tools/ghidra/import_firmware.sh [image.bin] [project_dir] [base]
 #
 # Defaults: image = firmware/monostation-firmware-800.bin, project = ./ghidra-project (git-ignored),
-# base = 0x0800C000. For the bootloader dump (#24): firmware/bootloader-740.bin ghidra-project 0x08000000.
+# base = 0x0800C000. For the bootloader dump: firmware/bootloader-740.bin ghidra-project 0x08000000.
 # Produces the raw-image analysis DB; the DB itself is not committed, only this script and the
 # post-script are. Re-run after decoding a new build.
 set -euo pipefail

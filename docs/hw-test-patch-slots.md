@@ -1,4 +1,4 @@
-# Hardware test: patch slots 64–127 (#31)
+# Hardware test: patch slots 64–127 (#5)
 
 The firmware's patch store has 128 slots (`docs/sysex-spec.md`, *Patch store*), but the panel and Components use only 64. This plan checks on a real unit what is stored in slots 64–127 and whether program change and SysEx can reach them. Tests 1–3 only read. Tests 4–5 write, but only to slot 64, which the panel can't reach.
 
@@ -23,7 +23,7 @@ What the script does:
 
 On Linux the dumps are read from the ALSA rawmidi device (`/dev/snd/midiC*D*`, found through `/proc/asound`), like `amidi`. Through the sequencer, a session dump lost blocks to input overruns. The script polls the device before sending each request, because rawmidi input starts only on the first poll or read. The dumps and `report.json` are written to the output directory. The manual steps below do the same with `amidi`.
 
-**Results (2026-10-25):** slots 64–127 all hold `Initial Patch`. Test 4 showed that **PC ≥ 64 doesn't load the flash slot**: with `Min 3rd` written to slot 64, PC 64 still loaded the built-in `Initial Patch`. Test 5: only `40 00` answers, with the current patch. Trigger: 1 = retrigger, 0 = legato. Details are in #12 and #31.
+**Results (2026-10-25):** slots 64–127 all hold `Initial Patch`. Test 4 showed that **PC ≥ 64 doesn't load the flash slot**: with `Min 3rd` written to slot 64, PC 64 still loaded the built-in `Initial Patch`. Test 5: only `40 00` answers, with the current patch. Trigger: 1 = retrigger, 0 = legato. Details are in `docs/sysex-spec.md` and #5.
 
 ## Setup
 
@@ -118,7 +118,7 @@ EOF
 For the fallback, pass `~/ms-dumps/slots-64-127.bin` instead.
 
 Record:
-- the class of slots 64–127: all `FF`, all `Initial Patch`, or real patches (which could be a factory or test bank, #8);
+- the class of slots 64–127: all `FF`, all `Initial Patch`, or real patches (which could be a factory or test bank);
 - whether slots 0–63 match `patches-64.syx`. They should.
 
 ## 3. Program change 64
@@ -138,7 +138,7 @@ Record:
 
 Return to a normal patch with `C0 00` or a pad press. Loading a patch changes only the current session's working copy, so nothing is saved unless you press Save. **Don't save while slot 64 is loaded.**
 
-Expected from the firmware: PC 64 loads slot 64 (#31). **Result:** it loads the built-in `Initial Patch` instead (shown by test 4). Since slot 64 holds `Initial Patch` on a stock unit, this test alone can't tell the two apart; check the current patch with `40 00` after writing a different patch to slot 64.
+Expected from the firmware: PC 64 loads slot 64 (`docs/sysex-spec.md`). **Result:** it loads the built-in `Initial Patch` instead (shown by test 4). Since slot 64 holds `Initial Patch` on a stock unit, this test alone can't tell the two apart; check the current patch with `40 00` after writing a different patch to slot 64.
 
 ## 4. Optional: write slot 64 over SysEx
 
@@ -163,7 +163,7 @@ Then rerun test 1 or 2 and check that slot 64 now matches slot 0. Then send `C0 
 amidi -p $P -S 'F0 00 20 29 01 61 40 40 00 F7' -r ~/ms-dumps/req-slot64.syx -t 2
 ```
 
-Run `40 00` (slot 0) first as a control. **Result:** `40 00` returns the current working patch as a type-0 message; every other slot byte, including 64, gets no reply (#12).
+Run `40 00` (slot 0) first as a control. **Result:** `40 00` returns the current working patch as a type-0 message; every other slot byte, including 64, gets no reply.
 
 ## Undo
 
@@ -172,7 +172,6 @@ Run `40 00` (slot 0) first as a control. **Result:** `40 00` returns the current
 
 ## Write the results into
 
-- #31 in `issues.md`: contents of slots 64–127, the dump range limit, program change 64, and the outcomes of the slot write and the request;
-- `docs/session-transport.md` *Open*: whether other start/length values are accepted;
-- #12: whether the `0x40` request works.
-- #12 and `docs/sysex-spec.md` byte 27: what Trigger 0 and 1 do (`report.json` → `tests.trigger`).
+- #5: contents of slots 64–127, the dump range limit, program change 64, and the outcomes of the slot write and the request;
+- #56: whether other start/length values are accepted;
+- `docs/sysex-spec.md`: whether the `0x40` request works, and (byte 27) what Trigger 0 and 1 do (`report.json` → `tests.trigger`).

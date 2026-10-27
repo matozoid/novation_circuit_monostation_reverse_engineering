@@ -1,4 +1,4 @@
-# #24: let the 'p' 0x40 op 2 read (normally external SPI flash only) read MCU memory,
+# Let the 'p' 0x40 op 2 read (normally external SPI flash only) read MCU memory,
 # so the bootloader at 0x08000000-0x0800BFFF can be dumped with tools/p40dump.py.
 # External flash ends at 0x800000, so every MCU range below lies above it.
 # v803 adds DBGMCU_IDCODE and SRAM3 (0x20020000-0x2002FFFF) and reads aligned words.

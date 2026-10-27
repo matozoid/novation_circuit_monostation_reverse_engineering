@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate reassemblable source for the app image, and build it back (#43).
+"""Generate reassemblable source for the app image, and build it back (docs/source-build.md).
 
 The source is generated locally from the user's own firmware file, so no vendor code is
 checked in. What is checked in is the metadata in src/: layout.tsv (code/data map,

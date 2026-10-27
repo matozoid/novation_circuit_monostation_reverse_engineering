@@ -1,4 +1,4 @@
-/* #48: live transpose of the Osc 1 and Osc 2 sequences by scale degrees. Shift + a key
+/* #21: live transpose of the Osc 1 and Osc 2 sequences by scale degrees. Shift + a key
  * in the Note or Expand view sets the offset, counted from the first note of that track's
  * pattern; the router shifts the sequencer's notes before its own scale mapping and
  * remembers each shifted note for its note-off. Loading a session resets it. While Shift is held, the reset key and the

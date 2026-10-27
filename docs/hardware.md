@@ -1,10 +1,10 @@
 # Hardware & memory map
 
-Most of this comes from the decoded application image (`tools/syx2bin.py`). The *read from a unit* notes come from memory dumps taken with patch memread (#24).
+Most of this comes from the decoded application image (`tools/syx2bin.py`). The *read from a unit* notes come from memory dumps taken with patch memread (`patches/memread`, `tools/p40dump.py`).
 
 ## MCU
 
-**STM32F42x/43x** (ARM Cortex-M4F, Thumb-2), read from a unit with patch memread v803 (#24): `DBGMCU_IDCODE` (`0xE0042000`) = `0x20016419`, i.e. DEV_ID **`0x419`** (STM32F42x/43x) and REV_ID `0x2001` (silicon revision 3). `FLASHSIZE` (`0x1FFF7A22`) = **512 KB**, which fits an STM32F429xE/F439xE-class part. The exact part and package (GPIO A–E only suggests 100 pins) are still open; a teardown photo would settle them.
+**STM32F42x/43x** (ARM Cortex-M4F, Thumb-2), read from a unit with patch memread v803: `DBGMCU_IDCODE` (`0xE0042000`) = `0x20016419`, i.e. DEV_ID **`0x419`** (STM32F42x/43x) and REV_ID `0x2001` (silicon revision 3). `FLASHSIZE` (`0x1FFF7A22`) = **512 KB**, which fits an STM32F429xE/F439xE-class part. The exact part and package (GPIO A–E only suggests 100 pins) are still open (#58).
 
 What the code uses (the F42x also has SAI, LTDC, Ethernet and GPIO F–K, which the code leaves unused):
 
@@ -21,7 +21,7 @@ Base `0x08000000`. STM32F4 sector layout: sectors 0–3 = 16 KB, sector 4 = 64 K
 
 | Region | Range | Notes |
 |--------|-------|-------|
-| Bootloader | `0x08000000`–`0x0800BFFF` (48 KB, sectors 0–2) | Not in the firmware file, and an app update never writes it. Dumped from a unit: `firmware/bootloader-740.bin` (#24). Code ends at `0x08007003`; the rest is erased. |
+| Bootloader | `0x08000000`–`0x0800BFFF` (48 KB, sectors 0–2) | Not in the firmware file, and an app update never writes it. Dumped from a unit: `firmware/bootloader-740.bin` (`docs/bootloader.md`). Code ends at `0x08007003`; the rest is erased. |
 | Application | `0x0800C000`–`0x0802BB20` (129,824 bytes) | The decoded image. Occupies sector 3 (16 KB @ `0x0800C000`), sector 4 (64 KB @ `0x08010000`) and part of sector 5 (128 KB @ `0x08020000`). |
 | Free | `0x0802BB20`–`0x0807FFFF` | Erased (`FF`) on a unit (read from a unit). Patch code goes here (`docs/patching.md`). |
 
@@ -38,7 +38,7 @@ From the startup routine's literal pool (`0x08025E94`+):
 | SRAM3 | `0x20020000`–`0x2002FFFF` (64 KB) | Heap end up to `0x20020DFC`, the rest unused (*Free RAM*). |
 | Backup SRAM | `0x40024000`–`0x40024FFF` (4 KB) | Byte 0 is the boot flag (`docs/bootloader.md`). |
 
-### Free RAM (#17)
+### Free RAM
 
 From the code plus the RAM dumps of a running unit (patch memread, `tools/p40dump.py`, `~/ms-dumps/`):
 

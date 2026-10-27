@@ -1,6 +1,6 @@
 # Session SysEx transport
 
-How sessions travel over SysEx (#27). The layout of a single session image (#13) is in `docs/session-format.md`. Implementation: `tools/sessionsyx.py`. Reference dumps: the two `*Sessions*.syx` files in the YBC "Big City Flippn'Grooves" soundpack (3,484,838 bytes each).
+How sessions travel over SysEx. The layout of a single session image is in `docs/session-format.md`. Implementation: `tools/sessionsyx.py`. Reference dumps: the two `*Sessions*.syx` files in the YBC "Big City Flippn'Grooves" soundpack (3,484,838 bytes each).
 
 ## Messages
 
@@ -22,7 +22,7 @@ The byte after the `0x79` command is therefore the first high-bit septet, not a 
 
 ## Stream contents
 
-The unpacked stream is a concatenation of 90,112-byte session images (the `.monostationsession` layout, #13). A full dump holds **33** of them:
+The unpacked stream is a concatenation of 90,112-byte session images (the `.monostationsession` layout, `docs/session-format.md`). A full dump holds **33** of them:
 
 - slots 0–31: user sessions, magic `USER` at offset 0, name at `0x20` (32 bytes, space-padded; layout in `docs/session-format.md`);
 - slot 32: an `INIT` image, byte-identical to Components' `session_32.monostationsession`.
@@ -53,7 +53,7 @@ From `0x78` dumps of a stock unit (bootloader 740, firmware 800), cross-checked 
 | `0x1018`–`0x1FFF` | `FF` |
 | `0x2000`–`0x12000` | 128 patch slots × 512 bytes. On this unit, slots 64–127 all hold `Initial Patch`. |
 | `0x12000`–`0x2E8000` | 33 session images |
-| `0x2E8000`–`0x1000000` | all `FF` (scanned completely). There is no factory bank in external flash (#8). |
+| `0x2E8000`–`0x1000000` | all `FF` (scanned completely). There is no factory bank in external flash. |
 
 The bootloader returned `FF` at `0x1000000`, `0x2000000` and `0x7FFFF000`, so the read doesn't wrap at 16 MiB. **It doesn't map MCU memory:** `0x0800C000` (the app's vector table, the control), `0x08000000` (bootloader), `0x1FFF0000`, `0x1FFF7800`, `0x1FFFC000`, `0x10000000`, `0x20000000` and `0x40024000` all came back as valid transfers full of `00`. Why these give `00` and the others `FF` is unknown. The app's `p 0x40` read stops at `0x800000` (see `docs/sysex-handlers.md`), which suggests an 8 MiB (64 Mbit) chip.
 

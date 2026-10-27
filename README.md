@@ -18,7 +18,7 @@ you too: open Claude Code in a checkout of this repo and ask it to walk you thro
 getting the stock firmware, building a mod and flashing it. `CLAUDE.md` gives it the
 project's commands and safety rules.
 
-## Feature: context-sensitive Mutate (#39)
+## Feature: context-sensitive Mutate (#13)
 
 Stock **Mutate** (Shift + Pattern Settings) shuffles whole steps. With this mod, Mutate
 in the views below changes only one property of the steps that hold a note: the rhythm
@@ -43,7 +43,7 @@ Firmware 1.2 is build 800 inside the firmware; this mod reports build **750**. T
 below 800 on purpose: Components offers an update to any unit below 800, so it should
 offer to install stock 1.2 (from its code; not tried yet).
 
-## Feature: live transpose (#48)
+## Feature: live transpose (#21)
 
 Transpose the playing sequence from the keys, the way many monosynth sequencers do.
 
@@ -159,7 +159,7 @@ For modders:
   [firmware container](docs/firmware-container.md): how firmware gets onto the unit.
 - [Binary patching](docs/patching.md), [SysEx handlers](docs/sysex-handlers.md),
   [firmware map](docs/firmware-map.md).
-- [issues.md](issues.md): tooling and research issues and established facts. Feature work is in [GitHub issues](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues).
+- [GitHub issues](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues): feature work (`enhancement`) and open research (`research`).
 
 ## Tests
 

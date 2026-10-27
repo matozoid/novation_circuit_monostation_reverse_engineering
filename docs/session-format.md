@@ -1,6 +1,6 @@
 # Session image format
 
-Layout of one 90,112-byte `.monostationsession` image (#13). The SysEx framing that carries these images is described in `docs/session-transport.md`. Parser: `tools/session.py` (`python3 tools/session.py info <image>`).
+Layout of one 90,112-byte `.monostationsession` image. The SysEx framing that carries these images is described in `docs/session-transport.md`. Parser: `tools/session.py` (`python3 tools/session.py info <image>`).
 
 Sources:
 - the firmware's session initialiser `FUN_08018CA4`, which builds the struct in RAM;
@@ -121,7 +121,7 @@ The parameter setter `FUN_0801C842` writes each id into a slot of a parameter gr
 
 ## Firmware vs Components `kD`
 
-`kD` is Bass Station II's parameter array, not the Mono Station's (#26, `docs/bass-station-ii.md`), so differences are expected. The firmware 800 CC numbers differ from `kD` in places. For example, filter reso is CC 71 here but CC 82 in `kD`, and osc1 pw is CC 39 here but CC 74 in `kD`. The two do not describe the same parameter set. `kD` has a sub oscillator, a second LFO, a mod envelope and aftertouch routings. Firmware 800 has one envelope, one LFO and the PDF's layout. They agree by CC only on a subset:
+`kD` is Bass Station II's parameter array, not the Mono Station's (`docs/bass-station-ii.md`), so differences are expected. The firmware 800 CC numbers differ from `kD` in places. For example, filter reso is CC 71 here but CC 82 in `kD`, and osc1 pw is CC 39 here but CC 74 in `kD`. The two do not describe the same parameter set. `kD` has a sub oscillator, a second LFO, a mod envelope and aftertouch routings. Firmware 800 has one envelope, one LFO and the PDF's layout. They agree by CC only on a subset:
 - mixer CC 20–25 (+32);
 - cutoff CC 16, overdrive CC 114, filter shape CC 84;
 - amp envelope CC 90–93;

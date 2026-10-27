@@ -1,4 +1,4 @@
-/* #39: context-sensitive Mutate. The offsets are those stock ui_button_event uses
+/* #13: context-sensitive Mutate. The offsets are those stock ui_button_event uses
  * (docs/source-map.md ui_button_event; Shift+Oct pattern transpose walks the same steps). */
 #include <firmware.h>
 

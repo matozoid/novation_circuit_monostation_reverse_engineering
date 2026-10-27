@@ -1,4 +1,4 @@
-/* Stock firmware functions for C overlays (#43). Every name in src/symbols.tsv is a
+/* Stock firmware functions for C overlays (docs/source-build.md). Every name in src/symbols.tsv is a
  * global in the generated source, so declaring it here is enough to call it; a replaced
  * function's original is stock_<name>. Add prototypes as docs/source-map.md pins down
  * the arguments. Overlays cannot have .data or .bss: use const data, or RAM the stock
