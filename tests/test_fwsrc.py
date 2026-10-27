@@ -15,6 +15,7 @@ FIRMWARE_800 = ROOT / "firmware" / "monostation-firmware-800.syx"
 HELLO = ROOT / "overlays" / "hello"
 HELLO_C = ROOT / "overlays" / "hello_c"
 RANDOMISE = ROOT / "overlays" / "randomise"
+TRANSPOSE = ROOT / "overlays" / "transpose"
 HAVE_GCC = shutil.which("arm-none-eabi-gcc") is not None
 HAVE_BINUTILS = all(shutil.which(f"arm-none-eabi-{tool}")
                     for tool in ("as", "ld", "objcopy", "objdump"))
@@ -157,6 +158,20 @@ class Overlay800Test(unittest.TestCase):
         self.assertEqual(built[0x1B0:0x1B2], b"\x50\x07")
         slot = int.from_bytes(built[0x1BB24:0x1BB28], "little")
         self.assertEqual(slot, 0x0802BB20 | 1)
+
+    @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
+    def test_transpose_hooks_pads_and_router(self):
+        """overlays/transpose (#48) changes only the version, the router vtable's note-on
+        and note-off slots and the ui_root vtable's pad-down slot."""
+        fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[TRANSPOSE])
+        built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
+        self.assertEqual(built[0x1B0:0x1B2], b"\x51\x07")
+        for slot in (0x1B268, 0x1B26C, 0x1BB1C):
+            target = int.from_bytes(built[slot:slot + 4], "little")
+            self.assertGreaterEqual(target, 0x0802BB20, hex(slot))
+        changed = {i for i in range(len(self.image)) if built[i] != self.image[i]}
+        allowed = {0x1B0, 0x1B1} | {s + k for s in (0x1B268, 0x1B26C, 0x1BB1C) for k in range(4)}
+        self.assertLessEqual(changed, allowed)
 
     @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
     def test_c_overlay_has_no_bss(self):

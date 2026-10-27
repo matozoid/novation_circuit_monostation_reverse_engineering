@@ -30,6 +30,20 @@ uint8_t keyboard_pad_to_note(void *keyboard_view, unsigned pad);
 void ui_button_event(void *ui, unsigned button);
 void stock_ui_button_event(void *ui, unsigned button);
 
+/* ui_root_pad_down(ui, pad, velocity): pads 0-31, forwarded to the active view. */
+void ui_root_pad_down(void *ui, unsigned pad, unsigned velocity);
+void stock_ui_root_pad_down(void *ui, unsigned pad, unsigned velocity);
+
+/* The child view that gets a pad event (pads 16-31 may go to an override view). */
+void *mode_view_target(void *mode_view, unsigned pad);
+
+/* Router (docs/sequencer.md): channels 0-2 keys, 3-5 sequencer, 6-7 MIDI in; notes are
+ * relative to the root. */
+void router_note_on(void *router, unsigned note, unsigned velocity, unsigned channel);
+void stock_router_note_on(void *router, unsigned note, unsigned velocity, unsigned channel);
+void router_note_off(void *router, unsigned note, unsigned channel);
+void stock_router_note_off(void *router, unsigned note, unsigned channel);
+
 void *memcpy(void *dst, const void *src, size_t n);
 void *memset(void *dst, int c, size_t n);
 

@@ -43,6 +43,21 @@ Firmware 1.2 is build 800 inside the firmware; this mod reports build **750**. T
 below 800 on purpose: Components offers an update to any unit below 800, so it should
 offer to install stock 1.2 (from its code; not tried yet).
 
+## Feature: live transpose (#48)
+
+Transpose the playing sequence from the keys, the way many monosynth sequencers do.
+
+1. Open the Note view (or Expand: Shift + Note) of Osc 1 or Osc 2.
+2. Hold **Shift** and tap a key. The key doesn't sound; both Osc tracks now play their
+   patterns moved by that many scale degrees, counted from the first note of the
+   track's pattern.
+3. Hold Shift and tap the key of the pattern's first note to go back.
+
+The notes stay in the scale, and nothing is saved: the pattern itself doesn't change.
+This mod is a separate firmware (`overlays/transpose`, build 751) and doesn't include
+the Mutate feature. Build it like the quick start below, with `--overlay
+overlays/transpose`, `build/tr` and `--version 751`.
+
 ## What you need
 
 - A Circuit Mono Station and a USB cable.
