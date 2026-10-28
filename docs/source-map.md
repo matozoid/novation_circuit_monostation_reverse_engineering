@@ -113,7 +113,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08011568` | `modmatrix_dest_leds` | 160 | destination button LEDs of the selected routing |
 | `08011608` | `cell_value` | 18 | pointer to a cell's current value |
 | `0801161A` | `cell_store` | 14 | write a word to a cell's next buffer |
-| `08011628` | `container_view_ctor` | 24 | 34-LED view, vtable 0x08027ba4 (pure render) |
+| `08011628` | `container_view_ctor` | 24 | view with a 34-entry input port (button ids 0x00-0x21), vtable 0x08027ba4 (pure render) |
 | `08011640` | `keytrack_view_render` | 68 | 8 pads, selected key-tracking value lit |
 | `08011684` | `keytrack_view_render_thunk` | 4 | this-adjusting entry of `keytrack_view_render` |
 | `08011688` | `keytrack_view_render_thunk2` | 8 | this-adjusting entry of `keytrack_view_render` |

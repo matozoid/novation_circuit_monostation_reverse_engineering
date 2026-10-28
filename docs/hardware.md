@@ -59,7 +59,7 @@ From the code plus the RAM dumps of a running unit (patch memread, `tools/p40dum
 
 **For patch state there are two regions, neither cleared at boot:**
 
-- **CCM from `0x10000000` upward**, for CPU-only state. Keep well clear of the stack at the top: for example, the first 32 KB leaves about 30 KB of margin above the measured 1.1 KB.
+- **CCM from `0x10000000` upward**, for CPU-only state. Keep well clear of the stack at the top: for example, the first 32 KB leaves about 30 KB of margin above the measured 1.1 KB. `overlays/transpose` and `overlays/ledtest` both keep their state at `0x10000000`, so one build can't contain both without moving one of them.
 - **SRAM3 `0x200235B8`–`0x2002FFFF`**, for buffers that DMA has to reach. It lies past the heap's `_sbrk` limit.
 
 ## Peripherals referenced

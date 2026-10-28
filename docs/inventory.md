@@ -65,16 +65,47 @@ Read on the unit with `tools/ctllog.py map`, which turns on the stock firmware's
 
 ### 1.2 Panel outputs (LEDs)
 
-All LEDs are driven over SPI with DMA refresh (`DMA1_Stream4_IRQHandler` re-arms the scan on TIM10). Each tick `led_frame_compose` (`0x08017A74`) resolves colour indices, `leds_update` builds the frame buffers at `0x200004A4`/`0x200005E0`. (`volume_cv_step`, once thought to ramp the LED brightness, slews the master volume.)
+All LEDs are driven over SPI with DMA refresh (`DMA1_Stream4_IRQHandler` re-arms the scan on TIM10). Each tick `led_frame_compose` (`0x08017A74`) resolves colour indices, `leds_update` builds the frame buffers at `0x200004A4`/`0x200005E0`. (`volume_cv_step`, once thought to ramp the LED brightness, slews the master volume.) There is no separate 34-LED group: `container_view_ctor` (`0x08011628`) passes 34 (`0x22`) to `view_base_ctor` as the size of its first input port, which is the count of button ids `0x00`–`0x21`, not a count of LEDs.
 
 | LEDs | Count | Firmware path | Status |
 |------|------:|---------------|--------|
-| RGB LEDs: 32 pads + RGB-lit buttons | 82 | `leds_render_rgb` (`0x0801EA30`) from colour table `0x080290D4`; views fill them via slot 8 (`view_rgb_leds`). Palette copy at `0x200002A0`; colour indices `0x40`+ scaled by params (brightness follows e.g. pot values). | partial: index → physical LED map open (82 = 32 pads + 50, not yet split into buttons) |
-| Single-colour LEDs: parameter indicators (osc range/waveform, LFO wave and rate blink, filter shape/slope/bypass, distortion type, …) | 21 | `leds_render_mono` (`0x0801EB68`); views fill them via slot 9, gathered by `mono_leds_compose` through table `0x0802A0BE` | partial: index map open |
-| 34-LED button group | 34 | `container_view_ctor` (`0x08011628`): a pure-render view over 34 LEDs, matching the 34 lit buttons | partial |
+| RGB LEDs: 32 pads + RGB-lit buttons | 82 | `leds_render_rgb` (`0x0801EA30`) from colour table `0x080290D4`; views fill them via slot 8 (`view_rgb_leds`). Palette copy at `0x200002A0`; colour indices `0x40`+ scaled by params (brightness follows e.g. pot values). | known: map in *LED map* below (32 pads, 18 buttons, 6 Mod Destination buttons, Range 4 and Waveform 4, and LEDs by 14 knobs and the 4 faders) |
+| Single-colour LEDs: parameter indicators (osc range/waveform, LFO wave and rate blink, filter shape/slope/bypass, distortion type, …) | 21 | `leds_render_mono` (`0x0801EB68`); views fill them via slot 9, gathered by `mono_leds_compose` through table `0x0802A0BE` | known: map in *LED map* below |
 | Control pins | 3 | GPIOE pin 0: power hold, set high early in boot and low at shutdown just before stop mode. GPIOC pin 9: set high at boot and at shutdown, driven low 200 ms after boot by the one-shot `gpioc9_low_timer`, so most likely the audio mute. GPIOE pin 11: toggled by a 1 s soft timer (`heartbeat_toggle`) and written nowhere else, so most likely a heartbeat or debug LED. Both timers are static soft-timer records in `.data` (`0x2000026C`, `0x20000284`). | partial: PE0 is known; PC9 and PE11 are inferred and not checked on the board |
 
 There is no display.
+
+#### LED map
+
+Mapped on the unit 2026-10-28 with `overlays/ledtest` and `tools/ledmap.py`. All LEDs are levels in the 352-byte output buffer at `0x200021F8` (`0x200005E0` +8), which `leds_update` turns into the SPI frame. An RGB LED takes three channels; its index is the order of `leds_render_rgb`'s table at `0x08029DCA`.
+
+| RGB LED | Physical |
+|---------|----------|
+| 0–31 | pads, row by row from the top left (same order as pad ids `0x00`–`0x1F`) |
+| 32–49 | buttons Scales, Osc 1, Osc 2, Mod Seq, Oct down, Oct up, Clear, Save, Sessions, Shift, Note, Velocity, Gate, Pattern Settings, Patterns, Patches, Record, Play |
+| 50–55 | LFO Rate knob, faders A, D, S, R, Mod Depth knob |
+| 56–61 | Mod Destination buttons Pitch, PWM, Amp, Filter, Dist, Aux CV |
+| 62–63 | Osc Coarse, Osc Fine knobs |
+| 64–67 | Range 16', 8', 4', 2' |
+| 68–71 | Waveform sine, triangle, saw, pulse |
+| 72–77 | mixer Osc 1, Osc 2, Sub, Noise, Audio In, Ring 1+2 knobs |
+| 78–81 | Overdrive, Resonance, Frequency, Distortion Level knobs |
+
+| Mono channel | Physical | Mono channel | Physical |
+|--------------|----------|--------------|----------|
+| 0 | Tempo (orange) | 12 | Mod Source Seq |
+| 1 | LFO Sync | 13 | Mod Source LFO |
+| 2 | LFO wave S&H | 14 | Mod Source Env |
+| 3 | LFO wave square | 16 | Filter Shape LP |
+| 4 | LFO wave saw | 17 | Filter Shape BP |
+| 5 | LFO wave triangle | 18 | Filter Shape HP |
+| 6 | Tempo (white) | 19 | Slope 24 dB |
+| 8 | Distortion Type 3 | 20 | Slope 12 dB |
+| 9 | Distortion Type 2 | 21 | Bypass Noise |
+| 10 | Distortion Type 1 | 22 | Bypass Osc 2 |
+| 11 | Mod Source Velocity | | |
+
+Channels 7 and 15 aren't used, and channels 224, 238, 239, 312, 326 and 327 are driven but light nothing (unconnected driver outputs).
 
 ### 1.3 Synth engine (analogue voice, digitally controlled)
 
@@ -236,12 +267,14 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 |------|--------------|
 | `patches/hello`, `overlays/hello`, `overlays/hello_c` | test patches: report version 801 |
 | `patches/memread` | `p 0x40` op 2 also reads MCU memory (bootloader dump, `DBGMCU_IDCODE`, SRAM3) |
-| `overlays/randomise` | #13 per-field Mutate (gate, glide, velocity, pitch) and #45 patch randomiser |
+| `overlays/randomise` | #13 per-field Mutate (gate, glide, velocity, pitch) and #45 patch randomiser (Mutate in the Patches view: a mild random step from the current patch) |
 | `overlays/transpose` | #21 live transpose of the Osc sequences by scale degrees |
+| `overlays/ledtest` | SysEx `7D` lights chosen LED output channels and blanks the rest (for `tools/ledmap.py`) |
+| `tools/ctllog.py` | turns on the stock debug reports and logs or maps control ids |
+| `tools/ledmap.py` | steps through every LED channel with `overlays/ledtest` and records what lights |
 
 ## Open items collected
 
-- RGB (82) and mono (21) LED index → physical LED map.
 - Check on the board that core C is the sub oscillator and that `0x2000086C` is the Audio In gain.
 - Confirm on the board that GPIOC pin 9 is the audio mute and GPIOE pin 11 is a heartbeat LED.
 - Merge-stage note priority, and which mode sets the paraphonic flag `0x20003204` to 1.
