@@ -769,7 +769,7 @@
 0801ea2e __cxa_pure_virtual
 0801ea30 leds_render_rgb
 0801eb68 leds_render_mono
-0801ebf8 led_brightness_step
+0801ebf8 volume_cv_step
 0801ec34 nor_async_read_status
 0801ec70 nor_async_program_chunk
 0801ecc8 buttons_scan

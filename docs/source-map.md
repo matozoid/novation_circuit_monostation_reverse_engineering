@@ -786,7 +786,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801BD8C` | `nor_async_wel_ok` | 28 | status ready in state 7, posts event 5 |
 | `0801BDA8` | `gpio_set` | 14 | BSRRL = pin |
 | `0801BDB6` | `gpio_reset` | 14 | BSRRH = pin |
-| `0801BDC4` | `engine_tick_2khz` | 24 | led_brightness_step, synth_engine_update, counter |
+| `0801BDC4` | `engine_tick_2khz` | 24 | volume_cv_step, synth_engine_update, counter |
 | `0801BDDC` | `usb_midi_tx_watchdog` | 8 | 50 ms soft timer |
 | `0801BDE4` | `usb_midi_tx_watchdog_body` | 60 | resets the USB MIDI tx queue (08020b04) |
 | `0801BE20` | `input_poll_task` | 292 | 10 ms soft timer: pots_scan, control_dispatch |
@@ -910,7 +910,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801EA2E` | `__cxa_pure_virtual` | 2 | b . in 8 vtable slots |
 | `0801EA30` | `leds_render_rgb` | 312 | 82 RGB LEDs from colour table 0x080290d4 into 0x200005e0 |
 | `0801EB68` | `leds_render_mono` | 144 | 21 single-colour LEDs |
-| `0801EBF8` | `led_brightness_step` | 60 | step the LED brightness ramp |
+| `0801EBF8` | `volume_cv_step` | 60 | slew the master volume (0x200028C4 byte 1 toward the Volume pot's byte 0) and write its CV to +2 |
 | `0801EC34` | `nor_async_read_status` | 60 | SPI command 0x05 (RDSR), 2 bytes |
 | `0801EC70` | `nor_async_program_chunk` | 88 | splits at the page boundary |
 | `0801ECC8` | `buttons_scan` | 316 | debounced button matrix, key map u16 per bit |

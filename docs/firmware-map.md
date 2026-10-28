@@ -51,7 +51,7 @@ Each handler tail-calls `printf` with its string (`FUN_08017910`–`0x080179D8`)
 Hardware: GPIOA–E matrix scan for pads/buttons (12 refs GPIOE, 11 GPIOC, 10 GPIOD), ADC1 (`0x40012000`) for pots/sliders, and EXTI15_10 (ISR `0x08023A79`) for asynchronous edges (encoder detents / external sync input).
 
 ### UI output (LEDs / RGB pads) — SPI
-Driven over SPI (`spi_init` enables SPI1 `0x40013000` and SPI4 `0x40013400`) to the LED/pad drivers, refreshed by DMA (`DMA1_Stream4_IRQHandler` re-arms the LED scan on TIM10). `led_frame_compose` resolves the 82 RGB LED colours each tick; `led_brightness_step` runs at 2 kHz.
+Driven over SPI (`spi_init` enables SPI1 `0x40013000` and SPI4 `0x40013400`) to the LED/pad drivers, refreshed by DMA (`DMA1_Stream4_IRQHandler` re-arms the LED scan on TIM10). `led_frame_compose` resolves the 82 RGB LED colours each tick.
 
 ### Analogue engine (CV / gate out) — DAC `0x40007400`, TIM6_DAC ISR `0x08023B99`
 Two converters drive the analogue CV targets (osc 1/2 pitch, pulse width, filter cutoff, VCA, distortion, aux CV):

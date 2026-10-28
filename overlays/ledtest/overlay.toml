@@ -1,0 +1,9 @@
+# LED map test: SysEx F0 00 20 29 01 61 7D <n> (<hi> <lo>)*n F7 lights LED output channels
+# (0-351, 7 bits each in hi/lo) at full level and blanks every other LED; n = 0 gives the
+# LEDs back to the firmware. Used by tools/ledmap.py to map channels to physical LEDs.
+# Debug build only: nothing is saved, and a reboot returns the LEDs to normal.
+base = 800
+# Below 800 (firmware 1.2) and above 745 (1.1), so Components offers to restore stock 1.2.
+version = 753
+sources = ["ledtest.c"]
+replace = ["sysex_dispatch", "leds_update"]

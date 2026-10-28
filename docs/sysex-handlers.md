@@ -89,10 +89,26 @@ These are dispatched on byte 6. The patch and session traffic (`docs/sysex-spec.
 | `0x10` | read a 16-bit value from one of three RAM tables (`0x20000EDA`, `0x20000ED2`, `0x20001784`) by index; 14-byte reply |
 | `0x50` | byte 8 = 0 or 1 calls `FUN_0801d0d4` or `FUN_080222ac`; 10-byte reply |
 | `0x52`, `0x53`, `0x54`, `0x5A` | write into RAM state (LED or display buffers, likely); `0x5A` has sub-ops 0–5 |
-| `0x60` | store byte 8 (0 or 1) at `0x20002EC0`; 10-byte reply |
-| `0x70` / `0x71` | set / clear GPIO PE0 (`GPIOE_BSRR` at `0x40021018` / `0x4002101A`) |
+| `0x08` | byte 8 indexes `default_step_range`; replies with `feature_bit` of that entry |
+| `0x32` | debug reports: byte 8 = port mask (bit 0 USB, bit 1 DIN) at `0x20002ECC`, byte 9 = flags at `0x200016A0`; see *Debug reports* |
+| `0x34` | byte 8 = 0: `output_pin_set(0, byte 9)` |
+| `0x54` | master volume target `0x200028C4` byte 0 = byte 8 × 16 + byte 9 (what the Volume pot sets) |
+| `0x60` | store byte 8 (0 or 1) at `0x20002EC0`; while set, `leds_render_rgb` stops loading per-LED colours; 10-byte reply |
+| `0x70` / `0x71` | set / clear GPIO PE0 (`GPIOE_BSRR` at `0x40021018` / `0x4002101A`). **PE0 is the power hold: `0x71` switches the unit off.** |
 
 These look like factory-test commands. Only `0x40` has been decoded fully.
+
+### Debug reports
+`F0 00 20 29 01 61 70 32 <ports> <flags> F7` turns them on; the firmware never sets the flags itself, and a reboot clears them. Each enabled event sends `F0 00 20 29 01 61 70 33 <type> <id> n n n n F7`, a 16-bit value in four nibbles, most significant first. `tools/ctllog.py` sends the command and decodes the reports.
+
+| Flag / type | Sender | Id | Value |
+|-------------|--------|----|-------|
+| `0x01` | `pots_scan` | pot or fader `0x20`–`0x31` | filtered ADC reading |
+| `0x02` | pad state machine (`button_event`) | pad `0x00`–`0x1F` | velocity, 0 = note-off |
+| `0x04` | pad state machine | pad | pressure (aftertouch, which `control_dispatch` then drops) |
+| `0x08` | `input_poll_task` | encoder `0x32`/`0x33` (raw wipers) | wiper reading |
+| `0x10` | main loop button scan | button `0x00`–`0x21` (`docs/inventory.md` *Control ids*) | 1 pressed, 0 released |
+| `0x20` | `sysex_dispatch`, `midi_send_short` | | echo every received SysEx and sent short message to the ports |
 
 ### `p 0x40`: external flash read, write and erase
 Request layout:

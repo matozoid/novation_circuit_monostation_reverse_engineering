@@ -21,15 +21,51 @@ The firmware sees every control as an id in one event stream. `control_dispatch`
 | Control | Count | UG | Firmware path | Status |
 |---------|------:|----|---------------|--------|
 | Grid pads (velocity-sensitive, RGB-lit) | 32 (4 × 8) | [4] | analogue pressure sensors on the ADC (raw u16 per pad at `0x2000155E`) → per-pad state machine in the main loop (~`0x0800DC00`) → `button_event` (`0x0801E398`) → `control_dispatch` ids `0x00`–`0x1F` (low byte = velocity) → callback `0x20002654` → active view slot 0/1 (`ui_root_pad_down`) | known. Velocity: once raw > `0x95`, the peak over 8 frames is mapped 0…`0xF00` → 0…255 and looked up in the 256-byte curve at `0x200000E8` (default from `.data`, ramp to 127; uploadable with the "MDLITH" SysEx, `docs/sysex-handlers.md`). Note-off when raw drops to ≤ 2. Held pads also send pressure updates (id bit 15 set when the pressure moves by more than `0x13`), but `control_dispatch` drops them, so aftertouch is measured and thrown away. |
-| Rotary pots | 16: Volume [1], Tempo/Swing [2], Coarse [18], Fine/PW [19], LFO Rate [20], mixer Osc 1/Osc 2/Sub/Noise/Audio In/Ring [23–28], Frequency [32], Resonance [33], Overdrive [34], Distortion Level [37], Mod Depth [40] | | ADC1 + DMA → `adc_filter_push` (moving average) → `pots_scan` (threshold, `map_range`) → `control_dispatch` ids `0x20`–`0x2D` (pots 0–13, callback `0x20002F34`) → `ui_root_pot` → section view → `param_set` | partial: per-pot id mapping open. `pots_scan` descriptors: `0x08027A98` (16 entries: ids `0x20`, `0x21`, `0x24`–`0x31`, so 12 pots + 4 faders), `0x080274FC` (ids `0x22`, `0x23`, own curve `0x08027988`). Id `0x20` also sets the LED brightness target (`0x200028C4` byte 0). Two more pots are endless dual-wiper encoders: ids `0x32`–`0x35` (descriptors `0x08026ECC`, two ids per pot) give signed deltas (`input_poll_task` `0x0801BE20`); which two isn't confirmed. 14 + 2 = 16 pots are read, so Volume is probably read even though no Volume param exists (unverified). Pot pickup (setting byte `0x09` bit 3) and the Osc coarse/fine ±`0x14` pickup window are known. |
+| Rotary pots | 16: Volume [1], Tempo/Swing [2], Coarse [18], Fine/PW [19], LFO Rate [20], mixer Osc 1/Osc 2/Sub/Noise/Audio In/Ring [23–28], Frequency [32], Resonance [33], Overdrive [34], Distortion Level [37], Mod Depth [40] | | ADC1 + DMA → `adc_filter_push` (moving average) → `pots_scan` (threshold, `map_range`) → `control_dispatch` ids `0x20`–`0x2D` (pots 0–13, callback `0x20002F34`) → `ui_root_pot` → section view → `param_set` | known (ids in *Control ids* below, mapped on the unit 2026-10-28). `pots_scan` descriptors: `0x08027A98` (16 entries: ids `0x20`, `0x21`, `0x24`–`0x31`, so 12 pots + 4 faders), `0x080274FC` (Osc Coarse and Fine/PW, ids `0x22`, `0x23`, own curve `0x08027988`). Tempo/Swing and Mod Depth are endless dual-wiper encoders: ids `0x32`/`0x33` and `0x34`/`0x35` (descriptors `0x08026ECC`) give signed deltas (`input_poll_task` `0x0801BE20`). **Volume is digital:** pot `0x20` has no patch param; `control_dispatch` writes it to the master-volume target (`0x200028C4` byte 0), and `volume_cv_step` slews it to the VCA CV. Pot pickup (setting byte `0x09` bit 3) and the Osc coarse/fine ±`0x14` pickup window are known. |
 | Envelope faders (A, D, S, R) | 4 | [29] | `control_dispatch` ids `0x2E`–`0x31` (callback `0x20003124`) → `ui_root_fader` → envelope view → params `0x20`–`0x23` | known |
-| Buttons | 34 lit buttons: Tap [3], Osc 1 / Osc 2 / Mod Seq [5], Note / Velocity / Gate [6], Pattern Settings [7], Scales [8], Patterns [9], Patches [10], Play, Record [11], Oct down / up [12], Clear [13], Save, Sessions [14], Shift [15], Range [16], Waveform [17], LFO Wave [21], LFO Sync [22], Filter Shape [30], Slope [31], Bypass [35], Distortion Type [36], Mod Source [38], 6 Mod Destination buttons [39] | | `ui_button_event` (`0x08011FBC`) routes to the active view or global handlers; long/short press via held-button timers (`ui_root_slot4`); Shift functions per view | known for most; button id table not written down in one place |
-| Power switch (soft, rear) | 1 | [10] | `power_calib_task` (`0x0801C208`, 1 kHz soft timer): long-press detect; shutdown fades the LEDs out, raises GPIOC pin 9 (mute), runs `bootloader_handover` (`0x08024940`: stops peripherals and masks every NVIC IRQ; despite the name it's a shared quiesce routine), drops the GPIOE pin 0 power hold, then loops on IWDG refresh + WFI in stop mode | known |
+| Buttons | 34 lit buttons: Tap [3], Osc 1 / Osc 2 / Mod Seq [5], Note / Velocity / Gate [6], Pattern Settings [7], Scales [8], Patterns [9], Patches [10], Play, Record [11], Oct down / up [12], Clear [13], Save, Sessions [14], Shift [15], Range [16], Waveform [17], LFO Wave [21], LFO Sync [22], Filter Shape [30], Slope [31], Bypass [35], Distortion Type [36], Mod Source [38], 6 Mod Destination buttons [39] | | `ui_button_event` (`0x08011FBC`) routes to the active view or global handlers; long/short press via held-button timers (`ui_root_slot4`); Shift functions per view | known; ids in *Control ids* below (`0x00`–`0x21`, mapped on the unit). The main loop's button scan maps matrix bits to ids with the table at `0x08026E8A` (64 bits, `0x22` = no button) |
+| Power switch (soft, rear) | 1 | [10] | `power_calib_task` (`0x0801C208`, 1 kHz soft timer): long-press detect; shutdown fades the master volume out, raises GPIOC pin 9 (mute), runs `bootloader_handover` (`0x08024940`: stops peripherals and masks every NVIC IRQ; despite the name it's a shared quiesce routine), drops the GPIOE pin 0 power hold, then loops on IWDG refresh + WFI in stop mode | known |
 | Boot key combos | | p. 90 | Shift at power-on → System Settings view; Scales + Note + Velocity → bootloader (checked by the bootloader, `docs/bootloader.md`) | known |
+
+#### Control ids
+
+Read on the unit with `tools/ctllog.py map`, which turns on the stock firmware's debug reports (`docs/sysex-handlers.md` *Debug reports*). Pads and pots/faders/encoders share the `control_dispatch` id space; buttons have their own.
+
+| Id | Control | Id | Control |
+|----|---------|----|---------|
+| `0x00`–`0x1F` | pads, row by row from the top left (`0x00`–`0x07` top row, `0x18`–`0x1F` bottom row) | `0x28` | mixer Audio In |
+| `0x20` | Volume | `0x29` | mixer Ring |
+| `0x21` | LFO Rate | `0x2A` | Overdrive |
+| `0x22` | Osc Coarse | `0x2B` | filter Resonance |
+| `0x23` | Osc Fine/PW | `0x2C` | filter Frequency |
+| `0x24` | mixer Osc 1 | `0x2D` | Distortion Level |
+| `0x25` | mixer Osc 2 | `0x2E`–`0x31` | faders A, D, S, R |
+| `0x26` | mixer Sub | `0x32`/`0x33` | Tempo/Swing encoder |
+| `0x27` | mixer Noise | `0x34`/`0x35` | Mod Depth encoder |
+
+| Button id | Button | Button id | Button |
+|-----------|--------|-----------|--------|
+| `0x00` | Tap | `0x11` | Osc 1 |
+| `0x01` | LFO Wave | `0x12` | Osc 2 |
+| `0x02` | LFO Sync | `0x13` | Mod Seq |
+| `0x03` | Mod Source | `0x14` | Oct down |
+| `0x04` | Mod Destination Pitch | `0x15` | Oct up |
+| `0x05` | Mod Destination PWM | `0x16` | Clear |
+| `0x06` | Mod Destination Amp | `0x17` | Save |
+| `0x07` | Mod Destination Filter | `0x18` | Sessions |
+| `0x08` | Mod Destination Dist | `0x19` | Shift |
+| `0x09` | Mod Destination Aux CV | `0x1A` | Note |
+| `0x0A` | Range | `0x1B` | Velocity |
+| `0x0B` | Waveform | `0x1C` | Gate |
+| `0x0C` | Filter Shape | `0x1D` | Pattern Settings |
+| `0x0D` | Slope | `0x1E` | Patterns |
+| `0x0E` | Bypass | `0x1F` | Patches |
+| `0x0F` | Distortion Type | `0x20` | Record |
+| `0x10` | Scales | `0x21` | Play |
 
 ### 1.2 Panel outputs (LEDs)
 
-All LEDs are driven over SPI with DMA refresh (`DMA1_Stream4_IRQHandler` re-arms the scan on TIM10). Each tick `led_frame_compose` (`0x08017A74`) resolves colour indices, `leds_update` builds the frame buffers at `0x200004A4`/`0x200005E0`, and `led_brightness_step` ramps brightness at 2 kHz.
+All LEDs are driven over SPI with DMA refresh (`DMA1_Stream4_IRQHandler` re-arms the scan on TIM10). Each tick `led_frame_compose` (`0x08017A74`) resolves colour indices, `leds_update` builds the frame buffers at `0x200004A4`/`0x200005E0`. (`volume_cv_step`, once thought to ramp the LED brightness, slews the master volume.)
 
 | LEDs | Count | Firmware path | Status |
 |------|------:|---------------|--------|
@@ -63,7 +99,7 @@ The voice is analogue; the firmware computes every control voltage at 2 kHz (`en
 | `0x20003548` | 0/1 | VCA: amp envelope × patch level curve |
 | `0x2000337E`, `0x20003380`, `0x20003382` | 2/6, 2/1, 1/1 | distortion: three drive CVs from amount + mods; type I/II/III picks which are driven (`synth_engine_update`, `synth_update_distortion`) |
 | `0x20003370`, `0x2000333C`, `0x20003354` | 1/0, 1/7, 1/5 | pulse width for cores A, B, C (core struct `+0x14`) |
-| `0x200028C6` | 1/6 | LED brightness reference (`led_brightness_step` ramps it, which gives the power-on/off fade) |
+| `0x200028C6` | 1/6 | master volume CV: `volume_cv_step` (2 kHz) slews byte 1 of `0x200028C4` one step toward the Volume pot (byte 0) and writes `0x79E + (0x861 − 16·level) · 0x1CB / 512` here, so volume changes don't click; shutdown fades it out |
 | `0x200009F6` | 0/3 | calibration constant (`calibration_apply`) |
 | `0x200033FE` | 0/5 ×4 banks | banks 0–2: calibration trims; bank 3: filter-shape trim (`synth_update_modes`) |
 
@@ -205,7 +241,6 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 
 ## Open items collected
 
-- Control id → physical control map: which pot is which of ids `0x20`–`0x2D`, whether Volume is read, why id `0x20` sets LED brightness, and the button ids.
 - RGB (82) and mono (21) LED index → physical LED map.
 - Check on the board that core C is the sub oscillator and that `0x2000086C` is the Audio In gain.
 - Confirm on the board that GPIOC pin 9 is the audio mute and GPIOE pin 11 is a heartbeat LED.
