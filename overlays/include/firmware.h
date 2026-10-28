@@ -20,6 +20,9 @@ void cell_commit(void *cell);       /* swap and notify subscribers */
 
 uint32_t rng_read(void);            /* hardware RNG, 0 on timeout */
 
+/* Raw value of a synth param of the live patch (id < 0x4c), the value param_set takes. */
+uint8_t synth_param_get(unsigned id);
+
 extern const uint8_t pad_levels[16]; /* 0, 8, 17, ..., 127: glide and velocity pad levels */
 
 /* Index into the keyboard layout's pad-to-note table (layout = keyboard view +0x30,

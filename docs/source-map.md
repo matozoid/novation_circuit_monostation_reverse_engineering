@@ -74,7 +74,8 @@ adapter's source byte, so `sink->vt[0](sink, id, raw_value, 1)` is what turning 
 the raw value (before the table's centre is subtracted, clamped to centre + min … centre + max)
 through `patch_store_param`, mark the patch edited, run the group's update function and send the
 param to MIDI out (dropped when the tx queue is full). Found by emulating `app_construct` in Unicorn;
-the patch randomiser (#45, `overlays/randomise`) uses it. `ui_root +0x3c` is the Patches view
+the patch randomiser (#45, `overlays/randomise`) uses it, reading the current raw values with
+`synth_param_get` (in normal mode `0x080175D0` → `obj+0x8c` slot 1, `param_get_raw`). `ui_root +0x3c` is the Patches view
 (its vtable starts with `patch_view_pads`), `+0x2c` the mode view.
 
 ### Note path

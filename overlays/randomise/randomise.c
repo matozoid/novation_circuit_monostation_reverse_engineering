@@ -1,4 +1,4 @@
-/* #13: context-sensitive Mutate, and #45: Mutate in the Patches view randomises the patch.
+/* #13: context-sensitive Mutate, and #45: Mutate in the Patches view nudges the patch.
  * The offsets are those stock ui_button_event uses (docs/source-map.md ui_button_event;
  * Shift+Oct pattern transpose walks the same steps). */
 #include <firmware.h>
@@ -93,8 +93,10 @@ static void randomise(struct step *step, unsigned subview, unsigned max_gate,
 }
 
 /* One synth param of the patch randomiser (param ids and raw ranges: the table at
- * 0x0802A62A, tools/patchbank.py PARAMS). With chance rest/8 the param gets the value
- * rest, otherwise a random value in lo..hi. Params not listed keep their value: the
+ * 0x0802A62A, tools/patchbank.py PARAMS). lo..hi is the playable range a nudge stays in;
+ * a param at its rest value stays there with chance rest/8. A switch (range under 8)
+ * changes with chance 1/8, to rest with chance rest/8, else to any value in lo..hi. A
+ * param with lo == hi is never changed. Params not listed keep their value: the
  * category and genre, the octaves and ranges (the patch stays in its register), patch
  * level, audio-in level, the env-to-amp switch and the selected routing. */
 struct param_rule {
@@ -120,7 +122,7 @@ static const struct param_rule patch_rules[] = {
     { 0x0d, 128, 128, 128, 8 },     /* osc 2 coarse: centred */
     { 0x0e,  88, 112, 100, 3 },     /* osc 2 fine: a little detune */
     { 0x10,   0,  60,   0, 6 },     /* osc 2 glide */
-    { 0x11,   1,   1,   0, 6 },     /* osc sync */
+    { 0x11,   0,   1,   0, 6 },     /* osc sync */
     { 0x13, 128, 255,   0, 0 },     /* mixer: osc 1, always audible */
     { 0x14,   0, 255,   0, 0 },     /* osc 2 */
     { 0x15,   0, 200,   0, 4 },     /* sub */
@@ -160,11 +162,29 @@ static const struct param_rule patch_rules[] = {
     DEPTH(0x49,  64,  40, 6), DEPTH(0x4a,  64,  63, 6),
 };
 
-static unsigned random_param(const struct param_rule *rule)
+/* A small random step away from the param's current value. */
+static unsigned nudge_param(const struct param_rule *rule, unsigned value)
 {
-    if (random_below(8) < rule->rest)
-        return rule->value;
-    return rule->lo + random_below(rule->hi - rule->lo + 1);
+    unsigned span = rule->hi - rule->lo;
+    if (span == 0)
+        return value;
+    if (span < 8) {
+        if (random_below(8))
+            return value;
+        if (random_below(8) < rule->rest)
+            return rule->value;
+        return rule->lo + random_below(span + 1);
+    }
+    if (random_below(2) || (value == rule->value && random_below(8) < rule->rest))
+        return value;
+    /* +-(span/8 + 1), never further out of lo..hi than the value already is. */
+    int step = span / 8 + 1;
+    int next = (int)value + (int)random_below(2 * step + 1) - step;
+    if (next > rule->hi)
+        next = (int)value > rule->hi ? (int)value : rule->hi;
+    if (next < rule->lo)
+        next = (int)value < rule->lo ? (int)value : rule->lo;
+    return next;
 }
 
 /* Shared prelude of both Mutates: 1 when Shift + Mutate may act on the active view. */
@@ -185,8 +205,8 @@ static void clear_view_38(void *ui)
     cell_commit(FIELD(view, 0x10, void *));
 }
 
-/* #45: in the Patches view, give the current patch random but playable settings, as if
- * the knobs had been turned: the patch shows as edited and can be saved as usual. */
+/* #45: in the Patches view, move the current patch a small random step, as if a few knobs
+ * had been turned a little: the patch shows as edited and can be saved as usual. */
 static int mutate_patch(void *ui)
 {
     if (FIELD(ui, UI_ACTIVE_VIEW, void *) != FIELD(ui, UI_PATCH_VIEW, void *))
@@ -195,10 +215,11 @@ static int mutate_patch(void *ui)
     void *sink = FIELD(FIELD(ui, UI_FILTER_VIEW, void *), VIEW_PARAM_SINK, void *);
     param_set_fn set = **(param_set_fn **)sink;
     enum { RULES = sizeof patch_rules / sizeof patch_rules[0] };
-    uint8_t values[RULES];
+    uint8_t old[RULES], values[RULES];
     unsigned cutoff = 0, shape = 0, key_track = 0, decay = 0, sustain = 0;
     for (unsigned i = 0; i < RULES; i++) {
-        values[i] = random_param(&patch_rules[i]);
+        old[i] = synth_param_get(patch_rules[i].id);
+        values[i] = nudge_param(&patch_rules[i], old[i]);
         switch (patch_rules[i].id) {
         case FILTER_CUTOFF: cutoff = i; break;
         case FILTER_SHAPE: shape = i; break;
@@ -207,20 +228,26 @@ static int mutate_patch(void *ui)
         case ENV_SUSTAIN: sustain = i; break;
         }
     }
-    /* Band and high pass lose the notes when the cutoff is far off: keep the band in the
-     * middle and the high pass low, both following the keys. */
-    if (values[shape] == SHAPE_BAND_PASS) {
-        values[cutoff] = 100 + random_below(101);
-        values[key_track] = 5 + random_below(3);
-    } else if (values[shape] == SHAPE_HIGH_PASS) {
-        values[cutoff] = random_below(101);
-        values[key_track] = 7;
+    /* A new filter shape loses the notes when the cutoff is far off: keep the band in the
+     * middle and the high pass low, both following the keys, and the low pass open. */
+    if (values[shape] != old[shape]) {
+        if (values[shape] == SHAPE_BAND_PASS) {
+            values[cutoff] = 100 + random_below(101);
+            values[key_track] = 5 + random_below(3);
+        } else if (values[shape] == SHAPE_HIGH_PASS) {
+            values[cutoff] = random_below(101);
+            values[key_track] = 7;
+        } else if (values[cutoff] < 60) {
+            values[cutoff] = 60 + random_below(101);
+        }
     }
-    /* A low sustain after a short decay is only a click: lengthen the decay. */
-    if (values[sustain] < 32 && values[decay] < 40)
+    /* A low sustain after a short decay is only a click: lengthen the decay, unless the
+     * patch was already that short. */
+    if (values[sustain] < 32 && values[decay] < 40 && !(old[sustain] < 32 && old[decay] < 40))
         values[decay] += 40;
     for (unsigned i = 0; i < RULES; i++)
-        set(sink, patch_rules[i].id, values[i], SOURCE_PANEL);
+        if (values[i] != old[i])
+            set(sink, patch_rules[i].id, values[i], SOURCE_PANEL);
     return 1;
 }
 

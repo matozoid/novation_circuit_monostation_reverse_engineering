@@ -46,19 +46,25 @@ offer to install stock 1.2 (from its code; not tried yet).
 ## Feature: patch randomiser (#45)
 
 Open the **Patches** view and press **Mutate** (Shift + Pattern Settings): the current
-patch gets random settings, as if every knob had been turned. Press again for another.
+patch takes a small random step, as if a few knobs had been turned a little. Press again
+to wander further.
 
-Every press gives a playable sound:
+- About half the knobs move, each by up to an eighth of its range. Switches and
+  waveforms change only now and then, and mod-matrix routings that are off mostly stay
+  off.
+
+Each step stays playable:
 
 - Kept as they are: the octave and range of both oscillators (the patch stays in its
   register), patch level, audio-in level and the envelope-to-amp switch.
-- Oscillators stay in tune: coarse and Osc 1 fine are centred, Osc 2 gets at most a
-  little detune; pulse widths avoid the silent extremes.
-- Osc 1 is always in the mix; the filter is never closed or bypassed, and resonance
-  stays short of self-oscillation. Band and high pass follow the keys, with the band
-  around the middle and the high pass low, so the notes get through.
-- A low sustain always gets a decay long enough to hear.
-- Most mod-matrix routings stay off, and the ones that are on get moderate depths.
+- Tuning is never changed, apart from a little Osc 2 detune. Pulse widths stay away
+  from the silent extremes.
+- Each knob steps within a playable range: Osc 1 stays in the mix, the cutoff stays
+  open, resonance stays short of self-oscillation and mod depths stay moderate. A
+  setting that was already outside that range is never pushed further out.
+- When the filter shape changes, the cutoff moves to where the notes get through: the
+  band sits around the middle, the high pass sits low, and both follow the keys.
+- A step never makes a sustain-less patch too short to hear: the decay gets longer.
 
 The patch shows as edited, so save it the usual way if you like it, or load another
 patch to throw it away. With MIDI out of the synth params on, the new values also go out
