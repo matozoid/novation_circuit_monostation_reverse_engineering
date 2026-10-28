@@ -1,0 +1,149 @@
+/* Drive boost (overlay.toml). TIM6_DAC_IRQHandler feeds the modulation S&H from a table
+ * of {value pointer, select} entries at 0x20000880. The mixer levels and the overdrive CV
+ * 0x20003378 (written by synth_update_mixer) and the distortion drives (written by
+ * synth_engine_update every 2 kHz tick) start at the calibrated rest value 0x20000838 and
+ * fall as the drive rises. After each engine tick we compute boosted copies in CCM and
+ * point the table entries at them, so the DAC never sees the stock values. */
+#include <firmware.h>
+
+#define CV_REST         (*(volatile uint16_t *)0x20000838) /* calibrated, 0xfff - 2*cal[0] */
+#define CV_MAX          0xfff
+#define DAC_TABLE       ((volatile uint32_t *)0x20000880) /* 8-byte entries, pointer first */
+
+#define PARAM_OVERDRIVE 0x19
+#define KNOB_MAX        127
+#define UNITY           16      /* boost factors are in sixteenths */
+
+#define MS_PREFIX_LEN   6       /* F0 00 20 29 01 61 */
+#define CMD_DRIVE       0x7c    /* byte 6; unused by the stock dispatcher */
+
+/* Defaults, chosen by ear on the unit (2026-10-28). */
+#define DEFAULT_OVERDRIVE  48   /* x3 */
+#define DEFAULT_DISTORTION 48   /* x3 */
+#define DEFAULT_FLAGS      FLAG_DIST_FULL
+#define DEFAULT_OD_FLOOR   400
+
+#define FLAG_DIST_FULL  0x01    /* every distortion stage the type drives gets the full swing */
+#define FLAG_OD_STOCK   0x02    /* leave the overdrive CV 0x20003378 stock */
+
+struct boosted {
+    uint8_t entry;              /* DAC table entry */
+    uint16_t *stock;            /* cell the stock code writes */
+};
+
+/* Mixer Osc 1, Osc 2, Sub, Noise, Ring, Audio In (synth_update_mixer). */
+static const struct boosted mixer[] = {
+    {9, (uint16_t *)0x2000354a}, {10, (uint16_t *)0x2000338e}, {11, (uint16_t *)0x20003324},
+    {12, (uint16_t *)0x2000335a}, {13, (uint16_t *)0x20003500}, {14, (uint16_t *)0x20003358},
+};
+/* The three distortion stages; the type value (param 0x2a) picks which move and how far:
+ * 0 drives the first fully and the second a quarter, 1 the third by half, 2 the second a
+ * quarter and the third by half, with the first fully (synth_engine_update). */
+static const struct boosted dist[] = {
+    {23, (uint16_t *)0x2000337e}, {24, (uint16_t *)0x20003380}, {26, (uint16_t *)0x20003382},
+};
+/* Overdrive CV that falls a little as the knob turns up; lower gives more grit. Its
+ * partner 0x2000337A (entry 28) rises with the knob and stays stock. */
+static const struct boosted od_cv = {27, (uint16_t *)0x20003378};
+#define MIXER_CELLS     (sizeof mixer / sizeof mixer[0])
+#define DIST_CELLS      (sizeof dist / sizeof dist[0])
+
+/* CCM (docs/hardware.md "Free RAM"): not cleared at boot, so it carries a magic word.
+ * Kept clear of 0x10000000, which overlays/transpose and overlays/ledtest use. */
+#define STATE_MAGIC     0x32495244u /* "DRI2" */
+struct state {
+    uint32_t magic;
+    uint8_t overdrive;          /* boost factors, sixteenths */
+    uint8_t distortion;
+    uint8_t flags;
+    uint16_t od_floor;          /* 0x20003378 at full Overdrive */
+    uint16_t mixer[MIXER_CELLS]; /* boosted copies the DAC table points at */
+    uint16_t dist[DIST_CELLS];
+    uint16_t od_cv;
+};
+#define STATE (*(volatile struct state *)0x10000400)
+
+static const uint8_t ms_prefix[MS_PREFIX_LEN] = {0xf0, 0x00, 0x20, 0x29, 0x01, 0x61};
+
+void stock_sysex_dispatch(unsigned port, const uint8_t *msg, unsigned len);
+void stock_synth_engine_update(void);
+
+/* F0 00 20 29 01 61 7C <overdrive> <distortion> [<flags> [<floor hi> <floor lo>]] F7 */
+void sysex_dispatch(unsigned port, const uint8_t *msg, unsigned len)
+{
+    unsigned i;
+
+    for (i = 0; i < MS_PREFIX_LEN && i < len; i++)
+        if (msg[i] != ms_prefix[i])
+            break;
+    if (i < MS_PREFIX_LEN || len < 10 || msg[6] != CMD_DRIVE) {
+        stock_sysex_dispatch(port, msg, len);
+        return;
+    }
+    STATE.overdrive = msg[7];
+    STATE.distortion = msg[8];
+    if (len >= 11)
+        STATE.flags = msg[9];
+    if (len >= 13)
+        STATE.od_floor = (uint16_t)(msg[10] << 7 | msg[11]) & CV_MAX;
+}
+
+/* The rest value minus `distance` (how far the stock code moved the CV) × num / den,
+ * clamped to the DAC range. */
+static uint16_t stretch(uint16_t rest, uint16_t stock, uint32_t num, uint32_t den)
+{
+    int32_t distance = (int32_t)rest - (int16_t)stock;
+    int32_t cv;
+
+    if (distance <= 0)
+        return stock;
+    cv = rest - (int32_t)((uint32_t)distance * num / den);
+    return cv < 0 ? 0 : cv > CV_MAX ? CV_MAX : (uint16_t)cv;
+}
+
+void synth_engine_update(void)
+{
+    uint32_t knob, scale, boosted;
+    uint16_t rest, peak, cv;
+    unsigned i;
+
+    stock_synth_engine_update();
+    if (STATE.magic != STATE_MAGIC) {
+        STATE.overdrive = DEFAULT_OVERDRIVE;
+        STATE.distortion = DEFAULT_DISTORTION;
+        STATE.flags = DEFAULT_FLAGS;
+        STATE.od_floor = DEFAULT_OD_FLOOR;
+        STATE.magic = STATE_MAGIC;
+    }
+    rest = CV_REST;
+
+    /* synth_update_mixer scales every level by 32 + overdrive * 7/4 (32..254); stretch
+     * only what the knob adds above 32. */
+    knob = synth_param_get(PARAM_OVERDRIVE);
+    scale = (((knob * 0x1c00000u) >> 24) + 0x20) & 0xff;
+    boosted = 32 + (scale - 32) * STATE.overdrive / UNITY;
+    for (i = 0; i < MIXER_CELLS; i++) {
+        STATE.mixer[i] = stretch(rest, *mixer[i].stock, boosted, scale);
+        DAC_TABLE[2 * mixer[i].entry] = (uint32_t)&STATE.mixer[i];
+    }
+
+    /* From the stock value at knob 0 to the floor at full knob. */
+    cv = *od_cv.stock;
+    if (!(STATE.flags & FLAG_OD_STOCK) && knob <= KNOB_MAX)
+        cv = (uint16_t)((int32_t)cv + ((int32_t)STATE.od_floor - (int32_t)cv) * (int32_t)knob
+                                      / KNOB_MAX);
+    STATE.od_cv = cv;
+    DAC_TABLE[2 * od_cv.entry] = (uint32_t)&STATE.od_cv;
+
+    peak = rest;
+    for (i = 0; i < DIST_CELLS; i++)
+        if ((int16_t)*dist[i].stock < (int16_t)peak)
+            peak = *dist[i].stock;
+    for (i = 0; i < DIST_CELLS; i++) {
+        cv = *dist[i].stock;
+        if (STATE.flags & FLAG_DIST_FULL && (int16_t)cv < (int16_t)rest)
+            cv = peak;
+        STATE.dist[i] = stretch(rest, cv, STATE.distortion, UNITY);
+        DAC_TABLE[2 * dist[i].entry] = (uint32_t)&STATE.dist[i];
+    }
+}

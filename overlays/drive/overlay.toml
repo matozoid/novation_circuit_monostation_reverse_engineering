@@ -1,0 +1,12 @@
+# Stronger Overdrive and Distortion. Overdrive stretches the part of the mixer level scale
+# that the knob adds (x3) and sweeps the overdrive CV 0x20003378 down to 400 at full knob;
+# Distortion stretches the swing of its drive CVs (x3) and gives every stage the type
+# drives the full swing, so the three types stay distinct. Both are clamped to the DAC
+# range; with the knobs at 0 the sound is stock. For tuning, SysEx
+# F0 00 20 29 01 61 7C <overdrive> <distortion> [<flags> [<floor hi> <floor lo>]] F7 sets
+# the factors in sixteenths (16 = stock), the flags (drive.c) and the floor until reboot.
+base = 800
+# Below 800 (firmware 1.2) and above 745 (1.1), so Components offers to restore stock 1.2.
+version = 754
+sources = ["drive.c"]
+replace = ["sysex_dispatch", "synth_engine_update"]

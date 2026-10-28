@@ -124,11 +124,11 @@ The voice is analogue; the firmware computes every control voltage at 2 kHz (`en
 | `0x2000335A` | 2/3 | Noise level (`0x16`) |
 | `0x20003358` | 2/2 | Audio In level (`0x17`) |
 | `0x20003500` | 2/4 | Ring mod level (`0x18`) |
-| `0x20003378`, `0x2000337A` | 1/2, 0/0 | filter overdrive (`0x19`), two curves |
+| `0x20003378`, `0x2000337A` | 1/2, 0/0 | filter overdrive (`0x19`), two curves. Heard on the unit (`overlays/drive`): a lower `3378` gives more grit, and stock moves it only from about 2940 to 3220. `337A` rises from 3591 to 4095 with the knob; holding it low gives more drive at low knob settings, so it looks like a compensation |
 | `0x20003326`, `0x20003398` | 0/2, 0/4 | filter cutoff, two copies with their own trims (key tracking, 4 mod depths; `synth_engine_update`) |
 | `0x20003524` | 1/4 | resonance, slewed from `synth_update_resonance`'s target |
 | `0x20003548` | 0/1 | VCA: amp envelope × patch level curve |
-| `0x2000337E`, `0x20003380`, `0x20003382` | 2/6, 2/1, 1/1 | distortion: three drive CVs from amount + mods; type I/II/III picks which are driven (`synth_engine_update`, `synth_update_distortion`) |
+| `0x2000337E`, `0x20003380`, `0x20003382` | 2/6, 2/1, 1/1 | distortion: three drive CVs from amount + mods (clamped to 0–127), each `rest − gain·curve` with the calibrated gain `0x20000718`. The type value (param `0x2A`) picks which are driven: 0 drives the first fully and the second ¼, 1 the third ½, 2 all three (full, ¼, ½) (`synth_engine_update`, `synth_update_distortion`). At full amount the first falls to about half the rest value, and there is no clamp |
 | `0x20003370`, `0x2000333C`, `0x20003354` | 1/0, 1/7, 1/5 | pulse width for cores A, B, C (core struct `+0x14`) |
 | `0x200028C6` | 1/6 | master volume CV: `volume_cv_step` (2 kHz) slews byte 1 of `0x200028C4` one step toward the Volume pot (byte 0) and writes `0x79E + (0x861 − 16·level) · 0x1CB / 512` here, so volume changes don't click; shutdown fades it out |
 | `0x200009F6` | 0/3 | calibration constant (`calibration_apply`) |
@@ -269,6 +269,7 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 | `patches/memread` | `p 0x40` op 2 also reads MCU memory (bootloader dump, `DBGMCU_IDCODE`, SRAM3) |
 | `overlays/randomise` | #13 per-field Mutate (gate, glide, velocity, pitch) and #45 patch randomiser (Mutate in the Patches view: a mild random step from the current patch) |
 | `overlays/transpose` | #21 live transpose of the Osc sequences by scale degrees |
+| `overlays/drive` | stronger Overdrive and Distortion (×3 swing, the overdrive CV `0x20003378` swept to 400, every driven distortion stage at full swing); SysEx `7C` tunes it live |
 | `overlays/ledtest` | SysEx `7D` lights chosen LED output channels and blanks the rest (for `tools/ledmap.py`) |
 | `tools/ctllog.py` | turns on the stock debug reports and logs or maps control ids |
 | `tools/ledmap.py` | steps through every LED channel with `overlays/ledtest` and records what lights |
