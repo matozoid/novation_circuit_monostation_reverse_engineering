@@ -9,7 +9,7 @@ The dispatcher matches the start of each message against four prefixes, in this 
 | `F0 00 20 29 01 61` | `0x08029413` | Mono Station commands (patch, session and test traffic), dispatched on byte 6 |
 | `F0 00 20 29 00` | `0x08029EE2` | product-independent commands: reboot and version, dispatched on byte 5 |
 | `F0 7E 7F 06 01 F7` or `F0 7E 00 06 01 F7` | `0x08029EE7`, `0x08029EDC` | MIDI Identity Request; answered by `FUN_0801ee24` |
-| `F0 4D 44 4C 49 54 48 00` | `0x08029ED4` | unidentified; the decompile shows a test-pattern fill of a RAM buffer |
+| `F0 4D 44 4C 49 54 48 00` ("MDLITH") | `0x08029ED4` | pad velocity-curve upload (factory tuning): length = byte 8 × 128 + byte 9, payload from byte 13 copied into the 256-byte curve at `0x200000E8`; one branch fills it with an identity ramp instead. Handler in `sysex_dispatch` at `0x080209D8` |
 
 ## Image header and version
 
@@ -116,5 +116,4 @@ The addresses are in the external SPI NOR flash that holds patches and sessions,
 
 ## Not yet known
 - The meaning of `30 01` in the `0x70` reply. The bootloader writes the same two constants (`docs/bootloader.md`).
-- What the `F0 4D 44 4C 49 54 48 00` prefix is for.
 - The meaning of the other `'p'` commands.
