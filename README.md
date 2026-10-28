@@ -43,6 +43,29 @@ Firmware 1.2 is build 800 inside the firmware; this mod reports build **750**. T
 below 800 on purpose: Components offers an update to any unit below 800, so it should
 offer to install stock 1.2 (from its code; not tried yet).
 
+## Feature: patch randomiser (#45)
+
+Open the **Patches** view and press **Mutate** (Shift + Pattern Settings): the current
+patch gets random settings, as if every knob had been turned. Press again for another.
+
+Every press gives a playable sound:
+
+- Kept as they are: the octave and range of both oscillators (the patch stays in its
+  register), patch level, audio-in level and the envelope-to-amp switch.
+- Oscillators stay in tune: coarse and Osc 1 fine are centred, Osc 2 gets at most a
+  little detune; pulse widths avoid the silent extremes.
+- Osc 1 is always in the mix; the filter is never closed or bypassed, and resonance
+  stays short of self-oscillation. Band and high pass follow the keys, with the band
+  around the middle and the high pass low, so the notes get through.
+- A low sustain always gets a decay long enough to hear.
+- Most mod-matrix routings stay off, and the ones that are on get moderate depths.
+
+The patch shows as edited, so save it the usual way if you like it, or load another
+patch to throw it away. With MIDI out of the synth params on, the new values also go out
+as CCs and NRPNs (some may be dropped).
+
+The patch randomiser is part of the Mutate mod above (`overlays/randomise`).
+
 ## Feature: live transpose (#21)
 
 Transpose the playing sequence from the keys, the way many monosynth sequencers do.

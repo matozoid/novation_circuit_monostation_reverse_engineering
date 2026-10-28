@@ -68,6 +68,15 @@ for its group from the table at `0x0802A028`–`0x0802A05C`: `synth_update_modes
 `_distortion`, `_mixer`, `_envelope`, `_lfo`, `_resonance`, `_cutoff`, `_osc2`, `_osc1`,
 `_glide` (`synth_update_nop` for the rest).
 
+Every section view's pots (filter view `ui_root +0x70`, distortion `+0x74`, LFO `+0x80`, …) hold the same
+param sink at view `+0x14`. Its slot 0 is `forward_adapter`, which calls `param_set` with the
+adapter's source byte, so `sink->vt[0](sink, id, raw_value, 1)` is what turning a knob does: store
+the raw value (before the table's centre is subtracted, clamped to centre + min … centre + max)
+through `patch_store_param`, mark the patch edited, run the group's update function and send the
+param to MIDI out (dropped when the tx queue is full). Found by emulating `app_construct` in Unicorn;
+the patch randomiser (#45, `overlays/randomise`) uses it. `ui_root +0x3c` is the Patches view
+(its vtable starts with `patch_view_pads`), `+0x2c` the mode view.
+
 ### Note path
 
 MIDI in (`midi_in_parse` → `midi_ctl_*`) and the track players (`player_on_cell`) feed

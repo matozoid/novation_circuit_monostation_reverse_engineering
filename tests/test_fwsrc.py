@@ -162,7 +162,37 @@ class Overlay800Test(unittest.TestCase):
         self.assertEqual(changed, [0x1B0, 0x1B1, 0x1BB24, 0x1BB25, 0x1BB26])
         self.assertEqual(built[0x1B0:0x1B2], b"\x50\x07")
         slot = int.from_bytes(built[0x1BB24:0x1BB28], "little")
-        self.assertEqual(slot, 0x0802BB20 | 1)
+        self.assertEqual(slot & 1, 1)
+        self.assertTrue(0x0802BB20 <= slot - 1 < 0x0800C000 + len(built))
+
+    def test_patch_rules_within_param_table(self):
+        """The patch randomiser's rules (#45, overlays/randomise) stay inside each param's
+        raw range in the firmware table at 0x0802A62A (the range param_set clamps to:
+        centre + min .. centre + max) and leave the kept params alone."""
+        import re
+        source = (RANDOMISE / "randomise.c").read_text()
+        body = source[source.index("patch_rules[] = {"):]
+        body = body[:body.index("};")]
+        rules = [tuple(int(v, 0) for v in m)
+                 for m in re.findall(r"\{\s*(0x[0-9a-f]+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\s*\}", body)]
+        for m in re.findall(r"DEPTH\((0x[0-9a-f]+),\s*(\d+),\s*(\d+),\s*(\d+)\)", body):
+            pid, centre, depth, rest = (int(v, 0) for v in m)
+            rules.append((pid, centre - depth, centre + depth, centre, rest))
+        ids = [r[0] for r in rules]
+        self.assertEqual(len(ids), len(set(ids)))
+        # category, genre, octaves, ranges, patch level, audio in, env to amp, routing
+        kept = {0x00, 0x01, 0x03, 0x08, 0x0a, 0x0f, 0x12, 0x17, 0x2f, 0x4b}
+        self.assertEqual(set(ids) | kept, set(range(0x4c)))
+        self.assertFalse(set(ids) & kept)
+        table = 0x0802A62A - 0x0800C000
+        for pid, lo, hi, value, rest in rules:
+            centre = self.image[table + 8 * pid + 3]
+            low = centre + int.from_bytes(self.image[table + 8 * pid + 4:][:1], "little", signed=True)
+            high = centre + self.image[table + 8 * pid + 5]
+            with self.subTest(param=hex(pid)):
+                self.assertTrue(low <= lo <= hi <= high, (lo, hi, low, high))
+                self.assertTrue(low <= value <= high)
+                self.assertLessEqual(rest, 8)
 
     @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
     def test_transpose_hooks_pads_and_router(self):
