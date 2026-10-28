@@ -97,6 +97,7 @@ App code calls only `operator new`, `operator new[]`, `memcpy`, `memset`, `memcm
 The 28 bytes after the `.data` image (`0x0802BB04`–`0x0802BB20`, `8 × FF` then zeros) are unexplained.
 
 ## Where the details are
+- Every controllable piece of hardware and every firmware feature, with status: `docs/inventory.md`.
 - Sequencer, note routing, recording, MIDI clock and transport: `docs/sequencer.md`.
 - SysEx dispatcher `FUN_080202a0` and its commands: `docs/sysex-handlers.md`.
 - Patch store `FUN_080176e8` and session initialiser `FUN_08018CA4`: `docs/sysex-spec.md`, `docs/session-format.md`.
