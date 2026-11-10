@@ -90,13 +90,29 @@ The transport object holds the sequencer state (`+0x0C` = clock state, `+0x10` =
 
 | Slot | Function | Meaning |
 |------|----------|---------|
-| 0 | `FUN_08016E78(this, cell)` | cell observer. On the clock state's tick cell (`+0x18`) it is the **clock tick**: increments the clock cell `+0x44`, advances each of the 3 tracks via `FUN_0801BA36`, handles pattern-chain switching / count-in (`+0x51`/`+0x52`/`+0x54`) |
-| 1 | `FUN_08016B52(this, id, on)` | button / flag ids at `+0x60`/`+0x64`/`+0x68` |
+| 0 | `FUN_08016E78(this, cell)` | cell observer. On the clock state's tick cell (`+0x18`) it is the **clock tick**: increments the clock cell `+0x44`, advances each of the 3 tracks via `FUN_0801BA36`, handles the queued session switch (`+0x51`/`+0x52`/`+0x54`, *Transport cell* below) |
+| 1 | `FUN_08016B52(this, id, on)` | posts on the nodes `+0x60` (Record), `+0x64` (queue a session change) and `+0x68` (session change now); see *Transport cell* below |
 | 2 | `FUN_08016C5E(this, src)` | **Start** (reset to 0) |
 | 3 | `FUN_08016BD6` | **Continue** |
 | 4 | `FUN_08016D1C` | **Stop**; recomputes the clock source and tempo |
 | 5 | `FUN_08016AD2(this, spp, ext)` | **Song Position Pointer**: clock = spp × 6; step = spp, micro = 0 |
 | 6 | `FUN_08016A8E(this, song, src)` | **Song Select**: forwards to MIDI out (`+0x10` `[4]`) |
+
+**Transport cell** (`+0x1C`, 3 fields; the record hub and the recorders observe it):
+
+| Field | Meaning | Writers |
+|-------|---------|---------|
+| 0 | playing | Start sets 1, Stop sets 0 |
+| 1 | recording | the Record view (`rec_view`, node `+0x60`) sets it to the button state. Stop clears it. |
+| 2 | session change in progress | set by node `+0x68` or by a queued change coming due; cleared when the new session has loaded |
+
+Session changes come from `session_ctl_on_cell` (`0x0801985C`, session controller `+0x4C` = transport node `+0x64`, `+0x50` = node `+0x68`, `+0x54` = transport cell `+0x6C`):
+- **Stopped:** it posts to `+0x68`. Field 2 goes to 1 at once.
+- **Playing:** it posts 1 to `+0x64`, which arms `+0x51`. The clock tick waits until the position matches the switch point (mode in field 2 of cell `+0x2C`). It then sets field 2, counts the rest of the step down in `+0x54`, and swallows those ticks. A 0 on `+0x64` (`session_ctl_clear_pending`) cancels.
+- **Load done:** `session_ctl_on_save_done` commits `+0x54` (= transport `+0x6C`). Field 2 is cleared at once if the countdown has run out. Otherwise `+0x52` is set and the countdown clears it.
+- **While field 2 is set:** no track advances, and Record can't be toggled (`transport_button` returns 1).
+
+So the record hub's gate (field 0 ≠ 0, field 1 ≠ 0, field 2 = 0) means: playing, recording, and not switching sessions.
 
 Sequencer fields:
 
@@ -248,7 +264,7 @@ Live input reaches the recorder hub through merger stage 3 (above). The hub (0x1
 | `[1]` | `FUN_0802341C(note, track)` | note off → recorder `[1]` |
 | `[2]` | `FUN_08023370(param_id, value)` | knob move: table `DAT_08023410` (2 bytes per id: recorder index, lane; `FF` = not recordable) picks the recorder and lane. It sets the lane's bit in the recorder's touched-lanes bitmap cell `+0x2C` and stores the value in `+0x28[lane]`. |
 
-All three do nothing unless the transport cell (hub `+8`, transport `+0x1C`) has field 0 ≠ 0, field 1 ≠ 0 and the third field = 0. That is presumably record armed, playing, and not some pending state. The order isn't confirmed.
+All three do nothing unless the transport cell (hub `+8`, transport `+0x1C`) says playing (field 0), recording (field 1) and no session change in progress (field 2 = 0). See *Transport cell*.
 
 **Per-track recorders** (hub `+0x0C`/`+0x10`/`+0x14`) are 0x288-byte objects built by `FUN_08021128` (base vtable `0x08029F14`). All three get the same vtable `0x080270FC` (`app_construct` loads it from two literals, `DAT_0800EBF4` and `DAT_0800EEEC`). They differ in lane count `+0x24`: track 0 has 42 lanes, track 1 has 12 and track 2 has 0. Byte `+0x284` enables velocity recording. `app_construct` sets it to 1 on tracks 0 and 1 and 0 on track 2, and nothing else writes it, so Mod Seq steps never record velocity. Fields:
 
@@ -342,5 +358,5 @@ The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) 
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
-- Recording: the order of the transport-cell fields that gate the hub. Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
+- Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
 - The 6th sync-out mask `0x80810` (the guide lists only 5 rates). Bits 0–1 of the MIDI settings byte: no reader found yet.
