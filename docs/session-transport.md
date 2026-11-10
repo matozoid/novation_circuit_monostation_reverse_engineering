@@ -64,7 +64,7 @@ The System Settings page (hold Shift while switching on; Play exits) is stored h
 | offset | content |
 |--------|---------|
 | `0x00` | `08`. Unknown. At boot, `FUN_0800e1f8` checks it: if it is above `0x1F`, a field gets cleared, which reads like a sanity check for an erased (`FF`) record. |
-| `0x08` | flags. bit 2 = Note Tx on, bit 3 = Note Rx on, bit 4 = Clock Rx **off**, bit 5 = Clock Tx **off**, bit 6 = CC Tx **off**, bit 7 = CC Rx **off**. Bit 1 was set in every reading and bit 0 was always clear; their meaning is unknown. |
+| `0x08` | flags. bit 2 = Note Tx on, bit 3 = Note Rx on, bit 4 = Clock Rx **off**, bit 5 = Clock Tx **off**, bit 6 = CC Tx **off**, bit 7 = CC Rx **off**. bit 0 = Save **locked** (Shift + Save at power-on toggles it), bit 1 = Fixed Velocity (Shift + Velocity). Bit 1 was set and bit 0 clear in every reading. Both come from the code (`docs/sequencer.md` *MIDI settings cell*). |
 | `0x09` | bits 0–2 = clock out rate (pad 18, 2 ppqn → 2; pad 20, 8 ppqn → 4; so probably pads 17–21 → 1–5), bit 3 = pot pickup on |
 | `0x0C` | Osc 1 MIDI channel, 0-based (ch 3 → `02`) |
 | `0x10` | Osc 2 MIDI channel, 0-based. Inferred: it reads `01` while Osc 2 is on ch 2, but it wasn't changed during the test. |

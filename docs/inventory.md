@@ -25,7 +25,7 @@ The firmware sees every control as an id in one event stream. `control_dispatch`
 | Envelope faders (A, D, S, R) | 4 | [29] | `control_dispatch` ids `0x2E`–`0x31` (callback `0x20003124`) → `ui_root_fader` → envelope view → params `0x20`–`0x23` | known |
 | Buttons | 34 lit buttons: Tap [3], Osc 1 / Osc 2 / Mod Seq [5], Note / Velocity / Gate [6], Pattern Settings [7], Scales [8], Patterns [9], Patches [10], Play, Record [11], Oct down / up [12], Clear [13], Save, Sessions [14], Shift [15], Range [16], Waveform [17], LFO Wave [21], LFO Sync [22], Filter Shape [30], Slope [31], Bypass [35], Distortion Type [36], Mod Source [38], 6 Mod Destination buttons [39] | | `ui_button_event` (`0x08011FBC`) routes to the active view or global handlers; long/short press via held-button timers (`ui_root_slot4`); Shift functions per view | known; ids in *Control ids* below (`0x00`–`0x21`, mapped on the unit). The main loop's button scan maps matrix bits to ids with the table at `0x08026E8A` (64 bits, `0x22` = no button) |
 | Power switch (soft, rear) | 1 | [10] | `power_calib_task` (`0x0801C208`, 1 kHz soft timer): long-press detect; shutdown fades the master volume out, raises GPIOC pin 9 (mute), runs `bootloader_handover` (`0x08024940`: stops peripherals and masks every NVIC IRQ; despite the name it's a shared quiesce routine), drops the GPIOE pin 0 power hold, then loops on IWDG refresh + WFI in stop mode | known |
-| Boot key combos | | p. 90 | Shift at power-on → System Settings view; Scales + Note + Velocity → bootloader (checked by the bootloader, `docs/bootloader.md`) | known |
+| Boot key combos | | p. 90 | Shift at power-on → System Settings view; Shift + Save → toggle the Save lock (MIDI settings byte 0 bit 0); Shift + Clear → start with a blank session instead of the last one (`app_construct` skips the session load); Scales + Note + Velocity → bootloader (checked by the bootloader, `docs/bootloader.md`) | known |
 
 #### Control ids
 
@@ -206,7 +206,7 @@ Switch word `0x20002F80` (24 bits over SPI3): bits 0–1 and 13–15 carry the b
 | Note view, Dual view (Osc 1 + Osc 2), Expand view (Shift + Note) | grid as a keyboard, split or doubled | `keyboard_view_*` | known |
 | Scales | 16 scales + root note; pads mapped to the scale | `scale_mask`, `scale_map_note`, `scale_snap_note`, `scales_view_*` | known |
 | Octave shift | per oscillator, −6…+5 octaves (Oct buttons), both = reset | `octave_view_*` | known |
-| Fixed velocity (Shift + Velocity) | pads play a fixed velocity (probably the router's forced 96) | router channels 0–2, settings bit | partial |
+| Fixed velocity (Shift + Velocity) | pads play velocity 96 | `ui_button_event` toggles MIDI settings byte 0 bit 1; the router forces 96 on channels 0–2 | known |
 | Note routing and merging | keys, sequencer and MIDI in merged per track, then to synth, MIDI out and recorder | router + merger (`docs/sequencer.md` *Note routing*) | known |
 
 ### 2.3 Sequencer

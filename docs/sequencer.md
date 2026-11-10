@@ -149,6 +149,8 @@ All objects are built in `FUN_0800E1F8`.
 
 | Bit | Meaning |
 |-----|---------|
+| 0 | Save **locked**: `save_view_button` and the sessions view do nothing while it is set, and the Save LED stays off. Toggled by holding Shift + Save at power-on (`app_construct`, boot combo 2; user guide *Enabling Save*). |
+| 1 | Fixed Velocity: Shift + Velocity (`ui_button_event` button `0x1B`) toggles it. The router (`FUN_0801B8DA`, cell `+0x6C`) forces velocity 96 on the panel channels (0–2) while it is set. |
 | 2 | note Tx on |
 | 3 | note Rx on |
 | 4 | clock Rx **off** (incoming `F8` and transport messages are ignored) |
@@ -226,7 +228,7 @@ Sequencer notes take this path (all objects built in `FUN_0800E1F8`):
 
    | Channels | Source | Treatment |
    |----------|--------|-----------|
-   | 0–2 | 0, probably the pads/keys | velocity forced to 96 when a settings bit (cell `+0x6C` bit 1) is set |
+   | 0–2 | 0, probably the pads/keys | velocity forced to 96 when Fixed Velocity (MIDI settings byte 0 bit 1, cell `+0x6C`) is set |
    | 3–5 | 1, **sequencer** tracks 0–2 | |
    | 6–7 | 2, probably MIDI in (tracks 0–1 only) | the transpose byte `*(router+0x0C)` is subtracted first |
 
@@ -359,4 +361,3 @@ The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) 
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
 - Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
-- Bits 0–1 of the MIDI settings byte: no reader found yet.
