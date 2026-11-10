@@ -221,7 +221,7 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 | Tempo and Tap tempo | BPM byte per session; tap fits a tempo from timestamps (`clock_tempo_fit`) | known |
 | Swing and swing sync | alternate ticks stretched; swing period selectable | known |
 | External sync | MIDI clock in (USB/DIN, with `F8` thru), analogue clock in (2 PPQN), tempo estimate by least squares; MIDI Start/Continue/Stop/SPP/Song Select | known; the analogue-first priority rule isn't traced |
-| Clock out | MIDI `F8` + transport out; analogue 1/2/4/8/24 PPQN | known (6th mask `0x80810` unexplained) |
+| Clock out | MIDI `F8` + transport out; analogue 1/2/4/8/24 PPQN | known (a 6th mask `0x80810` exists but no setting reaches it) |
 | Pattern settings | start/end step, length, direction (forward, reverse, ping-pong, random), sync rate per pattern | known |
 | Pattern chains | first…last pattern per track; cued or instant switching (Shift) | known |
 | Mod Seq track | per-step mod value as a matrix source; Smooth (Shift + Mod Seq) interpolates | partial |

@@ -82,7 +82,7 @@ Clock-state fields used:
 
 **External sync.** With MIDI clock (source 1) each `F8` counted in `+0x54` adds one tick to `+0x58`, and the engine plays them out as ticks (*MIDI clock and transport* below). With analogue sync in (source 2) every pulse adds 12 ticks (the first one `6 − micro + 6×(step even)` to realign), i.e. **2 PPQN** in, and the tick rate follows the measured pulse period. `FUN_0801AECC` publishes the measured tempo (×2500 fixed point) for display.
 
-**Sync out.** On each tick, if the sync-out setting (settings cell byte 1 & 7) is non-zero and bit `(micro + (step & 3) × 6)` of mask table `0x08029F48[setting − 1]` is set, TIM2 (`0x40000000`) fires a one-shot pulse (CNT = 0, ARR = 20, CEN). Masks: `0x1` (1 PPQN), `0x1001` (2), `0x41041` (4), `0x249249` (8), `0xFFFFFF` (24), `0x80810` (6th setting, uneven — unknown), `0` (end). The main loop polls TIM2 SR for the pulse end.
+**Sync out.** On each tick, if the sync-out setting (settings cell byte 1 & 7) is non-zero and bit `(micro + (step & 3) × 6)` of mask table `0x08029F48[setting − 1]` is set, TIM2 (`0x40000000`) fires a one-shot pulse (CNT = 0, ARR = 20, CEN). Masks: `0x1` (1 PPQN), `0x1001` (2), `0x41041` (4), `0x249249` (8), `0xFFFFFF` (24), `0x80810` (6th entry, uneven), `0` (end). The 6th entry is unreachable: `settings_view_pad_down` writes only rates 1–5 (pads `0x10`–`0x14`), and `ui_construct` resets a stored rate of 0 or above 5 to 2 at startup. It is probably a leftover. The main loop polls TIM2 SR for the pulse end.
 
 ## Transport (vtable `0x08027208`)
 
@@ -359,4 +359,4 @@ The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) 
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
 - Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
-- The 6th sync-out mask `0x80810` (the guide lists only 5 rates). Bits 0–1 of the MIDI settings byte: no reader found yet.
+- Bits 0–1 of the MIDI settings byte: no reader found yet.
