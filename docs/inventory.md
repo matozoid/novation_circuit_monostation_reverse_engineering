@@ -278,4 +278,3 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 
 - Check on the board that core C is the sub oscillator and that `0x2000086C` is the Audio In gain.
 - Confirm on the board that GPIOC pin 9 is the audio mute and GPIOE pin 11 is a heartbeat LED.
-- Merge-stage note priority.

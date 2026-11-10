@@ -235,7 +235,7 @@ Sequencer notes take this path (all objects built in `FUN_0800E1F8`):
    | 6–7 | 2, **MIDI in** (tracks 0–1 only): the base-6 adapter (`+0x30`) is wrapped by the MIDI controller's note adapter (vtable `0x080271AC`) | the transpose byte `*(router+0x0C)` is subtracted first |
 
    For inputs, `FUN_0801B8DA` / `FUN_0801B058(router, source, track, note, vel)` map the note through the scale (`FUN_08018ECA`, scale object at `+0x08`), remember it per note (so retriggers and note-offs match), and call the sink `router + 0x34 + (track × 3 + source) × 4`, which is input `source` of the track's merger.
-3. **Per-track merger** (`FUN_08020FA0`, 0x28 bytes, vtable `0x08029F04`: `[0] FUN_08018940` noteOn, `[1] FUN_080188D8` noteOff, dispatching on the input id). It holds three merge stages (`FUN_08020D7C`, 0x30 bytes, two 5-note input buffers each, output back to the merger as ids 3/4/5) and three outputs `+0x1C`/`+0x20`/`+0x24`:
+3. **Per-track merger** (`FUN_08020FA0`, 0x28 bytes, vtable `0x08029F04`: `[0] FUN_08018940` noteOn, `[1] FUN_080188D8` noteOff, dispatching on the input id). It holds three merge stages (`FUN_08020D7C`, 0x30 bytes, vtable `0x08029F94`, two 160-bit held-note bitmaps (one per input), output back to the merger as ids 3/4/5) and three outputs `+0x1C`/`+0x20`/`+0x24`:
 
    ```
    source 0 (keys) ──┬─► stage 1 ─┬─────────────► out A  MIDI out
@@ -246,6 +246,8 @@ Sequencer notes take this path (all objects built in `FUN_0800E1F8`):
    ```
 
    (stage 1 = keys + sequencer, stage 2 = stage 1 + MIDI in, stage 3 = keys + MIDI in.)
+
+   A stage has **no note priority**: it passes the union of held notes. `merge_stage_note_on` ignores a note its input already holds and sets the bit. It forwards the note only if the other input doesn't hold it. `merge_stage_note_off` clears the bit and forwards only if the other input doesn't hold the note either. So the same note from keys and sequencer sounds once and ends when both have let go. Voice choice happens downstream (`FUN_080226BC`).
 4. **Outputs** go back through router channels 8–16 (merger outputs are 0x08027980 adapters with ids `0x0B`/`0x08`/`0x0E` for track 0, `0x0C`/`0x09`/`0x0F` for track 1, `0x0D`/`0x0A`/`0x10` for track 2). The router adds the transpose byte, drops notes below 12, and calls:
 
    | Ids | Router field | Destination |
@@ -358,6 +360,5 @@ The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) 
 
 ## Open
 
-- The merge stages' note priority. (Osc 1/Osc 2 voice assignment in `FUN_080226BC` is in `docs/inventory.md` *Paraphonic voicing*; its flag `0x20003204` is paraphonic Mode 2, session byte `0x155DB`.)
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
