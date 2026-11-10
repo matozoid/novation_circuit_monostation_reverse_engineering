@@ -103,7 +103,7 @@ The 28 bytes after the `.data` image (`0x0802BB04`–`0x0802BB20`, `8 × FF` the
 - Patch store `FUN_080176e8` and session initialiser `FUN_08018CA4`: `docs/sysex-spec.md`, `docs/session-format.md`.
 - Every function by address: `docs/source-map.md`.
 
-Still open: which SPI port drives the LEDs and which the DAC, the role of USART6, the synth engine internals beyond the envelope, and which USB/DIN parser feeds the MIDI-in parser `FUN_080186B8`.
+Still open: which SPI port drives the LEDs and which the DAC, the role of USART6 and the synth engine internals beyond the envelope.
 
 ## Ghidra auto-analysis
 

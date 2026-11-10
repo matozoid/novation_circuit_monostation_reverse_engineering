@@ -156,7 +156,7 @@ Switch word `0x20002F80` (24 bits over SPI3): bits 0–1 and 13–15 carry the b
 | LINE OUT (¼" TRS, mono) | [1] | analogue; level set by the voice (no digital audio path) | n/a |
 | Headphones (3.5 mm) | [11] | analogue | n/a |
 | AUDIO IN (line) | [2] | analogue into the mixer; level is a param, gain is a switched setting (see *Sub oscillator…*) | n/a |
-| MIDI IN / OUT / THRU (3.5 mm TRS) | [3] | USART1 (`0x40011000`, ISR `0x08023FE1`). THRU is probably hardware. | known (send/receive); the parser's source per port is open |
+| MIDI IN / OUT / THRU (3.5 mm TRS) | [3] | USART1 (`0x40011000`, ISR `0x08023FE1`). THRU is probably hardware. | known; DIN is parser port 1 (`docs/sequencer.md` *MIDI in*) |
 | USB-B (MIDI class compliant) | [8] | USB OTG_FS (`0x50000000`, ISR `0x0801EEFC`), ST USB device library + USB-MIDI class. The descriptors also name `"AUDIO Interface"`, but the UG says USB carries no audio. OTG_HS isn't used: no code references `0x40040000`, and its vector just branches to the FS handler. | known |
 | CLOCK OUT (5 V) | [4] | TIM2 one-shot pulse per tick mask (1/2/4/8/24 PPQN, `docs/sequencer.md` *Sync out*) | known |
 | CLOCK IN (2 PPQN) | [5] | edge interrupt (EXTI15_10, ISR `0x08023A79`), 12 ticks per pulse, tempo by least-squares fit | known |
@@ -220,7 +220,7 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 | Clock engine | 24 PPQN, main loop at 1 ms, phase accumulator, catches up after slow passes | known |
 | Tempo and Tap tempo | BPM byte per session; tap fits a tempo from timestamps (`clock_tempo_fit`) | known |
 | Swing and swing sync | alternate ticks stretched; swing period selectable | known |
-| External sync | MIDI clock in (USB/DIN, with `F8` thru), analogue clock in (2 PPQN), tempo estimate by least squares; MIDI Start/Continue/Stop/SPP/Song Select | known; the analogue-first priority rule isn't traced |
+| External sync | MIDI clock in (USB/DIN, with `F8` thru), analogue clock in (2 PPQN), tempo estimate by least squares; MIDI Start/Continue/Stop/SPP/Song Select | known (analogue > MIDI > internal); USB and DIN clocks are not separated, against the guide (unverified on hardware) |
 | Clock out | MIDI `F8` + transport out; analogue 1/2/4/8/24 PPQN | known (a 6th mask `0x80810` exists but no setting reaches it) |
 | Pattern settings | start/end step, length, direction (forward, reverse, ping-pong, random), sync rate per pattern | known |
 | Pattern chains | first…last pattern per track; cued or instant switching (Shift) | known |

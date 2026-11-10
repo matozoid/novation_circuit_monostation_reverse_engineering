@@ -108,7 +108,7 @@ These look like factory-test commands. Only `0x40` has been decoded fully.
 | `0x04` | pad state machine | pad | pressure (aftertouch, which `control_dispatch` then drops) |
 | `0x08` | `input_poll_task` | encoder `0x32`/`0x33` (raw wipers) | wiper reading |
 | `0x10` | main loop button scan | button `0x00`–`0x21` (`docs/inventory.md` *Control ids*) | 1 pressed, 0 released |
-| `0x20` | `sysex_dispatch`, `midi_send_short` | | echo every received SysEx and sent short message to the ports |
+| `0x20` | `sysex_dispatch`, `midi_rx_short` | | echo every received SysEx and short message to the ports |
 
 ### `p 0x40`: external flash read, write and erase
 Request layout:

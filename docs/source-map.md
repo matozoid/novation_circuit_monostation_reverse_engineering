@@ -865,7 +865,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
-| `0801E080` | `midi_send_short` | 88 | 3 bytes to the port callback; also to 0x08020d30 when 0x200016a0 bit 5 is set |
+| `0801E080` | `midi_rx_short` | 88 | receive callback (`+0x30`) of both MIDI byte parsers: passes a short or realtime message with port mask `1 << port` to the MIDI-in callback at 0x20002658; also echoes it to 0x08020d30 when 0x200016a0 bit 5 is set |
 | `0801E0D8` | `USBD_Reset` | 84 | DCD cb +0x10, opens EP0 in/out |
 
 ### io_helpers

@@ -68,7 +68,7 @@ Clock-state fields used:
 | `+0x30` / `+0x31` | step 0–15 / micro-step 0–5 (6 ticks per 1/16 step) |
 | `+0x34` | tick countdown accumulator |
 | `+0x48` | clock-source cell: 0 internal, 1 MIDI clock, 2 analogue sync in |
-| `+0x4C` | detected-source bits: bit 1 = MIDI clock seen, bit 2 = analogue pulses seen (interval < 1000 ms) |
+| `+0x4C` | detected-source bits, rewritten every ms: bit 0 = internal (always set), bit 1 = MIDI clock seen, bit 2 = analogue pulses seen (interval < 1000 ms). While stopped (run state 0) a change of bits 1–2 switches the clock source; Stop (`FUN_08016D1C`) recomputes it the same way. Priority: analogue (2) > MIDI (1) > internal (0), as in the guide |
 | `+0x4E` | run state: 0 stopped, 1 start pending (internal), 2 start pending (MIDI, waits for the first `F8`), 3 start pending (analogue), 4 running. `FUN_08021790` (first tick after a start) sets 4. The engine trusts the external tempo estimate only once state 4 has lasted `0x25A` ms (MIDI) or 1000 ms (analogue). |
 | `+0x54`, `+0x5C` | incoming MIDI clock / analogue pulse counts since the last call |
 | `+0x58` | external ticks still to play |
@@ -160,7 +160,7 @@ All objects are built in `FUN_0800E1F8`.
 
 Byte 1 & 7 is the analogue clock-out rate 1–5 (pads 17–21 = 1, 2, 4, 8, 24 PPQN; see *Sync out*). `FUN_0801CA18` copies these bits into the MIDI-in filter (`+0x0D`: bit 0 notes, bit 1 CCs, bit 2 realtime, always set) and into the MIDI-out flags (`+0x18`: bit 0 notes, bit 1 CCs, bit 2 clock and transport). It also copies the Osc 1/Osc 2 channels into both.
 
-**MIDI in.** `FUN_080186B8(?, msg, ctx)` parses each incoming message. Its pointer is stored at `0x20002658`, and `ctx` is a 16-byte filter: `+0` = the MIDI controller, `+4` = the NRPN parser, `+8`/`+9` = the Osc 1/Osc 2 note channels, `+0x0B`/`+0x0C` = program-change channels, and `+0x0D` = the filter bits. The controller is a 0x84-byte object with vtable `0x08026FE4`, which has interfaces at `+4`, `+8`, `+0x0C` and `+0x10`. The parser routes:
+**MIDI in.** Two byte parsers (`midi_rx_byte` `0x080249FC`) feed it: port 0 = USB (`0x20000FB0`), port 1 = DIN (`0x2000354C`, fed by `USART1_IRQHandler`). The port numbers match the output side, where `midi_tx_short` sends to USB on mask bit 0 (only while USB is connected) and to DIN on bit 1. Each parser's receive callback (`+0x30`) is `midi_rx_short` (`0x0801E080`), which calls the MIDI-in callback with port mask `1 << port`. `FUN_080186B8(port_mask, msg, ctx)` parses each incoming message and **ignores the port mask**: USB and DIN are merged, so every message works from either port, and two `F8` streams add into the same count (`+0x54`). The guide says DIN clock takes priority over USB clock when both run; the code has no such rule (unverified on hardware). Its pointer is stored at `0x20002658`, and `ctx` is a 16-byte filter: `+0` = the MIDI controller, `+4` = the NRPN parser, `+8`/`+9` = the Osc 1/Osc 2 note channels, `+0x0B`/`+0x0C` = program-change channels, and `+0x0D` = the filter bits. The controller is a 0x84-byte object with vtable `0x08026FE4`, which has interfaces at `+4`, `+8`, `+0x0C` and `+0x10`. The parser routes:
 
 | Message | Handler | Goes to |
 |---------|---------|---------|
@@ -360,5 +360,5 @@ The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) 
 
 ## Open
 
-- Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
+- Clock from USB and DIN at once: check on hardware whether the tempo doubles (*MIDI in*).
 - Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).

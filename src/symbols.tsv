@@ -737,7 +737,7 @@
 0801e04c USBD_Suspend
 0801e068 USBD_Resume
 # cu_0801e080 (midi_send)
-0801e080 midi_send_short
+0801e080 midi_rx_short
 0801e0d8 USBD_Reset
 # cu_0801e12c (io_helpers)
 0801e12c output_pin_set
