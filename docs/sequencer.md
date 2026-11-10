@@ -334,7 +334,7 @@ Who posts them:
 - **Knobs.** The section pot handlers (`filter_view_pot` `0x08016324`; the osc, mixer, LFO, envelope and mod-matrix views read the same table) look up `(track, lane)` for the param id in `DAT_08023410` (`0x0802A1E4`, the record hub's table). After sending the param to the synth, a pot posts `(track, lane, value)` to the write port when its step-edit cell (view `+0x30`) is set. So a knob turned while a step is held writes one change point at the start of that step. With Clear held (view cell `+0x18` bit 0), a pot moved more than 20 raw units from its last position posts `(0, lane)` to the clear port instead and lights its LED red (`0x27`). That is the guide's "hold Clear and move the knob by 20 %", and it clears the whole pattern's lane unless a step is held.
 - **Patches view.** `patch_view_pads`, with its step-edit cell (`+0x40`) set, loads the slot as usual, then posts `(0, 0x2A, slot)` to the write port. The step's patch change is the slot number. Its `+0x24` port is not step edit: with Clear held it goes to the session controller (node `+0x10`), which overwrites the slot with `Initial Patch`. Its `+0x20` port (save mode) saves the current patch to the slot (`patch_mask_update`).
 
-Not traced: whether Record must be on for the pots' step-edit cell; the guide says to press Record first.
+The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) are the same cell: `+0x44` of track 0's track patterns object (`app_construct` passes `piVar26[0x12] + 0x1C`, word 10). `step_view_pad_down` sets it without checking Record, so by the code **holding a step and turning a knob writes automation with Record off too**, although the guide says to press Record first (unverified on hardware).
 
 ## Open
 
@@ -342,5 +342,5 @@ Not traced: whether Record must be on for the pots' step-edit cell; the guide sa
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
-- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#8): whether the pots' step-edit cell needs Record on (*Step editing*).
+- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
 - The 6th sync-out mask `0x80810` (the guide lists only 5 rates). Bits 0–1 of the MIDI settings byte: no reader found yet.
