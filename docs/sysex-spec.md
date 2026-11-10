@@ -39,6 +39,8 @@ Per 136-byte message:
 | 26 | genre index: 0 None, 1 Classic, 2 D&B/Breaks, 3 House, 4 Industrial, 5 Jazz, 6 R&B/HHop, 7 Rock/Pop, 8 Techno, 9 Dubstep |
 
 The category and genre tables come from Components' Circuit-family librarian (modules `frontend/constants/circuit/patch-categories` and `patch-genres`, JS names `mP`/`gP`; the sidebar binds `categoryOptions=mP`, `genreOptions=gP`). The similar lists `kR`/`Wte` (`Motion`, `User 1`, `User 2`) belong to Peak, not the Circuit family. Real packs use the field loosely: Roboo tags its basses `1` (Arp) and its drums `3` (Bell), the YBC banks use only 0–3, and every genre seen is `0`. Treat the byte as a free user tag, not a reliable description of the sound.
+Category and genre are also firmware parameters: ids 0 and 1 in the table at `0x0802A62A` (enum, max 14 and 9, NRPN 2:64 and 2:65; the MIDI PDF lists Category as NRPN 64:2). So they go through the generic param paths (NRPN in/out, patch save and load), but no code fetches ids 0 or 1 directly (`synth_param_get` calls use other ids), and the image holds no category or genre names. The unit has no on-device filter or browser for them.
+
 | 27 | envelope Trigger (`env_retrigger`): firmware param id 2, NRPN 0:73, 0–1, default 0. The MIDI PDF lists it as `Trigger`, 0–1, default 0, and the user guide doesn't mention it. **On hardware (2026-10-25): 1 = retrigger, 0 = legato** (a second key held over the first replays the envelope only at 1). It is the panel's Shift + PWM toggle (light on = 1), and NRPN 0:73 sets it too, both checked by reading the current patch back. To hear it, use a pluck (attack 0, decay ~70, sustain 0); with sustain at maximum both sound the same. |
 | 28–40 | unused: there is no firmware param-table record for patch offsets 19–31. They are `00` in `Initial Patch`, `Classic Mono`, all 64 Roboo patches and all 64 YBC patches. |
 | 41–134 | parameters; 8-bit ones split over two bytes (high 7 bits, then the low bit as `0x00`/`0x40`, see below) — offsets per the community PDF (osc1/osc2 from 41, mixer, filter, env, LFO, distortion, 93–133 mod matrix, 134 selected routing) |
@@ -114,8 +116,17 @@ So slots 64–127 are probably left over from a 4-page design. A type-1 SysEx sl
 
 On hardware (#5, `docs/hw-test-patch-slots.md`), with `Min 3rd` written to flash slot 64, PC 64, 96, 104 and 127 all loaded the built-in `Initial Patch`, also after a power cycle. The path that substitutes the template isn't traced: the load handler `FUN_08019AE4` has a port (`+0x34`) that copies `Initial Patch` with no slot argument, and the setter posts through a port chain (`FUN_08014D2E`) not yet resolved.
 
+## Coarse tune
+
+The engine doesn't quantise coarse tune to semitones. `synth_update_osc1` / `synth_update_osc2` pass the 8-bit coarse value (param id 6 for Osc 1) through `FUN_0801D028`:
+
+- The byte table at `0x08029B01` (256 signed entries) maps the value to tenths of a semitone, −120…+120, so the range is ±1 octave. Each whole semitone appears twice (a 2-step plateau, e.g. values 127 and 128 are both 0), and the steps in between are tenths.
+- The table at `0x08029D1C` gives the number of sub-steps per semitone: 10, or 9 for semitones 3, 6 and 10 (their tenth 9 is missing from the first table, so the 255 positions fit ±12 semitones).
+- The result is `semitones · 256 + tenths · 256 / divisor`, shifted left by 3, so 1 semitone = `0x800` in the oscillator's pitch word. Fine tune (±100 cents) uses the same scale: `(fine − 101) · 256 / 100 << 3` (`0x080220D2` subtracts 101, one more than the table's centre 100, so the stored centre sits 1 cent flat unless the param store holds an offset; not checked). In `osc_pitch_cv_update` an octave is `0xC0000` (1 semitone = `0x10000`).
+
+So coarse moves in ~0.1-semitone steps that stay on each semitone for one extra step. Not checked by ear on the unit.
+
 ## Open items
-- Coarse tune spans −128…127. The user guide gives the range as ±1 octave (p. 18 control list and the oscillator section), so about 10.7 steps per semitone. Whether the engine quantises to semitones is not traced.
 - Request message (`0x40`): confirmed on hardware, current patch only (`40 00`).
 - Why program change ≥ 64 loads the `Initial Patch` template instead of the flash slot.
 - The in-session patch copy is in `docs/session-format.md`.
