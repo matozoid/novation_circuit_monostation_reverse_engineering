@@ -250,7 +250,7 @@ Live input reaches the recorder hub through merger stage 3 (above). The hub (0x1
 
 All three do nothing unless the transport cell (hub `+8`, transport `+0x1C`) has field 0 ≠ 0, field 1 ≠ 0 and the third field = 0. That is presumably record armed, playing, and not some pending state. The order isn't confirmed.
 
-**Per-track recorders** (hub `+0x0C`/`+0x10`/`+0x14`) are 0x288-byte objects built by `FUN_08021128` (base vtable `0x08029F14`). They differ in lane count `+0x24`: track 0 has 42 lanes (vtable `0x080270FC`), track 1 has 12 and track 2 has 0. Byte `+0x284` enables velocity recording; it is 0 on track 2. Fields:
+**Per-track recorders** (hub `+0x0C`/`+0x10`/`+0x14`) are 0x288-byte objects built by `FUN_08021128` (base vtable `0x08029F14`). All three get the same vtable `0x080270FC` (`app_construct` loads it from two literals, `DAT_0800EBF4` and `DAT_0800EEEC`). They differ in lane count `+0x24`: track 0 has 42 lanes, track 1 has 12 and track 2 has 0. Byte `+0x284` enables velocity recording. `app_construct` sets it to 1 on tracks 0 and 1 and 0 on track 2, and nothing else writes it, so Mod Seq steps never record velocity. Fields:
 
 | Offset | Content |
 |--------|---------|
@@ -342,5 +342,5 @@ The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) 
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
-- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
+- Recording: the order of the transport-cell fields that gate the hub. Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
 - The 6th sync-out mask `0x80810` (the guide lists only 5 rates). Bits 0–1 of the MIDI settings byte: no reader found yet.
