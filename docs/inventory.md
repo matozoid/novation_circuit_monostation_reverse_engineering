@@ -227,7 +227,7 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 | Mod Seq track | per-step mod value as a matrix source; Smooth (Shift + Mod Seq) interpolates | partial |
 | Real-time recording | notes quantised to the nearest step (half-step rule), gate measured in micro-steps, velocity on Osc tracks | known (`docs/sequencer.md` *Recording*) |
 | Knob automation | 42 lanes on track 0, 12 on track 1, 96 values per lane per pattern; interpolation at fast rates | known |
-| Step editing | enter, delete, modify steps in Note / Velocity / Gate / Glide views | partial: which handlers write step cells (#8) |
+| Step editing | enter, delete, modify steps in Note / Velocity / Gate / Glide views | known (`docs/sequencer.md` *Step editing*); the step-edit writers of the patch change and per-step automation are open |
 | Clear, Duplicate (Shift + Clear) | steps, patterns, patches, sessions, automation | partial (`pattern_ctl_on_cell`) |
 | Mutate (Shift + Pattern Settings) | shuffles the steps between the pattern's start and end point (`pattern_ctl_on_cell`): for each position, `rng_read` picks a step from the remaining range and the two swap whole (note, velocity, gate, glide and the six micro-step cells on every page), so the notes stay but move. `seq_track_position` also uses the RNG for the random playback direction. | known |
 | Pattern octave (Shift + Oct) | transpose a recorded pattern | known |

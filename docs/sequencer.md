@@ -295,11 +295,39 @@ It then clears the held bit. When the note's pattern matches cell `+0x14`, the c
 
 **Record stop** (transport cell change, mask 7): the observer writes any pending patch change, calls `[7]` at the rounded position with the tick counter as release, and clears the touched-lanes and last-tick bitmaps.
 
+## Step editing (#8)
+
+The pad views never touch pattern memory. They write two cells of the track's **track patterns** object (`track_patterns_on_cell` `0x0801CBDE`, one per track), which copies the changes into the pattern:
+
+| Cell | Fields |
+|------|--------|
+| `+0x1C` | field 0 = pointer to the selected pattern's 140 bytes, field 1 = its automation rows |
+| `+0x20` | pattern settings: fields 0–2 = footer bytes `0x80`–`0x82` (step range, sync rate, direction) |
+| `+0x24` | **step cell**: fields 0–4 = step bytes 0–4 (note, velocity, gate, step parameter, patch change) |
+| `+0x28` | selection: field 0 = pattern, field 1 = step |
+| `+0x44` / `+0x48` | step edit active flag / bitmap of the automation lanes that hold a value on the selected step (bit `0x400` of word 1 = a patch change) |
+
+- **Write.** On a commit of the step cell, each dirty field `n` (mask bit `n`) is stored into byte `n` of step `selection.step` of the selected pattern. A commit of the settings cell stores footer bytes `0x80`–`0x82` the same way.
+- **Load.** `track_patterns_load_step` (`0x0801B972`) fills the step cell from the pattern when the selection or the pattern pointer changes. It unsubscribes itself (mask 0) around that commit, so the load doesn't write back, then resubscribes with mask `0x1F`.
+
+The view handlers that write the step cell:
+
+| Handler | Field |
+|---------|-------|
+| `keyboard_view_note_cell` `0x08023004` | 0 = note. On an empty step it first sets velocity `0x60` (when the view's `+0x59` flag is set) and gate 6. |
+| `velocity_view_pad_down` `0x08014050`, `modseq_level_view_pad_down` `0x08012F94` | 1 = `(pad + 1) × 8`, 127 for pad 15 |
+| `gate_view_pad_down` `0x080136F8` | 2 = `(pad + 1) × 6` on the first press. Each repeated press on the same pad takes one micro-step off (`pad × 6 + 5` … `pad × 6 + 1`), and the sixth goes back to the whole value, as the user guide describes. |
+| `glide_view_pad_down` `0x08012C54` | 3 = the glide value from table `0x08027BD9`; pressing the pad that matches the current value writes `FF` (none). Outside step edit it sets the track's glide parameter instead. |
+
+`step_view_pad_down` (`0x08013646`) selects the step: it writes the view's selection cell (field 1 = pad), sets the step edit flag and calls `step_view_edit_begin` (`0x08022ED8`). That function previews the step: it sends the step's patch change (id `0x50`) and every automation lane with a value on the step to the parameter sink, then sets a UI timer from the tempo (`60000 / (bpm × 24)` ms). `step_view_pad_up` restores the selection from `+0x8C` (or clears the flag when it is `FF`).
+
+Not traced yet: which code writes field 4 (a patch change chosen in step edit) and the automation values of the selected step when a knob turns during step edit.
+
 ## Open
 
 - The merge stages' note priority. (Osc 1/Osc 2 voice assignment in `FUN_080226BC` is in `docs/inventory.md` *Paraphonic voicing*; which mode sets its flag `0x20003204` to 1 is open.)
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
-- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#8): which UI handlers write step cells.
+- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#8): the writers of step field 4 and of per-step automation during step edit (*Step editing*).
 - The 6th sync-out mask `0x80810` (the guide lists only 5 rates). Bits 0–1 of the MIDI settings byte: no reader found yet.

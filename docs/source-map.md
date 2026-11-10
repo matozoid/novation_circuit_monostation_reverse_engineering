@@ -774,7 +774,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801B880` | `seq_track_positions_all` | 56 | positions of all tracks |
 | `0801B8B8` | `seq_set_clock` | 34 | set the sequencer clock source |
 | `0801B8DA` | `router_map_note` | 152 | router: map a note to its output |
-| `0801B972` | `cell_load_preset_row` | 196 | copies 5 bytes of an 8-byte table row into cell fields 0-4 |
+| `0801B972` | `track_patterns_load_step` | 196 | loads the selected step's bytes 0-4 into the step cell without writing back |
 | `0801BA36` | `seq_step_advance` | 634 | sequencer step advance |
 | `0801BCB0` | `session_ctl_clear_pending` | 60 | session control: clear the pending flag, post to the port |
 | `0801BCEC` | `nop_callback_a` | 2 | no-op callback |
@@ -838,7 +838,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801CB68` | `router_on_cell_thunk` | 8 | this-adjusting entry of `router_on_cell` |
 | `0801CB70` | `track_patterns_update_playing` | 58 | cell 0x30 = pattern value when the view's pattern is the playing one |
 | `0801CBAA` | `track_patterns_load_settings` | 52 | pattern bytes 0x80..0x82 into the settings cell |
-| `0801CBDE` | `track_patterns_on_cell` | 1056 | vt 08029f68: selected vs playing pattern, 0x8c-byte headers, 0x6c-byte step rows |
+| `0801CBDE` | `track_patterns_on_cell` | 1056 | vt 08029f68: copies step-cell and settings-cell edits into the selected pattern; selection, playing pattern, step-edit lane bitmap |
 | `0801CFFE` | `bipolar_x3` | 42 | (v-128)*3 with 0x7f/0x81 snapped to +-128 |
 
 ### synth_math

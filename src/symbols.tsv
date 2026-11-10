@@ -673,7 +673,7 @@
 0801b418 USBD_GetString
 0801b458 nor_spi_xfer
 0801b5c4 session_ctl_session_save
-0801b972 cell_load_preset_row
+0801b972 track_patterns_load_step
 0801bcb0 session_ctl_clear_pending
 0801bcec nop_callback_a
 0801bcee nop_callback_b
