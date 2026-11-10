@@ -12,7 +12,7 @@ builds in FUN_08018CA4, then 4 bytes of 0xFF. Layout:
     0x12498  track 1: 8 patterns x 140 bytes
     0x128F8  track 1 automation: 8 patterns x 12 lanes x 108 bytes
     0x15178  track 2: 8 patterns x 140 bytes (no automation)
-    0x155D8  7 bytes of further globals; 0x155DA = current patch slot
+    0x155D8  scale type, scale root, current patch slot (0x155DA), paraphonic mode, CV/Gate source, 2 group-3 slots
     0x15F5C  the session's patch: 126 bytes = bytes 9..134 of a 136-byte patch
 
 Pattern = 16 steps x 8 bytes + 12-byte footer: footer[0] = start step << 4 |
@@ -106,6 +106,15 @@ GLOBALS2_LEN = 7
 # Patch slot (0..63) the session's patch was loaded from: the controller's
 # current-patch observable (+0x64), the one step byte 4 is compared against.
 PATCH_SLOT_OFF = 0x155DA
+# Further globals (docs/session-format.md): swing sync rate (index into
+# SWING_SYNC_TICKS), scale type and root, paraphonic mode (0 = Mode 1,
+# 1 = Mode 2) and the Note CV/Gate source (0 = Osc 1, 1 = Osc 2, 2 = Mod Seq).
+SWING_SYNC_OFF = 0x42
+SWING_SYNC_TICKS = (2, 3, 4, 6, 8, 12, 16, 24)
+SCALE_TYPE_OFF = 0x155D8
+SCALE_ROOT_OFF = 0x155D9
+PARAPHONIC_OFF = 0x155DB
+CV_SOURCE_OFF = 0x155DC
 PATCH_OFF = 0x15F5C
 PATCH_LEN = 126
 
@@ -129,6 +138,11 @@ def header(image):
         "swing": image[SWING_OFF],
         "chains": [(image[o], image[o + 1]) for o in CHAIN_OFFS],
         "patch_slot": image[PATCH_SLOT_OFF],
+        "swing_sync": image[SWING_SYNC_OFF],
+        "scale_type": image[SCALE_TYPE_OFF],
+        "scale_root": image[SCALE_ROOT_OFF],
+        "paraphonic_mode": image[PARAPHONIC_OFF] + 1,
+        "cv_source": image[CV_SOURCE_OFF],
     }
 
 
@@ -207,6 +221,9 @@ def main(argv):
               f"flags=0x{h['flags']:x} colour={h['colour']}")
         print(f"patch: {patchbank.decode_meta(patch_message(image))['name']!r} "
               f"(slot {h['patch_slot']})")
+        print(f"swing sync={h['swing_sync']} scale type={h['scale_type']} "
+              f"root={h['scale_root']} paraphonic mode={h['paraphonic_mode']} "
+              f"cv source={h['cv_source']}")
         for t, (_, count, _, _) in enumerate(TRACKS):
             start, end = h["chains"][t]
             used = [i for i in range(count)

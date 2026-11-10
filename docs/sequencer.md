@@ -325,7 +325,7 @@ Not traced yet: which code writes field 4 (a patch change chosen in step edit) a
 
 ## Open
 
-- The merge stages' note priority. (Osc 1/Osc 2 voice assignment in `FUN_080226BC` is in `docs/inventory.md` *Paraphonic voicing*; which mode sets its flag `0x20003204` to 1 is open.)
+- The merge stages' note priority. (Osc 1/Osc 2 voice assignment in `FUN_080226BC` is in `docs/inventory.md` *Paraphonic voicing*; its flag `0x20003204` is paraphonic Mode 2, session byte `0x155DB`.)
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.

@@ -160,7 +160,7 @@ Switch word `0x20002F80` (24 bits over SPI3): bits 0–1 and 13–15 carry the b
 | USB-B (MIDI class compliant) | [8] | USB OTG_FS (`0x50000000`, ISR `0x0801EEFC`), ST USB device library + USB-MIDI class. The descriptors also name `"AUDIO Interface"`, but the UG says USB carries no audio. OTG_HS isn't used: no code references `0x40040000`, and its vector just branches to the FS handler. | known |
 | CLOCK OUT (5 V) | [4] | TIM2 one-shot pulse per tick mask (1/2/4/8/24 PPQN, `docs/sequencer.md` *Sync out*) | known |
 | CLOCK IN (2 PPQN) | [5] | edge interrupt (EXTI15_10, ISR `0x08023A79`), 12 ticks per pulse, tempo by least-squares fit | known |
-| NOTE OUT CV (1 V/oct) and GATE (5 V) | [6] | from Osc 1's notes, written in `synth_engine_update`: CV on the other SPI3 DAC channel (`(pitch − 0x180000) >> 8 × 0x767 / 10000 + 9`), gate via `output_pin_set` | known |
+| NOTE OUT CV (1 V/oct) and GATE (5 V) | [6] | from the voice that session byte `0x155DC` (RAM `0x20003205`) picks: 0 = Osc 1 (default, the only one the user guide mentions; in paraphonic Mode 2 the gate also follows Osc 2), 1 = Osc 2, 2 = track 2 (Mod Seq). Written in `synth_engine_update`: CV on the other SPI3 DAC channel (`(pitch − 0x180000) >> 8 × 0x767 / 10000 + 9`), gate via `output_pin_set` | known; the button that opens the source view (select3, `ui_root +0x44`) isn't traced |
 | AUX CV (±5 V) | [7] | SPI3 DAC channel, source chosen in the mod matrix (see *Aux CV output*) | known |
 | DC power 12 V | [9] | — | n/a |
 
@@ -193,7 +193,7 @@ Switch word `0x20002F80` (24 bits over SPI3): bits 0–1 and 13–15 carry the b
 | LFO | triangle, saw, square, sample-and-hold; free rate or 35 tempo-synced rates; key sync | `synth_update_lfo` (params `0x24`–`0x28`), `sine_lookup` | partial |
 | Modulation matrix | 4 sources (Env, LFO, Mod Seq, Velocity) × 8 destinations (Osc 1/2 pitch, Osc 1/2 PW, Amp, Filter, Dist, Aux CV), each with its own depth, all additive | 32 `mod_*` params, `engine_bind_buffers`, `synth_mod_sources_init`, `modmatrix_view_*` | partial |
 | Glide | per oscillator and per step; pitch slews toward the target in 16.16 fixed point | `osc_glide_step`, `synth_update_glide` | known |
-| Paraphonic voicing | Osc 1 and Osc 2 play separate notes (Modes 1 and 2, Shift + Scales) | `synth_note_on` / `synth_note_off`, `synth_voice_gate`; mode flag `0x20003204` | known for the engine: a track 0 note goes to Osc 1, and also to Osc 2 while Osc 2 holds no note; a track 1 note goes to Osc 2, and also to Osc 1 while Osc 1 is idle if the mode flag is 1. New notes win (last-note priority). On release of the sounding note the oscillator falls back to the nearest still-held note (the higher one on a tie), with its stored velocity. Which mode sets the flag to 1 isn't traced. |
+| Paraphonic voicing | Osc 1 and Osc 2 play separate notes (Modes 1 and 2, Shift + Scales) | `synth_note_on` / `synth_note_off`, `synth_voice_gate`; mode flag `0x20003204` | known for the engine: a track 0 note goes to Osc 1, and also to Osc 2 while Osc 2 holds no note; a track 1 note goes to Osc 2, and also to Osc 1 while Osc 1 is idle if the mode flag is 1. New notes win (last-note priority). On release of the sounding note the oscillator falls back to the nearest still-held note (the higher one on a tie), with its stored velocity. The flag is session byte `0x155DB` (0 = Mode 1, 1 = Mode 2), toggled by Shift + Scales (`docs/session-format.md`). |
 | Key tracking | filter cutoff follows pitch, 8 amounts | `keytrack_view_*`, param `0x1F` | known |
 | Patches | 64 user slots (2 pages of 32), load, save, preview, Init Patch (Shift + Patches), program change in | `patch_view_pads`, `patch_store_param`, `midi_ctl_program_change`; templates `Initial Patch` / `Classic Mono` | known |
 | Pot pickup | knob only takes over once it passes the stored value | setting byte `0x09` bit 3, `knob_flag_leds` | partial |
@@ -278,4 +278,4 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 
 - Check on the board that core C is the sub oscillator and that `0x2000086C` is the Audio In gain.
 - Confirm on the board that GPIOC pin 9 is the audio mute and GPIOE pin 11 is a heartbeat LED.
-- Merge-stage note priority, and which mode sets the paraphonic flag `0x20003204` to 1.
+- Merge-stage note priority.

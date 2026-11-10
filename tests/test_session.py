@@ -159,6 +159,12 @@ class InitImageTest(unittest.TestCase):
         self.assertEqual(h["struct_size"], session.STRUCT_SIZE)
         self.assertEqual((h["tempo"], h["swing"]), (120, 50))
 
+    def test_globals(self):
+        h = session.header(self.image)
+        self.assertEqual(session.SWING_SYNC_TICKS[h["swing_sync"]], 6)
+        self.assertEqual((h["scale_type"], h["scale_root"]), (0, 0))
+        self.assertEqual((h["paraphonic_mode"], h["cv_source"]), (1, 0))
+
     def test_empty_patterns(self):
         for t, (_, count, auto, _) in enumerate(session.TRACKS):
             for i in range(count):

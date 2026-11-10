@@ -21,7 +21,7 @@ All 370 automation lanes that hold data in the YBC sessions fit the lane format 
 | `0x00020` | 32 | name, space-padded |
 | `0x00040` | 1 | tempo, BPM (init 120) |
 | `0x00041` | 1 | swing (init 50) |
-| `0x00042` | 1 | `3` everywhere seen. Third field of the tempo/swing observable (tempo, swing, this), which the session controller loads and saves with them (`FUN_08019664` / `FUN_08019494`). Meaning TBD; the readers found so far go through generic accessors. |
+| `0x00042` | 1 | `3` everywhere seen. **swing sync rate**: third field of the tempo/swing observable (tempo, swing, this), which the session controller loads and saves with them (`FUN_08019664` / `FUN_08019494`). The clock copies it to its `+0x50`; it indexes the tick table `[2, 3, 4, 6, 8, 12, 16, 24]`, so the default 3 = 6 ticks = 1/16. Set in Swing Sync View (Shift + Tap). |
 | `0x00043` | 9 | 0 everywhere seen |
 | `0x0004C` | 3 × 4 | per-track pattern chain: byte 0 = first pattern, byte 1 = last pattern, then 2 bytes that are always 0. One group each for tracks 0, 1 and 2, at `0x4C`, `0x50` and `0x54`. |
 | `0x00058` | 16 × 140 | track 0 (synth / osc 1) patterns |
@@ -29,9 +29,9 @@ All 370 automation lanes that hold data in the YBC sessions fit the lane format 
 | `0x12498` | 8 × 140 | track 1 (osc 2) patterns |
 | `0x128F8` | 8 × 12 × 108 | track 1 automation (12 lanes per pattern) |
 | `0x15178` | 8 × 140 | track 2 (mod sequence) patterns, no automation |
-| `0x155D8` | 2 | fields 0 and 1 of a small observable that the UI constructor `FUN_0800FB5C` gets as its 7th argument. Meaning TBD. YBC: `0x155D8` always 0, `0x155D9` 0 except one `05`. |
+| `0x155D8` | 2 | **scale**: `0x155D8` = scale type (field 0, written by `scale_type_view_pad_down` `0x08014734` through the table at `0x08014764`), `0x155D9` = scale root note 0–11 (field 1, `scale_root_view_pad_down` `0x08014028`). The observable is UI constructor argument 7. YBC: `0x155D8` always 0, `0x155D9` 0 except one `05` (root F). |
 | `0x155DA` | 1 | **current patch slot** 0–63: the controller's current-patch observable (`+0x64`), the one step byte 4 is compared against. Every YBC session whose patch is in its pack has this slot. |
-| `0x155DB` | 2 | two observables, UI constructor arguments 8 and 9. On change the controller mirrors them into a settings block (`DAT_08019660` `+0xC` / `+0x10`). Meaning TBD. YBC: `0x155DB` is 0 or 1, `0x155DC` 0 except one `0x22`. |
+| `0x155DB` | 2 | two observables, UI constructor arguments 8 and 9 (controller `+0x68` / `+0x6C`). On change the controller (`FUN_08019494`) mirrors them through the `.data` pointer block at `0x20000864` (`+0xC`, `+0x10`) into two RAM flags. **`0x155DB` = paraphonic mode** → `0x20003204`: 0 = Mode 1 (only Osc 1 opens the VCA), 1 = Mode 2 (an Osc 2 note also plays Osc 1 while Osc 1 is idle, so Osc 2 notes are heard). Shift + Scales toggles it (`ui_root` button handler, button `0x10`); the Shift overlay lights Scales bright for 1, dim for 0. **`0x155DC` = Note CV/Gate source** → `0x20003205`: 0 = Osc 1 (in Mode 2 the gate also follows Osc 2), 1 = Osc 2, 2 = track 2 (Mod Seq) note value and gate. `synth_engine_update` writes that voice's pitch to the CV DAC (`spi_dac_write`) and its gate to the GATE pin; note on/off latch the source into `0x20002FA2`. The select3 view (`ui_root +0x44`, vtable `0x08027400`, pads 0–2) edits it; which button opens that view isn't traced, and the user guide documents CV as Osc 1 only. Loading does not clamp the value. YBC: `0x155DB` is 0 or 1, `0x155DC` 0 except one `0x22`, which is out of range (it would read past the 3-entry source table at `0x08029D10`). |
 | `0x155DD` | 2 | slots 6 and 0 of the third parameter group, set by ids `0x4C` and `0x4D` (no patch byte). Init `00 40`. `0x4C` is the track 2 step parameter (step byte 3). |
 | `0x155DF` | 0x97D | zero |
 | `0x15F5C` | 126 | the session's patch: bytes 9–134 of the 136-byte bank format (name, category, genre, params) |
@@ -133,4 +133,4 @@ The shared CCs reflect Novation's common CC layout across synths. The firmware t
 
 ## Open
 
-- Header byte `0x42`, and session bytes `0x155D8`–`0x155D9`, `0x155DB`–`0x155DC` and the group-3 slots at `0x155DD`–`0x155DE` (ids `0x4C`/`0x4D`). Candidates from the manual/screenshots: keyboard octave per oscillator, swing sync rate.
+- The group-3 slots at `0x155DD`–`0x155DE` (ids `0x4C`/`0x4D`). Header byte `0x42` and session bytes `0x155D8`–`0x155DC` are resolved (#55); which button opens the CV-source view is open.
