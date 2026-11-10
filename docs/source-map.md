@@ -953,7 +953,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
-| `0801FAC4` | `pattern_ctl_on_cell` | 1860 | pattern copy/clear: memcpy/memset of 0x6c-byte pattern records, vt_pattern_ctl slot 1 |
+| `0801FAC4` | `pattern_ctl_on_cell` | 1860 | pattern copy/clear (memcpy/memset of 0x6c-byte records), step-edit writes and clears of step byte 4 and automation lanes from pots and the patches view; vt_pattern_ctl slot 1 |
 | `08020208` | `pattern_ctl_on_cell_thunk` | 8 | this-4 adjust |
 | `08020210` | `session_ctl_patch_write` | 94 | session control: write a patch into the session |
 | `0802026E` | `session_ctl_patch_write_thunk` | 10 | this-4 adjust, vtable 0x08027084 |

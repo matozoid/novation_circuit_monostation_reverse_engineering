@@ -321,7 +321,20 @@ The view handlers that write the step cell:
 
 `step_view_pad_down` (`0x08013646`) selects the step: it writes the view's selection cell (field 1 = pad), sets the step edit flag and calls `step_view_edit_begin` (`0x08022ED8`). That function previews the step: it sends the step's patch change (id `0x50`) and every automation lane with a value on the step to the parameter sink, then sets a UI timer from the tempo (`60000 / (bpm × 24)` ms). `step_view_pad_up` restores the selection from `+0x8C` (or clears the flag when it is `FF`).
 
-Not traced yet: which code writes field 4 (a patch change chosen in step edit) and the automation values of the selected step when a knob turns during step edit.
+**Patch changes and automation in step edit** go through `pattern_ctl_on_cell` (`0x0801FAC4`), not the step cell's own writers. It takes `(track, lane, value)` events on two ports; tracks 0 and 1 only. Lane `0x2A` (42, one past track 0's last lane, the recorder's patch-change entry) means step byte 4.
+
+| Port | Event | Step edit active (`+0x44`) | Step edit off |
+|------|-------|----------------------------|---------------|
+| `+0x40` write | `(track, lane, v)` | lane `0x2A`: step cell field 4 = `v`. Other lanes: micro-step 0 of the selected step = `v`, micro-steps 1–5 cleared (`lane_write` / `FUN_0802323C`) | same |
+| `+0x3C` clear | `(track, lane)` | lane `0x2A`: field 4 = `FF`. Other lanes: the selected step's 6 micro-steps | lane `0x2A`: byte 4 = `FF` on all 16 steps. Other lanes: the whole lane of the pattern (`memset` 0x6C bytes) |
+
+Both then set or clear the lane's bit in the `+0x48` bitmap.
+
+Who posts them:
+- **Knobs.** The section pot handlers (`filter_view_pot` `0x08016324`; the osc, mixer, LFO, envelope and mod-matrix views read the same table) look up `(track, lane)` for the param id in `DAT_08023410` (`0x0802A1E4`, the record hub's table). After sending the param to the synth, a pot posts `(track, lane, value)` to the write port when its step-edit cell (view `+0x30`) is set. So a knob turned while a step is held writes one change point at the start of that step. With Clear held (view cell `+0x18` bit 0), a pot moved more than 20 raw units from its last position posts `(0, lane)` to the clear port instead and lights its LED red (`0x27`). That is the guide's "hold Clear and move the knob by 20 %", and it clears the whole pattern's lane unless a step is held.
+- **Patches view.** `patch_view_pads`, with its step-edit cell (`+0x40`) set, loads the slot as usual, then posts `(0, 0x2A, slot)` to the write port. The step's patch change is the slot number. Its `+0x24` port is not step edit: with Clear held it goes to the session controller (node `+0x10`), which overwrites the slot with `Initial Patch`. Its `+0x20` port (save mode) saves the current patch to the slot (`patch_mask_update`).
+
+Not traced: whether Record must be on for the pots' step-edit cell; the guide says to press Record first.
 
 ## Open
 
@@ -329,5 +342,5 @@ Not traced yet: which code writes field 4 (a patch change chosen in step edit) a
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
-- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#8): the writers of step field 4 and of per-step automation during step edit (*Step editing*).
+- Recording: the order of the transport-cell fields that gate the hub, what sets `+0x284` on tracks 0 and 1, and the track-1 recorder vtable (`DAT_0800EEEC`). Step entry (#8): whether the pots' step-edit cell needs Record on (*Step editing*).
 - The 6th sync-out mask `0x80810` (the guide lists only 5 rates). Bits 0–1 of the MIDI settings byte: no reader found yet.
