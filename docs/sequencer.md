@@ -172,7 +172,9 @@ Byte 1 & 7 is the analogue clock-out rate 1–5 (pads 17–21 = 1, 2, 4, 8, 24 P
 
 `FUN_08017EA8` (clock in) does nothing while clock Rx is off. In run state 2 (MIDI Start received, waiting) the first `F8` resets the timestamp rings and counters, re-arms the 1 ms timer and calls `FUN_08021790`, which plays tick 0, sets state 4 and sends the first `F8` out. After that, each `F8` increments `+0x54`. When the clock source is MIDI, the handler also forwards the `F8` to MIDI out (`+0x08`), so in slave mode clock out is a **thru** of the incoming clock. Every ms the engine turns `+0x54` into pending ticks (`+0x58`), timestamps them for the least-squares tempo estimate (`+0x68`/`+0x6C`, published with `FUN_0801AECC`) and plays the ticks.
 
-**Transport events** (`this + 8` interface; source 0 = MIDI in, 1 = the second adapter at transport `+0x5C`, presumably the panel):
+**Transport events** (`this + 8` interface; source 0 = MIDI in, through the adapter at transport `+0x58`; source 1 = the panel, through the adapter at `+0x5C`):
+
+- **Panel (source 1).** `ui_construct` gives `+0x5C` to the Record/Play view (`rec_view_button` `0x08015390`, view `+0x10`) along with Record's node `+0x60`. Pressing **Play** (button `0x21`) while playing (transport cell field 0) sends Stop. While stopped it sends **Start**, or **Continue** when Shift is held (the view's `+0x1C` is the Shift cell `ui_root +0x10`), which matches the guide's Shift + Play. **Record** (`0x20`) posts the inverse of field 1 to `+0x60`.
 
 - With source 0, all events are ignored while clock Rx is off. Start is also ignored while the clock source is analogue.
 - **Start** while already running is only forwarded to MIDI out, and only when slaved to MIDI.
@@ -359,5 +361,4 @@ The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) 
 - The merge stages' note priority. (Osc 1/Osc 2 voice assignment in `FUN_080226BC` is in `docs/inventory.md` *Paraphonic voicing*; its flag `0x20003204` is paraphonic Mode 2, session byte `0x155DB`.)
 - Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
-- What source 1 of the transport events is (panel Play?), and the `+0x60`… adapters.
 - Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
