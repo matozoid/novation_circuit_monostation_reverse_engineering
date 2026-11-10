@@ -230,9 +230,9 @@ Sequencer notes take this path (all objects built in `FUN_0800E1F8`):
 
    | Channels | Source | Treatment |
    |----------|--------|-----------|
-   | 0–2 | 0, probably the pads/keys | velocity forced to 96 when Fixed Velocity (MIDI settings byte 0 bit 1, cell `+0x6C`) is set |
+   | 0–2 | 0, the **panel keyboard**: `ui_construct` wraps the router's base-0 adapter (`+0x28`) in id-tagging note sinks (vtable `0x08027980`, ids 0/1/2) for the per-track `keyboard_view`s, plus one more (id 0) for another view | velocity forced to 96 when Fixed Velocity (MIDI settings byte 0 bit 1, cell `+0x6C`) is set |
    | 3–5 | 1, **sequencer** tracks 0–2 | |
-   | 6–7 | 2, probably MIDI in (tracks 0–1 only) | the transpose byte `*(router+0x0C)` is subtracted first |
+   | 6–7 | 2, **MIDI in** (tracks 0–1 only): the base-6 adapter (`+0x30`) is wrapped by the MIDI controller's note adapter (vtable `0x080271AC`) | the transpose byte `*(router+0x0C)` is subtracted first |
 
    For inputs, `FUN_0801B8DA` / `FUN_0801B058(router, source, track, note, vel)` map the note through the scale (`FUN_08018ECA`, scale object at `+0x08`), remember it per note (so retriggers and note-offs match), and call the sink `router + 0x34 + (track × 3 + source) × 4`, which is input `source` of the track's merger.
 3. **Per-track merger** (`FUN_08020FA0`, 0x28 bytes, vtable `0x08029F04`: `[0] FUN_08018940` noteOn, `[1] FUN_080188D8` noteOff, dispatching on the input id). It holds three merge stages (`FUN_08020D7C`, 0x30 bytes, two 5-note input buffers each, output back to the merger as ids 3/4/5) and three outputs `+0x1C`/`+0x20`/`+0x24`:
@@ -359,6 +359,5 @@ The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) 
 ## Open
 
 - The merge stages' note priority. (Osc 1/Osc 2 voice assignment in `FUN_080226BC` is in `docs/inventory.md` *Paraphonic voicing*; its flag `0x20003204` is paraphonic Mode 2, session byte `0x155DB`.)
-- Confirm sources 0 and 2 (keys, MIDI in) from their callers.
 - Which transport (USB / DIN) each `FUN_080186B8` call comes from, and how the first clock source wins; the source-detection bits `+0x4C` against the guide's priority rule (analogue first).
 - Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).
