@@ -1,0 +1,7 @@
+# C++ overlay proof: NoteSink (vtable 0x08027980, docs/class-diagram.md) rewritten as a C++
+# class. Each player and merger output forwards its notes through one, so if notes still
+# play on the device and the unit answers 0x70 with 802, C++ overlays work end to end.
+base = 800
+version = 802
+sources = ["notesink.cpp"]
+replace = ["note_sink_note_on", "note_sink_note_off"]

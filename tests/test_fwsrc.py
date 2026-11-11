@@ -16,7 +16,9 @@ HELLO = ROOT / "overlays" / "hello"
 HELLO_C = ROOT / "overlays" / "hello_c"
 RANDOMISE = ROOT / "overlays" / "randomise"
 TRANSPOSE = ROOT / "overlays" / "transpose"
+NOTESINK_CPP = ROOT / "overlays" / "notesink_cpp"
 HAVE_GCC = shutil.which("arm-none-eabi-gcc") is not None
+HAVE_GXX = shutil.which("arm-none-eabi-g++") is not None
 HAVE_BINUTILS = all(shutil.which(f"arm-none-eabi-{tool}")
                     for tool in ("as", "ld", "objcopy", "objdump"))
 
@@ -217,6 +219,33 @@ class Overlay800Test(unittest.TestCase):
         shutil.copytree(HELLO_C, ov)
         (ov / "hello.c").write_text('#include "firmware.h"\nstatic int calls;\n'
                                     'void main(void) { calls++; stock_main(); }\n')
+        fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[ov])
+        with self.assertRaises(fwsrc.subprocess.CalledProcessError):
+            fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
+
+    @unittest.skipUnless(HAVE_GXX, "arm-none-eabi-g++ not installed")
+    def test_notesink_cpp_replaces_vtable_slots(self):
+        """overlays/notesink_cpp (C++) changes only the version and the two note-sink
+        vtable slots; g++ makes note_on the same instructions as the stock body."""
+        fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[NOTESINK_CPP])
+        built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
+        changed = {i for i in range(len(self.image)) if built[i] != self.image[i]}
+        vtable = 0x08027980 - 0x0800C000
+        self.assertLessEqual(changed, {0x1B0, 0x1B1} | set(range(vtable, vtable + 8)))
+        self.assertEqual(built[0x1B0:0x1B2], b"\x02\x08")
+        on = int.from_bytes(built[vtable:vtable + 4], "little") - 1
+        stock_on = int.from_bytes(self.image[vtable:vtable + 4], "little") - 1
+        self.assertGreaterEqual(on, 0x0802BB20)
+        body = lambda img, addr: img[addr - 0x0800C000:addr - 0x0800C000 + 0x14]
+        self.assertEqual(body(built, on), body(self.image, stock_on))
+
+    @unittest.skipUnless(HAVE_GXX, "arm-none-eabi-g++ not installed")
+    def test_cpp_overlay_has_no_static_constructor(self):
+        ov = self.tmp / "ov"
+        shutil.copytree(NOTESINK_CPP, ov)
+        src = ov / "notesink.cpp"
+        src.write_text(src.read_text() + "\nstruct Boot { Boot() { stock_main(); } };\n"
+                       "static const Boot boot;\n")
         fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[ov])
         with self.assertRaises(fwsrc.subprocess.CalledProcessError):
             fwsrc.build(self.tmp / "src", self.tmp / "out.bin")

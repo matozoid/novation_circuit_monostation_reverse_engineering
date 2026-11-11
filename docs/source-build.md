@@ -17,8 +17,8 @@ Each user generates it locally from their own `firmware/*.syx`/`.bin` into `buil
 | `src/layout.tsv` | Ghidra's code/data map: addresses, kinds, data refs, function entries; no image bytes |
 | `src/layout-fixes.tsv` | hand corrections applied over it (same line syntax) |
 | `src/files.tsv` | `start end name [evidence]` address ranges, one source file each (see *Files*) |
-| `overlays/<name>/` | our own code: `overlay.toml` plus `.s`/`.c` files that replace stock functions (see *Overlays*) |
-| `overlays/include/firmware.h` | prototypes of stock functions for C overlays |
+| `overlays/<name>/` | our own code: `overlay.toml` plus `.s`/`.c`/`.cpp` files that replace stock functions (see *Overlays*) |
+| `overlays/include/firmware.h` | prototypes of stock functions for C and C++ overlays |
 | `src/symbols.tsv` | `addr name [note]` names from `docs/*.md` (895: every function, plus vectors, vtables and tables; `docs/source-map.md` gives each function's purpose) |
 
 ## Usage
@@ -51,7 +51,7 @@ the generated tree, so features stay out of the generated source:
 |-----|---------|
 | `base` | stock version the overlay is written for; must match the image header (800) |
 | `version` | optional: the BCD version written into the image header (`0x70` reply) |
-| `sources` | `.s` and `.c` files in the overlay directory |
+| `sources` | `.s`, `.c` and `.cpp` files in the overlay directory |
 | `replace` | stock function names (from `src/symbols.tsv`) the overlay defines |
 
 **Redirect, not move.** A replaced function's stock body stays at its address, renamed
@@ -86,10 +86,33 @@ from `docs/source-map.md` and the decompiles. libgcc is linked last, so helpers 
 (64-bit division, double arithmetic) come from it only when the image lacks them. No
 `.data`/`.bss`: use `const` data or the free RAM in `docs/hardware.md`.
 
+**C++ overlays.** `build` compiles `.cpp` with `arm-none-eabi-g++` (shipped in the same
+`gcc-arm-none-eabi` package) and `-std=gnu++17 -Os -ffreestanding -fno-exceptions -fno-rtti
+-fno-threadsafe-statics -fno-use-cxa-atexit -Wall -Wextra`, no unwind tables. The stock app
+is C++ built with GCC the same way: its vtables have 0 RTTI words and newlib's
+`_init`/`_fini` are in the image. `firmware.h` wraps its declarations in `extern "C"`, so a
+replaced function is an `extern "C"` function with the stock name. It can call a class
+method non-virtually (`self->Class::method()`). A class that describes a stock object
+needs the stock field offsets (check them with `static_assert(offsetof(...))`). Define its
+virtual methods inside the class: then g++ emits no vtable of its own, and the stock
+constructor's vtable stays in use. The overlay has no C++ runtime:
+- **No static constructors or destructors:** `firmware.ld` puts `.init_array`/`.ctors`
+  in a section that must stay empty ("overlays cannot have static constructors or
+  destructors"). Nothing would run them.
+- **No virtual destructors:** they need `operator delete`, which fails to link.
+- **Nothing that needs the C++ runtime:** no `new`, no exceptions, no `typeid` or
+  `dynamic_cast`.
+
+`overlays/notesink_cpp` (version 802) is the proof. It rewrites `NoteSink` (vtable
+`0x08027980`, `docs/class-diagram.md`) as a C++ class that implements `INoteSink`. Only the
+version and the vtable's two slots change, and g++ compiles `note_sink_note_on` to exactly
+the stock instructions.
+
 `overlays/hello` is the source twin of `patches/hello` (`main` wrapped by a tail call,
 version 801) and `overlays/hello_c` the same in C (`void main(void) { stock_main(); }`,
 which gcc makes a `b.w` tail call). `tests/test_fwsrc.py` checks that all three produce the
 same image, the one already run on the device, and that a C `static` variable fails to link.
+They also check that a C++ static constructor fails to link.
 
 `overlays/randomise` (#13, version 750: below stock 800, so Components offers to restore 1.2) is the first feature: it wraps `ui_button_event`
 so that Mutate in the Velocity, Gate or Glide view randomises only that step field, and

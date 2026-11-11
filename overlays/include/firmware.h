@@ -9,6 +9,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {                        /* stock names are C symbols, also from C++ overlays */
+#endif
+
 void stock_main(void);              /* main: init, then the soft-timer main loop */
 
 /* Cells (docs/source-map.md "Cells"): double-buffered values with subscribers. */
@@ -68,5 +72,9 @@ void stock_router_note_off(void *router, unsigned note, unsigned channel);
 
 void *memcpy(void *dst, const void *src, size_t n);
 void *memset(void *dst, int c, size_t n);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
