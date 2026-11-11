@@ -94,7 +94,7 @@ The syscall stubs are app code, `0x0801EEAC`–`0x0801EEFC`, just before the USB
 
 App code calls only `operator new`, `operator new[]`, `memcpy`, `memset`, `memcmp`, `memmove` and the five input-event `printf`s, plus `__libc_init_array` from `Reset_Handler`. Everything else in the table is pulled in by `printf`.
 
-The 28 bytes after the `.data` image (`0x0802BB04`–`0x0802BB20`, `8 × FF` then zeros) are unexplained.
+The 28 bytes after the `.data` image (`0x0802BB04`–`0x0802BB20`, `8 × FF` then zeros) are unexplained. `0x0802BB04` is also `_siccm`, the load address of an empty CCM `.data` section (`app_main` copies 0 bytes from it to `0x10000000`).
 
 ## Where the details are
 - Every controllable piece of hardware and every firmware feature, with status: `docs/inventory.md`.

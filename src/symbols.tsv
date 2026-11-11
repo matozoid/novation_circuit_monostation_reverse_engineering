@@ -987,3 +987,183 @@
 # --- data (source-map.md)
 080271bc vt_pattern_ctl
 0802941c calib_table                    50 steps x 0x20: word ptr, limits, type, step, setup, finish
+
+# --- data labels already described in docs (source-map.md Data)
+0800c000 g_pfnVectors                   vector table, firmware-map.md
+08026e3c calib_test_patch               0x4e-byte test patch, calib_load_patch
+08026e8a button_matrix_ids              64 matrix bits -> button id, inventory.md
+08026ecc pots_desc_encoders             pots_scan descriptor: Tempo/Swing, Mod Depth
+08026f10 core_a_timer                   inventory.md synth cores
+08026f2c core_b_timer
+08026f40 core_c_timer
+08027400 vt_select3_view
+080274fc pots_desc_osc                  pots_scan descriptor: Osc Coarse, Fine/PW
+080275e8 vt_pad_state
+08027988 pot_curve_osc
+08027a98 pots_desc_main                 pots_scan descriptor: 12 pots + 4 faders
+08027ba4 vt_container_view
+08027bec vt_gate_view
+08027c78 pad_note_map   
+08027db2 led_pair_colours
+08027dc0 knob_value_ranges
+08028e96 usb_device_desc
+08028ea8 usb_str_interface
+08028ee8 usb_config_desc
+080290d4 rgb_led_channels               frame offset per colour channel
+08029b01 coarse_tenths                  sysex-spec.md
+08029d10 cv_source_cells
+08029d1c semitone_substeps              sysex-spec.md
+08029dca rgb_led_slots                  RGB LED -> first channel in rgb_led_channels
+08029ed4 sysex_prefix_mdlith            sysex-handlers.md
+08029f94 vt_merge_stage                 sequencer.md
+0802a0be mono_led_sources
+0802a168 view_code_slots                session-format.md
+0802a1e4 param_lanes                    sequencer.md
+0802a5e8 sine_quarter
+0802ab24 ui_colours                     colour role -> palette index
+0802ae2c std_nothrow
+0802aeec _sidata                        source-build.md
+0802bb04 _siccm                         empty CCM .data load image
+08028eb8 usb_str_config
+08028ec5 usb_str_manufacturer
+08028ed3 usb_str_product
+08028f61 str_main                       image tag (str_image_tags)
+08028f66 str_boot
+080293f3 str_user_session               32-byte space-padded default session name
+0802816b str_log_slider                 input_log_* printf formats
+08028182 str_log_encoder
+080281a9 str_log_pot
+080281c5 str_log_button
+080281e4 str_log_pad
+0802ae94 str_printf_flags               newlib-nano vfprintf
+0802ae9a str_printf_lengths
+0802ae9e str_printf_floats
+0802aea5 str_hex_upper
+0802aeb6 str_hex_lower
+0802aee0 __init_array_start
+0802aee8 __fini_array_start
+0802a02c synth_update_fns               13 section update functions
+
+# vtables named after their slot functions (source-map.md Data)
+08026fa0 vt_cell_mirror
+08026fac vt_synth_routing
+08026fd8 vt_forward_adapter
+08027090 vt_bool_invert_adapter
+08027138 vt_clock_state
+08027174 vt_param_set_adapter
+080271e0 vt_patch_store
+080271fc vt_modseq_output
+0802725c vt_midiout_param
+0802728c vt_cell_deferred_notify
+080272a0 vt_modmatrix_view
+080272e0 vt_patch_view
+08027324 vt_mode_buttons_view
+0802739c vt_dist_view
+08027444 vt_tempo_view
+08027484 vt_envelope_view
+080274c4 vt_velocity_view
+08027550 vt_modseq_level_view
+080275f8 vt_hold_button_view
+08027638 vt_view_base
+08027668 vt_mode_view
+080276b0 vt_flag_led_view
+080276f0 vt_filter_view
+0802777c vt_lfo_view
+080277bc vt_view_14
+08027840 vt_scales_view
+08027874 vt_sessions_view
+080278b8 vt_scale_root_view
+080278f8 vt_keytrack_view
+0802793c vt_patterns_view
+080279a0 vt_scale_type_view
+080279e0 vt_mixer_view
+08027a20 vt_rec_view
+08027a60 vt_settings_view
+08027adc vt_save_view
+08027b1c vt_ui_root
+08027b54 vt_view_leds
+08029f68 vt_track_patterns
+0802aa94 vt_step_view
+0802aad4 vt_glide_view
+0802ac1c vt_keyboard_view
+0802ac6c vt_octave_view                 8-byte header, vtable at +8
+0802adb4 vt_pattern_settings_view
+0802adec vt_osc_view                    8-byte header, vtable at +8 (0x0802ADF4)
+0802735c adc_sample_index               control -> sample in the ADC DMA buffer
+08026db4 adc_desc_power                 adc_filter_push/pots_scan descriptor, 1 channel
+08026df0 adc_desc_pads                  adc_filter_push descriptor, 32 pads
+08028e90 sysex_patch_hdr                F0 00 20 29 01 61
+08028efa usb_cfg_ac_header
+08029ec0 gpio_port_bases                GPIOA..GPIOE
+08029ef4 midi_ports                     port 0 USB, port 1 DIN
+08029c84 lfo_sync_mul                   35 u32, per LFO clock-sync rate
+08029ade lfo_sync_shift                 35 s8
+08029d28 lfo_rate_curve                 65 u16, interpolated by 4
+08029abc level_curve_lo                 patch_level gain curve below 1024
+08029c02 level_curve_hi                 patch_level gain curve, 1024 steps
+08029fa8 pw_mod_depth_curve             signed depth curve, synth_update_osc1/2
+0802a524 osc_period_octave              49 u32, one octave in 1/4 semitones
+0802810b led_pulse_full                 96-step triangle 0..255..0
+080280ab led_pulse_dim                  96-step triangle 102..0..102
+08028708 led_pulse_bright               96-step triangle 102..255..102
+08027e87 led_breathe                    384-step 255..102..255
+0802825a led_decay                      390-step 142..0
+08028d90 cc_param_map                   CC -> param id, 0x8000 = none
+08028768 cc_param_map_none              128 x 0x8000
+08028a68 nrpn_param_map                 3 x 128 u16, NRPN MSB 0..2
+08028d68 midi_ctl_reset_state           8 bytes, CC 121
+08027dc8 lfo_sync_rate_from_pot         pot 0..127 -> sync rate 0..34
+08027cb2 fine_from_pot                  pot 0..255 -> fine tune 0..200
+08027c88 note_pad_map                   semitone -> keyboard pad
+08027c6c note_pad_map_12
+08028211 param_update_group             param id - 2 -> group (?)
+08029eed sysex_reply_hdr                F0 00 20 29 00 00 00
+08029e72 mono_led_channels              21 u16 frame bytes
+0802acac led_curve_0                    256-entry 0..255 curve, LED driver
+0802a88a led_curve_1
+0802a98a led_curve_2
+0802a4c6 mux_addr_patterns              8 u16, PB6-PB8 address 0..7
+0802a4d6 sh_sel_0_0
+0802a4d8 sh_sel_0_3
+0802a4da sh_sel_0_1
+0802a4dc sh_sel_2_1
+0802a4e2 sh_sel_2_7
+0802a4e4 sh_sel_1_5
+0802a4ee sh_sel_2_2
+0802a4f0 sh_sel_1_0
+0802a4f2 sh_sel_1_2
+0802a4f4 sh_sel_1_7
+0802a4f6 sh_sel_2_3
+0802a4f8 sh_sel_2_5
+0802a4fa sh_sel_2_4
+0802a4fc sh_sel_1_4
+0802a504 sh_sel_2_6
+0802a506 sh_sel_0_5
+0802a508 sh_sel_2_0
+0802a50a sh_sel_1_6
+0802a50c sh_sel_0_2
+0802a51e sh_sel_1_1
+0802a520 sh_sel_0_4
+0802a4e6 sh_bank_patterns
+0802a4fe mux_inhibit_patterns
+0802a50e gpiod_addr_patterns
+0802935c dma_it_tcif0
+08029370 dma_it_tcif1
+08029384 dma_it_tcif2
+08029398 dma_it_tcif3
+080293ac dma_it_tcif4
+080293c0 dma_it_tcif5
+080290b0 nor_cs_fsm_table
+08029a7c scale_snap_table
+08027730 vt_root_input_view
+08027800 vt_view_08027800
+08027b90 view_08027800_led_slot
+08027bd0 view_08027800_mode_colour
+08027290 boot_combo_blank_session
+08027293 boot_combo_save_lock
+08027280 boot_combo_settings
+08027538 pots_main_ids
+080275ec pots_osc_ids
+08027c2c sessions_colour_map
+08029e9d button_matrix_bits
+08026f74 button_index_map

@@ -4,7 +4,7 @@ Every function in the generated firmware source (`docs/source-build.md`), one li
 grouped by source file (`src/files.tsv`). Names are ours: the image has no symbols.
 A name followed by `(?)` in the purpose is a best guess from the code alone.
 
-Coverage: 851 functions, 851 named, 851 with a purpose.
+Coverage: 851 functions, 851 named, 851 with a purpose. Named data labels are listed in *Data* at the end.
 
 App files are app code between two linker fills (`docs/source-build.md` *Input
 sections*), named for what they hold. Thunks (`*_thunk`) are the
@@ -15,6 +15,7 @@ this-adjusting entries that C++ multiple inheritance makes for a second base;
 
 The app is C++ (vtables, `operator new`, `_GLOBAL__sub_I`). `app_construct` builds one
 object graph at boot and never frees it.
+Classes, interfaces and how they link: `docs/class-diagram.md`.
 
 ### Cells
 
@@ -908,7 +909,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801E9F6` | `USBD_CtlSendData` | 32 | USB device library: send EP0 data |
 | `0801EA16` | `USBD_SetCfg` | 24 | class Init + USR DeviceConfigured |
 | `0801EA2E` | `__cxa_pure_virtual` | 2 | b . in 8 vtable slots |
-| `0801EA30` | `leds_render_rgb` | 312 | 82 RGB LEDs from colour table 0x080290d4 into 0x200005e0 |
+| `0801EA30` | `leds_render_rgb` | 312 | 82 RGB LEDs into 0x200005e0: rgb_led_slots gives each LED's first channel, rgb_led_channels each channel's frame byte |
 | `0801EB68` | `leds_render_mono` | 144 | 21 single-colour LEDs |
 | `0801EBF8` | `volume_cv_step` | 60 | slew the master volume (0x200028C4 byte 1 toward the Volume pot's byte 0) and write its CV to +2 |
 | `0801EC34` | `nor_async_read_status` | 60 | SPI command 0x05 (RDSR), 2 bytes |
@@ -1530,3 +1531,188 @@ C runtime, startup, IRQ handlers and the newlib-nano / libstdc++ objects (`docs/
 |---|---|---:|---|
 | `0802AEC8` | `_init` | 12 | crti/crtn prologue for .init |
 | `0802AED4` | `_fini` | 3148 | crti/crtn prologue for .fini (the vector table's tail points here in Ghidra) |
+
+## Data
+
+Named data labels (`src/symbols.tsv`). Any other `D_xxxxxxxx` label is either a
+literal-pool word inside a function or data that has not been identified yet. Size runs to
+the next label in the generated source, so it can be shorter than the object.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
+| `0800C000` | `g_pfnVectors` | 428 | vector table (`firmware-map.md`) |
+| `08026DB4` | `adc_desc_power` | 60 | `adc_filter_push`/`pots_scan` descriptor with one channel, read by `main` and `power_calib_task` |
+| `08026DF0` | `adc_desc_pads` | 60 | `adc_filter_push` descriptor of the 32 pressure pads (`main`) |
+| `08026E3C` | `calib_test_patch` | 78 | test patch `calib_load_patch` copies over the live patch |
+| `08026E8A` | `button_matrix_ids` | 66 | button-scan matrix bit -> button id, `0x22` = none (`inventory.md`) |
+| `08026ECC` | `pots_desc_encoders` | 60 | `pots_scan` descriptor of the two endless encoders, Tempo/Swing and Mod Depth (ids `0x32`–`0x35`) |
+| `08026F10` | `core_a_timer` | 20 | synth core A timer compare, TIM1_CH1 on PA8 (`inventory.md`) |
+| `08026F2C` | `core_b_timer` | 20 | core B, TIM3_CH2 on PB5 |
+| `08026F40` | `core_c_timer` | 20 | core C, TIM4_CH2 on PD13 |
+| `08026F74` | `button_index_map` | – | 34 bytes, identity 0–33: button id -> index into `button_matrix_bits` (`button_feature_enabled`, `app_main`) |
+| `08026FA0` | `vt_cell_mirror` | 12 | vtable: `cell_mirror_on_cell` |
+| `08026FAC` | `vt_synth_routing` | 12 | vtable: `synth_routing_on_cell` |
+| `08026FD8` | `vt_forward_adapter` | 12 | vtable: `forward_adapter` |
+| `08027090` | `vt_bool_invert_adapter` | 12 | vtable: `bool_invert_adapter` |
+| `08027138` | `vt_clock_state` | 28 | vtable: `clock_state_on_midi_clock`, `clock_state_on_cell` (+ thunk for the second base) |
+| `08027174` | `vt_param_set_adapter` | 12 | vtable: `param_set` |
+| `080271E0` | `vt_patch_store` | 28 | vtable: `patch_store_param`, `param_get_raw`, `param_get`, `patch_copy_in`, `patch_copy_out` |
+| `080271FC` | `vt_modseq_output` | 12 | vtable: `modseq_output` |
+| `0802725C` | `vt_midiout_param` | 12 | vtable: `midiout_param` |
+| `08027280` | `boot_combo_settings` | – | 3 bytes `{0, 0, 1}`, same index: set for Shift alone (System Settings view) (?) |
+| `0802728C` | `vt_cell_deferred_notify` | 4 | vtable: `cell_deferred_notify` |
+| `08027290` | `boot_combo_blank_session` | – | 3 bytes `{1, 0, 0}` indexed by the boot combo (0 = Shift + Clear, 1 = Shift + Save, 2 = Shift alone; `app_construct` reads buttons `0x19`, `0x16`, `0x17` via `button_feature_enabled`): set for Shift + Clear, and `app_construct` then skips the session load |
+| `08027293` | `boot_combo_save_lock` | – | 3 bytes `{0, 1, 0}`, same index: set for Shift + Save (toggle the Save lock) (?) |
+| `080272A0` | `vt_modmatrix_view` | 64 | view vtable, slots `modmatrix_view_*` |
+| `080272E0` | `vt_patch_view` | 68 | view vtable, slots `patch_view_*` |
+| `08027324` | `vt_mode_buttons_view` | 56 | view vtable, slots `mode_buttons_*` (button view `0x17`, see *Views*) |
+| `0802735C` | `adc_sample_index` | 64 | 64 bytes: descriptor channel -> sample in the ADC DMA buffer; field `+8` of every `adc_filter_push`/`pots_scan` descriptor |
+| `0802739C` | `vt_dist_view` | 56 | view vtable, slots `dist_view_*` |
+| `08027400` | `vt_select3_view` | 68 | vtable of the 3-pad selector view (`select3_view_render`) |
+| `08027444` | `vt_tempo_view` | 64 | view vtable, slots `tempo_view_*` |
+| `08027484` | `vt_envelope_view` | 64 | view vtable, slots `envelope_view_*` |
+| `080274C4` | `vt_velocity_view` | 56 | view vtable, slots `velocity_view_*` |
+| `080274FC` | `pots_desc_osc` | 60 | `pots_scan` descriptor of Osc Coarse and Fine/PW (ids `0x22`, `0x23`) |
+| `08027538` | `pots_main_ids` | – | 16 control ids of `pots_desc_main` (`0x20`, `0x21`, `0x24`–`0x31`) |
+| `08027550` | `vt_modseq_level_view` | 56 | view vtable, slots `modseq_level_view_*` |
+| `080275E8` | `vt_pad_state` | 4 | vtable of the shared per-track pad-colour state (`pad_state_on_cell`) |
+| `080275EC` | `pots_osc_ids` | – | 2 control ids of `pots_desc_osc` (`0x22`, `0x23`) |
+| `080275F8` | `vt_hold_button_view` | 64 | view vtable, slots `hold_button_view_*` |
+| `08027638` | `vt_view_base` | 48 | vtable `view_base_ctor` installs: every slot a no-op except `view_rgb_leds`/`view_mono_leds` |
+| `08027668` | `vt_mode_view` | 72 | view vtable, slots `mode_view_*` |
+| `080276B0` | `vt_flag_led_view` | 64 | view vtable, slots `flag_led_*` |
+| `080276F0` | `vt_filter_view` | 64 | view vtable, slots `filter_view_*` |
+| `08027730` | `vt_root_input_view` | – | vtable `ui_construct` installs on the 12-byte container view at `ui_root +8` after setting all 34 of its input-port bytes to 1: default slots, slot 10 `return_1`, no `on_cell` |
+| `0802777C` | `vt_lfo_view` | 64 | view vtable, slots `lfo_view_*` |
+| `080277BC` | `vt_view_14` | 68 | view vtable, slots `view_14_*` |
+| `08027800` | `vt_view_08027800` | – | 8-byte header, then the vtable of the 4-LED view `view_08027800_render` (slot 10, `ICellObserver` thunk at `+0xC`) |
+| `08027840` | `vt_scales_view` | 52 | vtable: `scales_view_pad_down`, `scales_view_rgb_leds` |
+| `08027874` | `vt_sessions_view` | 68 | view vtable, slots `sessions_view_*` |
+| `080278B8` | `vt_scale_root_view` | 64 | view vtable, slots `scale_root_view_*` |
+| `080278F8` | `vt_keytrack_view` | 68 | view vtable, slots `keytrack_view_*` |
+| `0802793C` | `vt_patterns_view` | 68 | view vtable, slots `patterns_view_*` |
+| `08027988` | `pot_curve_osc` | 24 | value curve of `pots_desc_osc` |
+| `080279A0` | `vt_scale_type_view` | 64 | view vtable, slots `scale_type_view_*` |
+| `080279E0` | `vt_mixer_view` | 64 | view vtable, slots `mixer_view_*` |
+| `08027A20` | `vt_rec_view` | 64 | view vtable, slots `rec_view_*` |
+| `08027A60` | `vt_settings_view` | 56 | view vtable, slots `settings_view_*` |
+| `08027A98` | `pots_desc_main` | 68 | `pots_scan` descriptor of 12 pots and 4 faders (ids `0x20`, `0x21`, `0x24`–`0x31`) |
+| `08027ADC` | `vt_save_view` | 64 | view vtable, slots `save_view_*` |
+| `08027B1C` | `vt_ui_root` | 56 | vtable of the UI root: `ui_root_pad_down` … `ui_root_on_cell` (+ thunk) |
+| `08027B54` | `vt_view_leds` | 60 | view vtable, slots `view_leds_*` |
+| `08027B90` | `view_08027800_led_slot` | – | mode (cell `+0x10`) -> which of the view's 4 LEDs shows it (`view_08027800_render`) |
+| `08027BA4` | `vt_container_view` | 44 | vtable of `container_view_ctor`'s view (pure render) |
+| `08027BD0` | `view_08027800_mode_colour` | – | mode 1–5 -> `ui_colours` role for that LED (mode 5 lit `0x60` when another flag is set) |
+| `08027BEC` | `vt_gate_view` | 64 | vtable of `gate_view_ctor`'s view |
+| `08027C2C` | `sessions_colour_map` | – | 64 bytes: a per-session byte (0–63) -> colour index 0–13 stored at view `+0x35`, `0xFF` -> 11 (`sessions_view_on_cell`) (?) |
+| `08027C6C` | `note_pad_map_12` | 12 | the same map for semitones 0–11, `scale_type_view_render` |
+| `08027C78` | `pad_note_map` | 16 | pad -> semitone of the two-row keyboard (`FF` = no key), the inverse of `note_pad_map`; `scale_type_view_pad_down` |
+| `08027C88` | `note_pad_map` | 16 | 13 bytes: semitone 0–12 -> pad of the two-row keyboard (white keys 8–15 below, black keys 1–6 above), `pad_state_on_cell` |
+| `08027CB2` | `fine_from_pot` | 256 | 256 bytes: pot 0–255 -> fine tune 0–200 (centre 100), `osc_view_pot` |
+| `08027DB2` | `led_pair_colours` | 14 | colours of `led_pair_from_table` |
+| `08027DC0` | `knob_value_ranges` | 4 | ranges of `knob_value_adjust` |
+| `08027DC8` | `lfo_sync_rate_from_pot` | 128 | 128 bytes: LFO Rate pot 0–127 -> clock-sync rate 0–34 (`lfo_view_pot` when clock sync is on) |
+| `08027E87` | `led_breathe` | 384 | 384-step curve 255→102→255 (slow breathing), `led_frame_compose` |
+| `080280AB` | `led_pulse_dim` | 96 | 96-step triangle 102→0→102, read with `led_pulse_full` at the same phase |
+| `0802810B` | `led_pulse_full` | 96 | 96-step triangle 0→255→0; `led_frame_compose` writes it (and its inverse) into palette entries each tick, so those colours pulse |
+| `0802816B` | `str_log_slider` | 23 | `"Slider %d moved to %d\n"`, `input_log_slider` |
+| `08028182` | `str_log_encoder` | 39 | `"Continuous pot %d moved with delta %d\n"`, `input_log_encoder` |
+| `080281A9` | `str_log_pot` | 28 | `"Pot %d value changed to %d\n"`, `input_log_pot` |
+| `080281C5` | `str_log_button` | 31 | `"Button %d changed state to %d\n"`, `input_log_button` |
+| `080281E4` | `str_log_pad` | 45 | `"Pad %d changed state to %d with velocity %d\n"`, `input_log_pad` |
+| `08028211` | `param_update_group` | 73 | 73 bytes (?): param id − 2 -> group 0–13 that `patch_store_param` passes on with the param's dirty bit |
+| `0802825A` | `led_decay` | 390 | 390-step falling curve 142→0, read with `led_breathe` at the same index by `led_frame_compose` |
+| `08028708` | `led_pulse_bright` | 96 | 96-step triangle 102→255→102, read with `led_pulse_full` at the same phase |
+| `08028768` | `cc_param_map_none` | 256 | 128 × `0x8000`: an all-unmapped CC map; `midi_in_parse` and `midiout_param` use it instead of `cc_param_map` when a flag in the controller state is set |
+| `08028A68` | `nrpn_param_map` | 768 | 3 × 128 `u16`: NRPN (MSB 0–2, LSB) -> firmware param id, `0x8000` = not mapped |
+| `08028D68` | `midi_ctl_reset_state` | 8 | 8 bytes `7F 7F 7F 7F 00 FF 00 00` copied into a controller's per-channel state on CC 121 (Reset All Controllers) and at construction |
+| `08028D90` | `cc_param_map` | 256 | 128 `u16`: incoming CC number -> firmware param id (`0x8000` = not mapped), e.g. CC 7 -> 18 (`patch_level`), CC 5 -> 9; `midi_in_parse` and `midi_in_cc_pair` |
+| `08028E90` | `sysex_patch_hdr` | 6 | `F0 00 20 29 01 61`, header compared by `sysex_patch_rx` and `session_ctl_on_cell` |
+| `08028E96` | `usb_device_desc` | 18 | USB device descriptor (`USBD_USR_DeviceDescriptor`) |
+| `08028EA8` | `usb_str_interface` | 16 | `"AUDIO Interface"` (`USBD_USR_InterfaceStrDescriptor`) |
+| `08028EB8` | `usb_str_config` | 13 | `"AUDIO Config"` (`USBD_USR_ConfigStrDescriptor`) |
+| `08028EC5` | `usb_str_manufacturer` | 14 | `"Focusrite A.E"` (`USBD_USR_ManufacturerStrDescriptor`) |
+| `08028ED3` | `usb_str_product` | 21 | `"Circuit Mono Station"` (`USBD_USR_ProductStrDescriptor`) |
+| `08028EE8` | `usb_config_desc` | 18 | start of the 0x74-byte USB configuration descriptor (`usbd_midi_GetCfgDesc`) |
+| `08028EFA` | `usb_cfg_ac_header` | 98 | class-specific AudioControl header inside `usb_config_desc`, returned by `usbd_midi_Setup` |
+| `08028F61` | `str_main` | 5 | `"MAIN"`, image tag checked by `app_header_valid` |
+| `08028F66` | `str_boot` | 5 | `"BOOT"`, image tag checked by `app_header_valid` |
+| `080290B0` | `nor_cs_fsm_table` | – | 3 × 12-byte `fsm_on_event` entries `{u8 event, u8 next_state, fn, arg}` of the NOR flash chip-select FSM (object `0x20000658`: count `+4`, state `+5`, table `+8`): event 1 → 1 (no action), 2 → 2 `gpio_reset` (CS low), 3 → 0 `gpio_set` (CS high), on the CS pin object `0x200005F4` (GPIOE pin mask `0x8000`, the pin `nor_spi_xfer` toggles) |
+| `080290D4` | `rgb_led_channels` | 534 | 267 `u16`: frame-buffer byte (in `0x200005E0`) of each RGB LED colour channel, three per LED |
+| `0802935C` | `dma_it_tcif0` | – | `DMA_IT_TCIF0` in the StdPeriph `DMA_IT_*` constant array `0x0802934C`–`0x080293EB` (8 streams × FEIF, DMEIF, TEIF, HTIF, TCIF). A DMA driver object in `.data` points to it, 12 bytes after its stream register address and followed by its IRQ number: DMA2 Stream0 (`0x40026410`, word at `0x2000068C`, IRQ 56 after it) |
+| `08029370` | `dma_it_tcif1` | – | `DMA_IT_TCIF1` in the StdPeriph `DMA_IT_*` constant array `0x0802934C`–`0x080293EB` (8 streams × FEIF, DMEIF, TEIF, HTIF, TCIF). A DMA driver object in `.data` points to it, 12 bytes after its stream register address and followed by its IRQ number: DMA2 Stream1 (`0x40026428`, word at `0x2000063C`, IRQ 57) |
+| `08029384` | `dma_it_tcif2` | – | `DMA_IT_TCIF2` in the StdPeriph `DMA_IT_*` constant array `0x0802934C`–`0x080293EB` (8 streams × FEIF, DMEIF, TEIF, HTIF, TCIF). A DMA driver object in `.data` points to it, 12 bytes after its stream register address and followed by its IRQ number: DMA1 Stream2 (`0x40026040`, word at `0x20000AF4`, IRQ 13) |
+| `08029398` | `dma_it_tcif3` | – | `DMA_IT_TCIF3` in the StdPeriph `DMA_IT_*` constant array `0x0802934C`–`0x080293EB` (8 streams × FEIF, DMEIF, TEIF, HTIF, TCIF). A DMA driver object in `.data` points to it, 12 bytes after its stream register address and followed by its IRQ number: DMA1 Stream3 (`0x40026058`, word at `0x20000618`, IRQ 14) |
+| `080293AC` | `dma_it_tcif4` | – | `DMA_IT_TCIF4` in the StdPeriph `DMA_IT_*` constant array `0x0802934C`–`0x080293EB` (8 streams × FEIF, DMEIF, TEIF, HTIF, TCIF). A DMA driver object in `.data` points to it, 12 bytes after its stream register address and followed by its IRQ number: DMA1 Stream4 (`0x40026070`, word at `0x200005D4`, IRQ 15) and DMA2 Stream4 (`0x40026470`, word at `0x20000A58`, IRQ 60) |
+| `080293C0` | `dma_it_tcif5` | – | `DMA_IT_TCIF5` in the StdPeriph `DMA_IT_*` constant array `0x0802934C`–`0x080293EB` (8 streams × FEIF, DMEIF, TEIF, HTIF, TCIF). A DMA driver object in `.data` points to it, 12 bytes after its stream register address and followed by its IRQ number: DMA1 Stream5 (`0x40026088`, word at `0x200009D8`, IRQ 16) |
+| `080293F3` | `str_user_session` | 32 | `"User Session"` padded with spaces to 32 bytes, the name `session_ctl_session_save` gives a new session |
+| `08029A7C` | `scale_snap_table` | – | 16 u32, one per scale in the guide's order (natural minor, major, Dorian, Phrygian, Mixolydian, melodic minor, harmonic minor, Bebop Dorian, blues, minor pentatonic, Hungarian minor, Ukrainian Dorian, Marva, Todi, whole tone, chromatic = 0). 2 bits per semitone (bits 2n–2n+1 for pitch class n): 0 = in the scale, 1 = snap down a semitone, 2/3 = snap up (`scale_snap_note`). `router_on_cell` copies the selected word to the scale object `+4`, then `scale_find_bounds` recomputes the lowest/highest reachable note |
+| `08029ABC` | `level_curve_lo` | 34 | 17 `u16`: gain curve for `patch_level` (param id 18) × a scale, inputs below 1024 (64 per point, interpolated) |
+| `08029ADE` | `lfo_sync_shift` | 35 | 35 `s8`, the shift that goes with `lfo_sync_mul` (right if positive, left if negative) |
+| `08029B01` | `coarse_tenths` | 257 | osc coarse value -> signed tenths of a semitone (`sysex-spec.md`) |
+| `08029C02` | `level_curve_hi` | 130 | 65 `u16`: the same curve for inputs 1024–65535 (1024 per point) |
+| `08029C84` | `lfo_sync_mul` | 140 | 35 `u32`, one per LFO clock-sync rate (param `lfo_clock_sync_rate` 0–34): 16.16 multiplier of the tempo increment, used by `synth_engine_update` when LFO clock sync is on |
+| `08029D10` | `cv_source_cells` | 12 | the 3 NOTE OUT CV/Gate source cells (`session-format.md`) |
+| `08029D1C` | `semitone_substeps` | 12 | sub-steps per semitone for `cents_to_pitch` (`sysex-spec.md`) |
+| `08029D28` | `lfo_rate_curve` | 130 | 65 `u16`: free-running LFO rate 0–255 -> phase increment, one point per 4 values, linearly interpolated |
+| `08029DCA` | `rgb_led_slots` | 164 | 82 `u16`: RGB LED -> its first channel in `rgb_led_channels` (LED `n` -> `3n`); the order is the RGB LED numbering of `inventory.md` |
+| `08029E72` | `mono_led_channels` | 42 | 21 `u16`: frame-buffer byte of each single-colour LED (`0xF6`–`0x10A`, after the RGB channels), `leds_render_mono` |
+| `08029E9D` | `button_matrix_bits` | – | 34 bytes: button id -> button-scan matrix bit, the exact inverse of `button_matrix_ids`; `button_feature_enabled` tests that bit in the bitmap `0x20000840` via `feature_bit` (also used by the SysEx handler in `sysex.s`) |
+| `08029EC0` | `gpio_port_bases` | 20 | GPIOA–GPIOE base addresses (`0x40020000` + `0x400` n), `sysex_dispatch` |
+| `08029ED4` | `sysex_prefix_mdlith` | 8 | `F0 4D 44 4C 49 54 48 00`, pad velocity-curve upload (`sysex-handlers.md`) |
+| `08029EED` | `sysex_reply_hdr` | 7 | `F0 00 20 29 00 00 00`, Novation header `sysex_reply_init` copies into a reply |
+| `08029EF4` | `midi_ports` | – | MIDI port objects: port 0 USB `0x20000FB0`, port 1 DIN `0x2000354C` (`sequencer.md` *MIDI in*) |
+| `08029F68` | `vt_track_patterns` | 4 | vtable: `track_patterns_on_cell` |
+| `08029F94` | `vt_merge_stage` | 16 | vtable of the note-router merge stage (`sequencer.md`) |
+| `08029FA8` | `pw_mod_depth_curve` | 132 | `s8` curve (−90…+90) that `synth_update_osc1`/`synth_update_osc2` look up for the pulse-width mod depth params |
+| `0802A02C` | `synth_update_fns` | 52 | 13 synth section update functions, `synth_update_glide` … `synth_update_modes`, then 3 × `synth_update_nop` |
+| `0802A0BE` | `mono_led_sources` | 164 | `mono_leds_compose` gather table for the 21 single-colour LEDs |
+| `0802A168` | `view_code_slots` | 116 | 4 bytes per view code; byte 0 = overlay slot in `ui_root +0xD4` (`session-format.md`) |
+| `0802A1E4` | `param_lanes` | 162 | param id -> (track, automation lane), the record hub's table (`sequencer.md`) |
+| `0802A4C6` | `mux_addr_patterns` | 16 | 8 `u16` GPIOB patterns, address 0–7 on PB6–PB8 (`n << 6`): pattern table (`+8`) of the CV mux address pin group `0x20000980` (`inventory.md`) |
+| `0802A4D6` | `sh_sel_0_0` | – | S&H mux select `{address 0, chip 0}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3); `TIM6_DAC_IRQHandler` ends the second half at this entry |
+| `0802A4D8` | `sh_sel_0_3` | – | S&H mux select `{address 3, chip 0}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4DA` | `sh_sel_0_1` | – | S&H mux select `{address 1, chip 0}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4DC` | `sh_sel_2_1` | – | S&H mux select `{address 1, chip 2}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4E2` | `sh_sel_2_7` | – | S&H mux select `{address 7, chip 2}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4E4` | `sh_sel_1_5` | – | S&H mux select `{address 5, chip 1}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4E6` | `sh_bank_patterns` | – | 4 u16 GPIOC patterns (0, PC13, PC14, both): the 4-way S&H bank of chip 0 address 5, pattern table of pin group `0x20000AC8` |
+| `0802A4EE` | `sh_sel_2_2` | – | S&H mux select `{address 2, chip 2}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3); `TIM6_DAC_IRQHandler` ends the first half of the pass at this entry |
+| `0802A4F0` | `sh_sel_1_0` | – | S&H mux select `{address 0, chip 1}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4F2` | `sh_sel_1_2` | – | S&H mux select `{address 2, chip 1}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4F4` | `sh_sel_1_7` | – | S&H mux select `{address 7, chip 1}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4F6` | `sh_sel_2_3` | – | S&H mux select `{address 3, chip 2}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4F8` | `sh_sel_2_5` | – | S&H mux select `{address 5, chip 2}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4FA` | `sh_sel_2_4` | – | S&H mux select `{address 4, chip 2}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4FC` | `sh_sel_1_4` | – | S&H mux select `{address 4, chip 1}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A4FE` | `mux_inhibit_patterns` | – | 3 u16 GPIOE patterns PE7/PE8/PE9: the active-low S&H mux inhibits, pattern table of pin group `0x20000AA8` |
+| `0802A504` | `sh_sel_2_6` | – | S&H mux select `{address 6, chip 2}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A506` | `sh_sel_0_5` | – | S&H mux select `{address 5, chip 0}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A508` | `sh_sel_2_0` | – | S&H mux select `{address 0, chip 2}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A50A` | `sh_sel_1_6` | – | S&H mux select `{address 6, chip 1}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A50C` | `sh_sel_0_2` | – | S&H mux select `{address 2, chip 0}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A50E` | `gpiod_addr_patterns` | – | 8 u16 GPIOD patterns 0–7 on PD0–PD2, pattern table of pin group `0x20000AB8` (?): a second 3-bit mux address; no code loads the group directly |
+| `0802A51E` | `sh_sel_1_1` | – | S&H mux select `{address 1, chip 1}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A520` | `sh_sel_0_4` | – | S&H mux select `{address 4, chip 0}`, the `sel` of an S&H table entry (`0x20000880`, `inventory.md` 1.3) |
+| `0802A524` | `osc_period_octave` | 196 | 49 `u32`: one octave of oscillator timer periods in quarter-semitone steps (each entry × 2^(−1/48)), interpolated by `osc_pitch_cv_update` |
+| `0802A5E8` | `sine_quarter` | 66 | quarter-wave table of `sine_lookup` |
+| `0802A88A` | `led_curve_1` | 256 | the same 256 bytes again; slot 1 of the curve table (`.data` initialiser) |
+| `0802A98A` | `led_curve_2` | 266 | the same 256 bytes again (+10 zero bytes); slot 2 of the curve table |
+| `0802AA94` | `vt_step_view` | 64 | view vtable, slots `step_view_*` |
+| `0802AAD4` | `vt_glide_view` | 80 | view vtable, slots `glide_view_*`, then a second base (`pad_send_level`) |
+| `0802AB24` | `ui_colours` | 248 | colour role -> palette index; views index it by role (e.g. track colours, Oct and flag LEDs) |
+| `0802AC1C` | `vt_keyboard_view` | 80 | view vtable: `keyboard_view_pad_down`, `pad_release`, `view_led_ptr`, `keyboard_view_on_cell`, second base `pads_flush_held` |
+| `0802AC6C` | `vt_octave_view` | 64 | 8-byte header, then the view vtable (`octave_view_render`) |
+| `0802ACAC` | `led_curve_0` | 264 | 256-entry rising curve 0→255 (slow start, gamma-like). The LED driver object at `0x20000680` points (`+0x18`) at a 5-pointer curve table at `0x20000B30`; `_GLOBAL__sub_I` puts this curve in slots 0, 3 and 4 |
+| `0802ADB4` | `vt_pattern_settings_view` | 56 | view vtable, slots `pattern_settings_*` |
+| `0802ADEC` | `vt_osc_view` | 64 | 8-byte header, then the osc view vtable at `0x0802ADF4` (`osc_view_pot`, `view_ab_on_event`, `osc_view_on_cell`) |
+| `0802AE2C` | `std_nothrow` | 1 | `std::nothrow`, the second argument of every `operator new(size, nothrow)` |
+| `0802AE94` | `str_printf_flags` | – | `"#-0+ "`, newlib-nano `_vfprintf_r` |
+| `0802AE9A` | `str_printf_lengths` | – | `"hlL"`, `_vfprintf_r` |
+| `0802AE9E` | `str_printf_floats` | – | `"efgEFG"`, `_vfprintf_r` |
+| `0802AEA5` | `str_hex_upper` | – | `"0123456789ABCDEF"`, `_printf_i` |
+| `0802AEB6` | `str_hex_lower` | – | `"0123456789abcdef"`, `_printf_i` |
+| `0802AEE0` | `__init_array_start` | – | `.init_array`: `frame_dummy` and one static constructor |
+| `0802AEE8` | `__fini_array_start` | – | `.fini_array`: `__do_global_dtors_aux` |
+| `0802AEEC` | `_sidata` | – | `.data` load image, copied to `0x20000000` by `Reset_Handler` (`source-build.md`) |
+| `0802BB04` | `_siccm` | – | load image of an empty CCM `.data`: `app_main` copies `0x10000000`–`0x10000000` from it, then clears an empty CCM `.bss` |
