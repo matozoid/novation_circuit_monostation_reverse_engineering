@@ -2,17 +2,20 @@
 
 `tools/fwsrc.py` turns the stock app image into Thumb-2 assembly that GNU as/ld rebuild
 **byte for byte**, split into files by `src/files.tsv`. It is the first step towards a full
-source tree: next come more file ranges, then converting functions to C one at a time.
+source tree. The goal is **full C++ source**, converted one function at a time, each one
+proved by compiling to the stock bytes (*Matching*).
 
 ## Copyright rule
 
-The firmware is Novation's code. Generated assembly (and later C) is **never checked in**.
+The firmware is Novation's code. Generated assembly and converted C/C++ are **never
+checked in** (the repo is public): converted functions live in a git-ignored directory.
 Each user generates it locally from their own `firmware/*.syx`/`.bin` into `build/`
 (git-ignored). The repo holds only the generator and metadata:
 
 | File | What it is |
 |------|------------|
-| `tools/fwsrc.py` | generator (`generate`), builder (`build`) and shift test (`shift`) |
+| `tools/fwsrc.py` | generator (`generate`), builder (`build`), shift test (`shift`) and function matcher (`match`) |
+| `tools/fetch_toolchain.py` | installs the stock compiler (GCC 5.3.1) into git-ignored `toolchains/` for `match` |
 | `tools/ghidra/ExportLayout.java` | Ghidra post-script that writes `src/layout.tsv` |
 | `src/layout.tsv` | Ghidra's code/data map: addresses, kinds, data refs, function entries; no image bytes |
 | `src/layout-fixes.tsv` | hand corrections applied over it (same line syntax) |
@@ -125,6 +128,49 @@ To regenerate the layout after Ghidra changes:
     "$GHIDRA_HOME/support/analyzeHeadless" ghidra-project monostation -process monostation-firmware-800.bin \
       -noanalysis -scriptPath tools/ghidra -postScript ExportLayout.java "$PWD/src/layout.tsv"
 
+## Matching
+
+`match` checks converted functions without building the image:
+
+    python3 tools/fwsrc.py match firmware/monostation-firmware-800.bin build/cpp/*.cpp --diff
+
+It compiles each `.c`/`.cpp` with the overlay flags plus `-ffunction-sections
+-fdata-sections -fno-reorder-functions`, so every function gets its own `.text.<name>`
+section. Then it links each function whose name is a stock function (`src/symbols.tsv`)
+at that function's stock address. Every other stock name is `PROVIDE`d at its stock
+address (functions with the Thumb bit), so calls, tail calls and literal-pool pointers
+resolve as in the image. Anything else (non-stock functions, `.rodata`, vtables g++
+emits) is parked at `0x08080000`, so a reference to it shows up as a difference.
+
+A function's compiled bytes, literal pool included, are compared with the image:
+
+| Status | Meaning |
+|--------|---------|
+| `MATCH` | the bytes are the stock bytes and reach the end of the stock code |
+| `SHORT` | the bytes agree but stop before the stock code ends |
+| `DIFF` | a byte differs; `--diff` prints stock and compiled instructions side by side |
+| `EXTRA` | the function's name is not a stock function, so it is not placed |
+
+A C++ method gets its stock name with an asm label: `int get() asm("cell_read");`. The
+exit code is 1 when any function is `DIFF` or `SHORT`.
+
+**Compiler version.** With `-Os`, arm-none-eabi-g++ 13.2 compiles `NoteSink::note_on` to
+the stock bytes, but `note_off` gets the same instructions with the registers allocated
+differently (`ldr r3, [r0, #8]` first in stock, `mov r3, r0` first in 13.2), whatever
+the source wording. A full match needs the GCC version the stock was built with.
+
+That version is **GNU Tools for ARM Embedded Processors 5-2016-q1-update** (GCC 5.3.1
+20160307, `gcc-arm-none-eabi-5_3-2016q1`). We searched the image for the newlib-nano
+`.text` sections (relocations masked) of the `thumb/v7e-m/fpv4-sp/hard` multilib from
+nine releases, 4.9-2015q3 through 7-2018q2. Only 5_3-2016q1 matches all of them:
+5_2-2015q4 lacks its `__swsetup_r`, `__swhatbuf_r`, `__smakebuf_r` and `__sputc_r`, and
+both 5_4 releases lack its `_malloc_r` and `_free_r`. GCC 6 and 7 match far fewer bytes.
+With this compiler both NoteSink functions match. `python3 tools/fetch_toolchain.py`
+downloads it from Launchpad
+(`https://launchpad.net/gcc-arm-embedded/5.0/5-2016-q1-update`, Linux x86-64), checks
+Launchpad's MD5 and unpacks it into git-ignored `toolchains/`; `match` then uses it by
+default (else `arm-none-eabi-` from PATH, with a note). `--cc PREFIX` picks another.
+
 ## How the generator works
 
 - **Layout.** `C` (instructions), `D` (defined data) and `U` (undefined) ranges tile the
@@ -188,12 +234,20 @@ Rules, checked by `generate`:
   dot (`L_x`, `La_x`). The other file refers to the twin; the file itself keeps the local
   name, because gas makes a relaxed branch to a global symbol wide.
 - **Alignment.** A section is aligned to its most aligned `.p2align`, and ARM gas pads the
-  section's size to that alignment. So a file whose data needs 4-alignment, or whose code
-  has a literal load or `adr` (gas warns about `Align(PC, 4)` in a less aligned section),
-  must start and end 4-aligned; otherwise `generate` fails. Code-only files need 2. This is
-  also a clue to the real compile units: an object with a literal pool starts and ends
-  4-aligned. Another clue: `stm32f4xx_it.c`'s handlers appear in reverse source order,
-  so GCC probably emitted every unit's functions last to first.
+  section's size to that alignment. A code piece that starts or ends at 2 mod 4 is
+  *biased*: its section is `.p2align 1` with a base label `.Lb_<start>`, and the linker
+  script puts `. = . + ((bias - .) & 3);` in front of it (bias = start mod 4). Its literal
+  loads and `adr` are spelled out relative to the base, because gas computes
+  `Align(PC, 4)` only in a 4-aligned section: a narrow load is
+  `.short 0x4800 | rd << 8 | OFF >> 2`, a wide one `ldr rd, [pc, #OFF]` (`adr` becomes
+  `addw`/`subw`), with `OFF = (T - B) - (((. - B) + 4 + bias) & ~3) + bias`. Gas evaluates
+  these after branch relaxation, so they also hold in `--relax` builds. Data alignment
+  inside a biased piece is `.fill`/`.space` of `((bias + (. - B)) & 2)` bytes. Gas does not
+  count `.short` as an instruction of an IT block, so the rest of such a block is emitted
+  as `.inst` (14 instructions on firmware 800). A clue to the real compile units: an
+  object with a literal pool starts and ends 4-aligned. Another: `stm32f4xx_it.c`'s
+  handlers appear in reverse source order, so GCC probably emitted every unit's functions
+  last to first.
 - **Input sections.** The linker fills the gap before a 4-aligned input section with
   `00 00`; gas pads inside a section with `00 bf` (`nop`). 58 app functions follow code
   plus a `00 00` fill, so each starts a new input section and an app file; the other two
@@ -203,6 +257,23 @@ Rules, checked by `generate`:
   input section is a whole compile unit. A boundary into a 2-aligned section, or at an
   address already 4-aligned, leaves no pad, so an app file can hold several units. The
   first, `app_main` (`0x0800C230`), runs 25.6 KB to `0x0801264C` with no pad.
+
+## Classes
+
+`src/classes.tsv` lists `addr class name`: a function (by entry address and its
+`symbols.tsv` name) that goes into `<class>.s` instead of its `files.tsv` file, so that
+each class can later become one `.cpp`. Stock compile units interleave classes (for
+example the views' `on_cell` methods, then their `pot` methods), so a class file holds
+several *pieces*, one section each (`.text.<file>.<start>`), and the linker script lists
+the sections in stock order. A piece runs from a listed function to the next function
+entry (or file start); what follows stays in its `files.tsv` file, and adjacent pieces of
+one file merge. Classes are named after their vtable (`vt_<class>`); a function is listed
+when its name starts with its class name. C, HAL and newlib code keeps its `files.tsv`
+file. `generate` fails on a line whose address is not a function entry with that name.
+The crossing rules above apply between pieces: a literal load into another piece of the
+same file is an error too. Firmware 800: 301 functions in 63 classes, 158 files, 289
+sections, byte-identical in both modes. `--classes FILE` on `generate` and `shift`
+replaces the list (an absent file means none).
 
 A split into 829 files, one per function where these rules allow, also builds
 byte-identical in both modes and passes the shift test.

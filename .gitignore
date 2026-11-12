@@ -22,3 +22,6 @@ YBC-Flippin-Grooves-Circuit.zip
 
 # Generated firmware source (tools/fwsrc.py generate): Novation's code, never check in
 build/
+
+# Reference compiler (tools/fetch_toolchain.py)
+toolchains/

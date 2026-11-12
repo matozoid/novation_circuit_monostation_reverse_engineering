@@ -19,6 +19,7 @@ TRANSPOSE = ROOT / "overlays" / "transpose"
 NOTESINK_CPP = ROOT / "overlays" / "notesink_cpp"
 HAVE_GCC = shutil.which("arm-none-eabi-gcc") is not None
 HAVE_GXX = shutil.which("arm-none-eabi-g++") is not None
+HAVE_REFERENCE_CC = fwsrc.reference_cc() != fwsrc.TOOL
 HAVE_BINUTILS = all(shutil.which(f"arm-none-eabi-{tool}")
                     for tool in ("as", "ld", "objcopy", "objdump"))
 
@@ -260,6 +261,37 @@ class Overlay800Test(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not .thumb_func functions in overlay code: main"):
             fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
 
+    @unittest.skipUnless(HAVE_REFERENCE_CC, "GCC 5.3.1 not in toolchains/ (tools/fetch_toolchain.py)")
+    def test_match_places_functions_at_stock_address(self):
+        """match compiles each stock-named function at its own address with the stock
+        compiler: both NoteSink functions are the stock bytes, and a function with a
+        non-stock name is reported, not placed."""
+        src = self.tmp / "ns.cpp"
+        src.write_text((NOTESINK_CPP / "notesink.cpp").read_text()
+                       + '\nextern "C" int not_stock(int x) { return x + 1; }\n')
+        results, _ = fwsrc.match(self.tmp / "stock.bin", [src])
+        status = {name: (addr, s) for name, addr, s, _ in results}
+        self.assertEqual(status["note_sink_note_on"], (0x080189CE, "MATCH"))
+        self.assertEqual(status["note_sink_note_off"], (0x080189BA, "MATCH"))
+        self.assertEqual(status["not_stock"], (None, "EXTRA"))
+
+    @unittest.skipUnless(HAVE_GCC or HAVE_REFERENCE_CC, "arm-none-eabi-gcc not installed")
+    def test_match_resolves_stock_calls(self):
+        """A call to another stock function links to its stock address, so a wrapper that
+        only tail-calls matches the stock bytes only if the stock does the same."""
+        src = self.tmp / "w.c"
+        src.write_text("void usb_midi_tx_watchdog_body(void);\n"
+                       "void main(void) { usb_midi_tx_watchdog_body(); }\n")
+        results, sections = fwsrc.match(self.tmp / "stock.bin", [src])
+        (name, addr, _, _), = results
+        self.assertEqual((name, addr), ("main", 0x0800C2D0))
+        code = sections[".text.main"][1]
+        # b.w to usb_midi_tx_watchdog_body (0x0801BDE4), resolved by PROVIDE
+        self.assertEqual(len(code), 4)
+        hi, lo = int.from_bytes(code[:2], "little"), int.from_bytes(code[2:], "little")
+        self.assertEqual(hi >> 11, 0x1E)
+        self.assertEqual(lo >> 14, 0x2)
+
     def test_narrow_branch_cannot_redirect(self):
         # pretend the beq target at 0x080126FE is a function
         fixes = self.tmp / "fixes.tsv"
@@ -331,24 +363,51 @@ class RoundTrip800Test(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             (tmp / "stock.bin").write_bytes(image)
-            files = tmp / "files.tsv"
+            files, none = tmp / "files.tsv", tmp / "no-classes.tsv"
             # one function per file, f1 at 2 mod 4: the fixed and relaxed builds stay identical
             files.write_text("080114c0 080114e6 f0\n080114ee 08011508 f2\n"
                              "080114e6 080114ee f1\n")
             for relax in (False, True):
-                fwsrc.generate(tmp / "stock.bin", tmp / "src", files_path=files, relax=relax)
+                fwsrc.generate(tmp / "stock.bin", tmp / "src", files_path=files, relax=relax,
+                               classes_path=none)
                 self.assertTrue((tmp / "src" / "f1.s").exists())
                 built = fwsrc.build(tmp / "src", tmp / "out.bin")
                 self.assertIsNone(fwsrc.first_difference(built, image))
             # a narrow branch (beq at 0x080126F0) would cross into the file
             files.write_text("080126f2 08012708 t\n")
             with self.assertRaisesRegex(ValueError, "reference across files: 0x080126f0"):
-                fwsrc.plan_source(tmp / "stock.bin", files_path=files)
-            # functions with literal loads need 4-aligned files: 0x080179A6 is 2 mod 4
+                fwsrc.plan_source(tmp / "stock.bin", files_path=files, classes_path=none)
+            # functions with literal loads in files that start or end at 2 mod 4 (0x080179A6):
+            # their loads are spelled out from the file's start, so both builds stay identical
             files.write_text("0801797c 080179a6 t\n080179a6 080179dc u\n")
-            with self.assertRaisesRegex(ValueError, r"loads in them: t \(0x0801797c-0x080179a6\), "
-                                                    r"u \(0x080179a6-0x080179dc\)$"):
-                fwsrc.generate(tmp / "stock.bin", tmp / "src", files_path=files)
+            for relax in (False, True):
+                fwsrc.generate(tmp / "stock.bin", tmp / "src", files_path=files, relax=relax,
+                               classes_path=none)
+                self.assertIn(".Lb_080179a6:", (tmp / "src" / "u.s").read_text())
+                built = fwsrc.build(tmp / "src", tmp / "out.bin")
+                self.assertIsNone(fwsrc.first_difference(built, image))
+
+    def test_classes(self):
+        """classes.tsv moves a function into its class file: a file of several sections
+        that the linker puts back in stock order; a wrong name is an error."""
+        image = fwsyx.decode_image(FIRMWARE_800.read_bytes())
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "stock.bin").write_bytes(image)
+            classes = tmp / "classes.tsv"
+            # two NoteSink methods, then one far away in another compile unit
+            classes.write_text("080189ba k note_sink_note_off\n080189ce k note_sink_note_on\n"
+                               "080114e6 k ui_root_clear_15d\n")
+            stats = fwsrc.generate(tmp / "stock.bin", tmp / "src", classes_path=classes)
+            text = (tmp / "src" / "k.s").read_text()
+            self.assertEqual(text.count(".section "), 2)
+            self.assertIn(".section .text.k.080189ba,", text)
+            self.assertEqual(stats["files"], len(list((tmp / "src").glob("*.s"))))
+            built = fwsrc.build(tmp / "src", tmp / "out.bin")
+            self.assertIsNone(fwsrc.first_difference(built, image))
+            classes.write_text("080189ba k note_sink_note_on\n")
+            with self.assertRaisesRegex(ValueError, "0x080189ba note_sink_note_on"):
+                fwsrc.plan_source(tmp / "stock.bin", classes_path=classes)
 
 if __name__ == "__main__":
     unittest.main()

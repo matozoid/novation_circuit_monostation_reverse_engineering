@@ -24,6 +24,7 @@ its encoding matches the image; otherwise it is emitted as `.inst`. Needs binuti
 import argparse
 import bisect
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,7 @@ LAYOUT = ROOT / "src" / "layout.tsv"
 LAYOUT_FIXES = ROOT / "src" / "layout-fixes.tsv"
 SYMBOLS = ROOT / "src" / "symbols.tsv"
 FILES = ROOT / "src" / "files.tsv"
+CLASSES = ROOT / "src" / "classes.tsv"
 SOURCE_MAP = ROOT / "docs" / "source-map.md"
 CPU_FLAGS = ["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
 TOOL = "arm-none-eabi-"
@@ -174,6 +176,63 @@ def cover_files(files, end):
             out.append((start, stop, name))
         pos = max(pos, stop)
     return out
+
+
+def load_classes(path=CLASSES):
+    """addr -> (class, function name) from classes.tsv (`addr class name [comment]`): the
+    function at addr, up to the next function entry, goes to <class>.s instead of its
+    files.tsv file. The name must be the function's symbol (plan_pieces checks it)."""
+    classes = {}
+    if Path(path).exists():
+        for n, line in enumerate(Path(path).read_text().splitlines(), 1):
+            f = line.split(None, 3)
+            if not f or f[0].startswith("#"):
+                continue
+            if len(f) < 3 or not FILE_NAME.match(f[1]) or f[1].startswith("gap_"):
+                raise ValueError(f"{path}:{n}: bad class line")
+            addr = int(f[0], 16)
+            if addr in classes:
+                raise ValueError(f"{path}:{n}: {addr:#010x} listed twice")
+            classes[addr] = (f[1], f[2])
+    return classes
+
+
+def plan_pieces(files, layout, names, classes, end):
+    """[(start, end, file)] covering the image in address order. A function listed in
+    classes.tsv, from its entry up to the next function entry (or file start), goes to its
+    class file; everything else to its files.tsv file (or gap_*). Neighbouring pieces of
+    one file merge. Each piece becomes one section, so a file can hold several."""
+    entries = sorted(layout.functions)
+    bad = [f"{a:#010x} {n}" for a, (_, n) in sorted(classes.items())
+           if a not in layout.functions or names.get(a) != n]
+    if bad:
+        raise ValueError("classes.tsv lines that are not a function entry with that name: "
+                         + ", ".join(bad))
+    base = cover_files(list(files), end)
+    starts = [f[0] for f in base]
+    cuts = set(starts)
+    for a in classes:
+        cuts.add(a)
+        n = bisect.bisect_right(entries, a)
+        cuts.add(entries[n] if n < len(entries) else end)
+    cuts = sorted(c for c in cuts if c < end)
+    out = []
+    for s, e in zip(cuts, cuts[1:] + [end]):
+        name = classes[s][0] if s in classes else base[bisect.bisect_right(starts, s) - 1][2]
+        if out and out[-1][2] == name:
+            out[-1] = (out[-1][0], e, name)
+        else:
+            out.append((s, e, name))
+    return out
+
+
+def section_names(pieces):
+    """start -> section: .text.<file>, or .text.<file>.<start> for a file of several pieces."""
+    count = {}
+    for _, _, name in pieces:
+        count[name] = count.get(name, 0) + 1
+    return {s: f".text.{name}" if count[name] == 1 else f".text.{name}.{s:08x}"
+            for s, _, name in pieces}
 
 
 Overlay = namedtuple("Overlay", "path base version sources replace")
@@ -363,6 +422,38 @@ def rewrite(insn, kind, label, relax=False):
     raise ValueError(kind)
 
 
+BASE_LABEL = ".Lb_"     # start of a biased piece
+
+
+def biased_load(insn, kind, label, piece, bias):
+    """A literal load or adr in a piece that starts at bias (2) past a 4-byte boundary:
+    gas would compute Align(PC, 4) from the section start, so the offset is spelled out
+    from the piece's start. A narrow one is a .short (gas cannot encode it otherwise; its
+    8-bit field is masked, so an offset out of range shows up as a wrong target in
+    `shift`, not as an error)."""
+    base = f"{BASE_LABEL}{piece:08x}"
+    off = f"(({label} - {base}) - (((. - {base}) + 4 + {bias}) & ~3) + {bias})"
+    if kind == "load":
+        m = PC_LOAD.match(insn.text)
+        op, regs = m.group(1), m.group(2)
+        if len(insn.raw) == 2:
+            rd = int(regs[1:])
+            return f".short\t0x4800 | ({rd} << 8) | (({off} >> 2) & 0xff)"
+        return f"{op}\t{regs}, [pc, #{off}]"
+    m = ADR.match(insn.text)
+    rd = REG_NUMBER.get(m.group(3), None)
+    if rd is None:
+        rd = int(m.group(3)[1:])
+    if len(insn.raw) == 2:
+        return f".short\t0xa000 | ({rd} << 8) | (({off} >> 2) & 0xff)"
+    if m.group(1).startswith("sub"):
+        return f"subw\t{m.group(3)}, pc, #-{off}"
+    return f"addw\t{m.group(3)}, pc, #{off}"
+
+
+REG_NUMBER = {"sb": 9, "sl": 10, "fp": 11, "ip": 12, "lr": 14}
+
+
 def inst(insn):
     if len(insn.raw) == 2:
         return f".inst.n\t{int.from_bytes(insn.raw, 'little'):#06x}"
@@ -422,10 +513,11 @@ class Generator:
         self.pads = dict(pads or {})    # address -> bytes inserted before it (shift test)
         self.markers = markers          # label every line M_<address> (shift test)
         self.end = LOAD_ADDRESS + len(image)
-        self.files = cover_files(list(files), self.end)
+        self.files = cover_files(list(files), self.end)    # pieces: (start, end, file)
         self.file_starts = [f[0] for f in self.files]
+        self.sections = section_names(self.files)
         self.exported = set()       # addresses whose label another file refers to
-        self.crossing = []          # references a file boundary must not split
+        self.crossing = []          # references a piece (section) boundary must not split
         self.pc_loads = set()       # files with PC-relative loads or adr: they need 4
         self.functions = set(layout.functions)
         self.symbols = names
@@ -434,11 +526,15 @@ class Generator:
         self.replaced = self.plan_replace(replace)  # stock entry -> (overlay name, body end)
         self.insn_at = {i.addr: i for insns in code.values() for i in insns}
         self.unit_starts = [u.start for u in layout.units]
+        # code pieces that start or end off a 4-byte boundary: their section is 2-aligned
+        # and 4-alignment inside is computed from the piece's own start (bias = start % 4)
+        self.biased = {s: s % 4 for s, e, _ in self.files
+                       if s in self.insn_at and (s % 4 or e % 4)}
         self.labels = {}            # address -> label
         self.aliases = set()        # function entries that also need a plain local label
         self.tables = {}            # jump-table entry address -> (directive, expression)
         self.tables_base = set()    # first entry of each jump table
-        self.stats = {"inst": 0, "insns": 0, "words": 0, "tables": 0}
+        self.stats = {"inst": 0, "it_inst": 0, "insns": 0, "words": 0, "tables": 0}
 
     def plan_replace(self, replace):
         """The stock body of a replaced function keeps its place as stock_<name>; the name
@@ -493,12 +589,16 @@ class Generator:
     def file_of(self, addr):
         return self.files[bisect.bisect_right(self.file_starts, addr) - 1][2]
 
+    def piece_of(self, addr):
+        return self.file_starts[bisect.bisect_right(self.file_starts, addr) - 1]
+
     def use(self, src, target, allowed=True):
-        """src refers to the label at target; a reference into another file exports it."""
+        """src refers to the label at target; a reference into another file exports it,
+        and only wide branches and data words may leave their piece (section)."""
         if self.file_of(src) != self.file_of(target):
             self.exported.add(target)
-            if not allowed:
-                self.crossing.append(f"{src:#010x} -> {target:#010x}")
+        if self.piece_of(src) != self.piece_of(target) and not allowed:
+            self.crossing.append(f"{src:#010x} -> {target:#010x}")
 
     def word_at(self, addr):
         return int.from_bytes(self.image[addr - LOAD_ADDRESS:addr - LOAD_ADDRESS + 4], "little")
@@ -513,6 +613,13 @@ class Generator:
                 if any(pc_target(i) for i in g):
                     for i in g:
                         self.plan_pc(i)
+                    if len(g) > 1 and any(self.text[i.addr].startswith(".short") for i in g):
+                        # gas does not count a .short as an IT-block instruction: the whole
+                        # group as .inst (only the load depends on where it lies)
+                        for i in g:
+                            if not self.text[i.addr].startswith(".short"):
+                                self.text[i.addr] = inst(i)
+                                self.stats["it_inst"] += 1
                 else:
                     plain.append(g)
         good = probe(plain, workdir)
@@ -638,6 +745,10 @@ class Generator:
             self.use(i.addr, target, kind == "branch" and len(i.raw) == 4)
             if kind != "branch":
                 self.pc_loads.add(self.file_of(i.addr))
+                piece = self.piece_of(i.addr)
+                if piece in self.biased:
+                    self.text[i.addr] = biased_load(i, kind, lab, piece, self.biased[piece])
+                    return
             if relax and kind == "branch" and self.is_function(target) \
                     and self.file_of(i.addr) == self.file_of(target):
                 # and a relaxed branch to a global symbol is always wide: use the local alias
@@ -649,22 +760,32 @@ class Generator:
         self.items = []             # (address, kind, size) of every emitted line
         self.padded = set()
         self.realign = False        # a pad since the last .p2align 2: data must align itself
-        sources = {}
+        self.bias = None            # (bias, base label) of the biased piece being emitted
+        sources, opened = {}, set()
         starts = {start: name for start, _, name in self.files}
 
         def output(addr, out):
-            """The list to emit addr into: a new file's when one starts there."""
-            if addr not in starts:
+            """The list to emit addr into: a new piece's section when one starts there."""
+            if addr not in starts or addr in opened:
                 return out
+            opened.add(addr)
             # code needs 2, and 4 with PC-relative loads: gas wants that for a safe
             # Align(PC, 4); data keeps its stock alignment
-            if addr in self.insn_at:
+            if addr in self.biased:
+                align = 1
+            elif addr in self.insn_at:
                 align = 2 if starts[addr] in self.pc_loads and addr % 4 == 0 else 1
             else:
                 align = 2 if addr % 4 == 0 else 1 if addr % 2 == 0 else 0
-            sources[starts[addr]] = out = [
-                GENERATED, ".syntax unified", ".thumb",
-                f".section .text.{starts[addr]}, \"ax\", %progbits", f".p2align {align}", ""]
+            out = sources.setdefault(starts[addr], [GENERATED, ".syntax unified", ".thumb"])
+            out += ["", f".section {self.sections[addr]}, \"ax\", %progbits",
+                    f".p2align {align}"]
+            if addr in self.biased:
+                out.append(f"{BASE_LABEL}{addr:08x}:")
+                self.bias = (self.biased[addr], f"{BASE_LABEL}{addr:08x}")
+            else:
+                self.bias = None
+            out.append("")
             return out
 
         out = None
@@ -682,9 +803,11 @@ class Generator:
                 self.emit_data(out, u)
         bad = []
         for start, end, name in self.files:
-            need = 1 << max([int(line.split()[-1]) for line in sources[name]
+            if start in self.biased:
+                continue
+            need = 1 << max([int(line.split()[-1]) for line in self.piece_lines(sources[name], start)
                              if line.lstrip().startswith(".p2align ")]
-                            + [2] * (name in self.pc_loads))
+                            + [2] * (name in self.pc_loads and start in self.insn_at))
             if start % need or end % need:
                 bad.append(f"{name} ({start:#010x}-{end:#010x})")
         if bad:
@@ -693,6 +816,14 @@ class Generator:
                              f"PC-relative loads in them: "
                              + ", ".join(bad))
         return {name: "\n".join(out) + "\n" for name, out in sources.items()}
+
+    def piece_lines(self, lines, start):
+        """The lines of the piece at start, from its .section line to the next one."""
+        head = f".section {self.sections[start]}, "
+        n = next(k for k, line in enumerate(lines) if line.startswith(head))
+        m = next((k for k in range(n + 1, len(lines)) if lines[k].startswith(".section ")),
+                 len(lines))
+        return lines[n:m]
 
     def local(self, text, src):
         """A local label in a line at src names its global twin when it lies in another
@@ -745,7 +876,13 @@ class Generator:
                 and pos not in self.labels \
                 and self.image[pos - LOAD_ADDRESS:pos - LOAD_ADDRESS + 2] == b"\x00\xbf"
             if pos % 4 == 0 or pad:
-                out.append("\t.p2align 2")
+                if self.bias:
+                    # 4-aligned from the piece's real start: 0 or 2 bytes, a nop if code
+                    bias, base = self.bias
+                    gap = f"(({bias} + (. - {base})) & 2)"
+                    out.append(f"\t.fill\t{gap} >> 1, 2, 0xbf00" if pad else f"\t.space\t{gap}")
+                else:
+                    out.append("\t.p2align 2")
                 self.realign = False
                 pos += 2 if pad else 0
             elif pos % 2 == 0:
@@ -774,10 +911,18 @@ class Generator:
             pos = stop
 
 
-def linker_script(files, overlays=False):
-    # overlay objects may have a section of the same name (gcc's .text.startup)
-    sections = "\n".join(f"        KEEP(*(EXCLUDE_FILE(*{OVERLAY_PREFIX}*) .text.{name}))"
-                         for _, _, name in files)
+def linker_script(files, overlays=False, biased=None):
+    """files: the pieces in address order. A biased piece first moves to its stock offset
+    from a 4-byte boundary (no bytes in a stock build)."""
+    names, biased, lines = section_names(files), biased or {}, []
+    for start, _, _ in files:
+        if start in biased:
+            # `.` is relative to .text, which starts 4-aligned (ABSOLUTE(.) here adds the
+            # address twice)
+            lines.append(f"        . = . + (({biased[start]} - .) & 3);")
+        # overlay objects may have a section of the same name (gcc's .text.startup)
+        lines.append(f"        KEEP(*(EXCLUDE_FILE(*{OVERLAY_PREFIX}*) {names[start]}))")
+    sections = "\n".join(lines)
     if overlays:
         # overlay code after the image; read-only: the stock startup neither copies .data
         # nor clears .bss for it
@@ -814,16 +959,17 @@ ASSERT(image_header == {LOAD_ADDRESS + IMAGE_HEADER:#x},
 
 
 def plan_source(image_path, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
-                files_path=FILES, overlays=(), version=None, **options):
+                files_path=FILES, overlays=(), version=None, classes_path=CLASSES, **options):
     """A Generator with every instruction and label planned; options go to Generator."""
     image, replace = apply_overlays(Path(image_path).read_bytes(), overlays, version)
     layout = load_layout(layout_path, fixes)
     check_layout(layout, len(image))
-    files = load_files(files_path)
+    symbols = load_symbols(symbols_path)
+    files = plan_pieces(load_files(files_path), layout, {**layout.functions, **symbols},
+                        load_classes(classes_path), LOAD_ADDRESS + len(image))
     layout.units = split_units(layout.units, [f[0] for f in files])
     code = disassemble(image_path, layout)
-    gen = Generator(image, layout, load_symbols(symbols_path), code, files=files,
-                    replace=replace, **options)
+    gen = Generator(image, layout, symbols, code, files=files, replace=replace, **options)
     with tempfile.TemporaryDirectory() as tmp:
         gen.plan(tmp)
     return gen
@@ -852,16 +998,17 @@ def write_source(gen, outdir, overlays=()):
         (outdir / OVERLAY_LIST).write_text(
             "".join(f"replace {name}\n" for name, _ in gen.replaced.values())
             + "".join(f"include {d}\n" for d in dirs))
-    (outdir / "firmware.ld").write_text(linker_script(gen.files, bool(overlays)))
+    (outdir / "firmware.ld").write_text(linker_script(gen.files, bool(overlays), gen.biased))
 
 
 def generate(image_path, outdir, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
-             files_path=FILES, relax=False, overlays=(), version=None):
+             files_path=FILES, relax=False, overlays=(), version=None, classes_path=CLASSES):
     overlays = [load_overlay(d) if not isinstance(d, Overlay) else d for d in overlays]
     gen = plan_source(image_path, layout_path, symbols_path, fixes, files_path,
-                      overlays=overlays, version=version, relax=relax)
+                      overlays=overlays, version=version, relax=relax, classes_path=classes_path)
     write_source(gen, outdir, overlays)
-    return dict(gen.stats, files=len(gen.files), exported=len(gen.exported))
+    return dict(gen.stats, files=len({f[2] for f in gen.files}), sections=len(gen.files),
+                exported=len(gen.exported))
 
 
 def overlay_list(srcdir, kind):
@@ -1007,10 +1154,11 @@ def shift_check(gen, new_image, amap):
     return errors
 
 
-def shift_test(image_path, pads, relax=False, keep=None, files_path=FILES):
+def shift_test(image_path, pads, relax=False, keep=None, files_path=FILES, classes_path=CLASSES):
     """Build the source with bytes inserted at the given addresses; return
     (number of lines checked, errors)."""
-    gen = plan_source(image_path, files_path=files_path, relax=relax, pads=pads, markers=True)
+    gen = plan_source(image_path, files_path=files_path, relax=relax, pads=pads, markers=True,
+                      classes_path=classes_path)
     with tempfile.TemporaryDirectory() as tmp:
         outdir = Path(keep or tmp)
         write_source(gen, outdir)
@@ -1020,6 +1168,151 @@ def shift_test(image_path, pads, relax=False, keep=None, files_path=FILES):
         data = build(outdir, outdir / "firmware.bin")
         amap = address_map(outdir / "firmware.elf")
     return len(gen.items), shift_check(gen, data, amap)
+
+
+# --- match: compile converted functions at their stock address, compare the bytes --------
+
+MATCH_PARK = FLASH_END  # code and data that are not stock functions go here (never matches)
+
+
+def elf_sections(path):
+    """{name: (addr, bytes)} of an ELF32 little-endian file's allocated PROGBITS sections."""
+    data = Path(path).read_bytes()
+    shoff, = struct.unpack_from("<I", data, 0x20)
+    shentsize, shnum, shstrndx = struct.unpack_from("<HHH", data, 0x2E)
+    headers = [struct.unpack_from("<IIIIIIIIII", data, shoff + i * shentsize)
+               for i in range(shnum)]
+    strtab = headers[shstrndx][4]
+    out = {}
+    for name, stype, flags, addr, off, size, *_ in headers:
+        if stype == 1 and flags & 2:     # SHT_PROGBITS, SHF_ALLOC
+            end = data.index(b"\0", strtab + name)
+            out[data[strtab + name:end].decode()] = (addr, data[off:off + size])
+    return out
+
+
+def function_extent(layout, start):
+    """(code end, next function): the end of the last code unit that belongs to the
+    function at start, and the next function's entry (its literal pool lies between)."""
+    entries = sorted(layout.functions)
+    i = bisect.bisect_right(entries, start)
+    nxt = entries[i] if i < len(entries) else LOAD_ADDRESS + 0x20000000
+    code_end = max((u.end for u in layout.units if u.kind == "C" and start <= u.start < nxt),
+                   default=start)
+    return code_end, nxt
+
+
+def match_script(placed, provides):
+    """Linker script: each converted function's section at its stock address, the rest
+    parked at MATCH_PARK, every other stock name provided at its stock address."""
+    lines = ["SECTIONS", "{"]
+    for name, addr in sorted(placed.items(), key=lambda kv: kv[1]):
+        lines.append(f"  .text.{name} {addr:#x} : {{ *(.text.{name}) }}")
+    lines += [f"  .park {MATCH_PARK:#x} : {{ *(.text .text.* .rodata .rodata.* .data .data.* "
+              f".bss .bss.* COMMON) }}",
+              "  /DISCARD/ : { *(.ARM.exidx* .ARM.attributes .comment .note*) }", "}"]
+    lines += [f"PROVIDE({name} = {value:#x});" for name, value in sorted(provides.items())]
+    return "\n".join(lines) + "\n"
+
+
+def compiler_flags(cc_prefix, cxx):
+    """CC_FLAGS / CXX_FLAGS, with the -std spelling an older gcc knows (before gcc 8:
+    gnu++1z and gnu11 instead of gnu++17 and gnu17)."""
+    flags = list(CXX_FLAGS if cxx else CC_FLAGS)
+    version = subprocess.run([cc_prefix + "gcc", "-dumpversion"], check=True,
+                             capture_output=True, text=True).stdout.strip()
+    if int(version.split(".")[0]) < 8:
+        flags = [{"-std=gnu++17": "-std=gnu++1z", "-std=gnu17": "-std=gnu11"}.get(f, f)
+                 for f in flags]
+    return flags
+
+
+def reference_cc():
+    """Prefix of the stock firmware's compiler (GCC 5.3.1, tools/fetch_toolchain.py) when it
+    is installed in toolchains/, else the arm-none-eabi- on PATH."""
+    gcc = ROOT / "toolchains" / "gcc-arm-none-eabi-5_3-2016q1" / "bin" / "arm-none-eabi-gcc"
+    return str(gcc)[:-3] if gcc.is_file() else TOOL
+
+
+def match(image_path, sources, includes=(), layout_path=LAYOUT, symbols_path=SYMBOLS,
+          fixes=LAYOUT_FIXES, cc_prefix=None):
+    """Compile C/C++ sources whose functions carry stock names (extern "C" or
+    `asm("name")` on a method), link each at its stock address and compare it with the
+    image. Returns [(name, addr, status, detail)]: status MATCH, DIFF or SHORT (the bytes
+    agree but stop before the stock code ends); functions with a non-stock name: EXTRA.
+    cc_prefix selects the compiler (e.g. an older toolchain's .../bin/arm-none-eabi-);
+    the default is reference_cc()."""
+    cc_prefix = cc_prefix or reference_cc()
+    image = Path(image_path).read_bytes()
+    layout = load_layout(layout_path, fixes)
+    names = load_symbols(symbols_path)
+    by_name = {names.get(a, f"FUN_{a:08x}"): a for a in layout.functions}
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        objs = []
+        for n, src in enumerate(map(Path, sources)):
+            o = tmp / f"{n}_{src.name}.o"
+            cxx = src.suffix == ".cpp"
+            cc, flags = ("g++" if cxx else "gcc"), compiler_flags(cc_prefix, cxx)
+            subprocess.run([cc_prefix + cc, *CPU_FLAGS, *flags, "-ffunction-sections",
+                            "-fdata-sections", "-fno-reorder-functions", f"-I{OVERLAY_INCLUDE}", f"-I{src.parent}",
+                            *(f"-I{d}" for d in includes), "-c", "-o", str(o), str(src)],
+                           check=True)
+            objs.append(o)
+        defined = set()
+        for o in objs:
+            table = subprocess.run([TOOL + "readelf", "-sW", str(o)], check=True,
+                                   capture_output=True, text=True).stdout
+            defined |= {f[7] for f in map(str.split, table.splitlines())
+                        if len(f) == 8 and f[3] == "FUNC" and f[6].isdigit()}
+        placed = {n: by_name[n] for n in defined if n in by_name}
+        provides = {}
+        for addr, name in names.items():
+            if name not in defined:
+                provides[name] = addr | 1 if addr in layout.functions else addr
+        script = tmp / "match.ld"
+        script.write_text(match_script(placed, provides))
+        elf = tmp / "match.elf"
+        subprocess.run([TOOL + "ld", "-T", str(script), "-o", str(elf),
+                        *map(str, objs)], check=True)
+        sections = elf_sections(elf)
+    results = []
+    for name in sorted(defined, key=lambda n: placed.get(n, MATCH_PARK)):
+        if name not in placed:
+            results.append((name, None, "EXTRA", "not a stock function name"))
+            continue
+        addr = placed[name]
+        code = sections.get(f".text.{name}", (addr, b""))[1]
+        stock = image[addr - LOAD_ADDRESS:addr - LOAD_ADDRESS + len(code)]
+        code_end, _ = function_extent(layout, addr)
+        diff = first_difference(code, stock)
+        if diff is not None:
+            results.append((name, addr, "DIFF", f"first difference at {addr + diff:#x}"))
+        elif addr + len(code) < code_end:
+            results.append((name, addr, "SHORT",
+                            f"{len(code)} bytes, stock code runs to {code_end:#x}"))
+        else:
+            results.append((name, addr, "MATCH", f"{len(code)} bytes"))
+    return results, sections
+
+
+def match_diff(image_path, name, addr, code, context=0):
+    """Side-by-side text of the stock and the compiled instructions of one function."""
+    with tempfile.NamedTemporaryFile(suffix=".bin") as f:
+        image = bytearray(Path(image_path).read_bytes())
+        off = addr - LOAD_ADDRESS
+        image[off:off + len(code)] = code
+        f.write(image)
+        f.flush()
+        end = addr + max(len(code), 2)
+        ours = objdump_range(f.name, addr, end)
+    stock = objdump_range(image_path, addr, end)
+    width = max((len(i.text) for i in stock), default=0)
+    lines = [f"{name}: stock | compiled"]
+    for a, b in zip(stock, ours):
+        mark = " " if a.raw == b.raw and a.addr == b.addr else "*"
+        lines.append(f"{mark} {a.addr:08x} {a.text:<{width}} | {b.text}")
+    return "\n".join(lines)
 
 
 def coverage(layout, names, doc_text):
@@ -1047,6 +1340,7 @@ def main(argv=None):
     g.add_argument("--layout", type=Path, default=LAYOUT)
     g.add_argument("--symbols", type=Path, default=SYMBOLS)
     g.add_argument("--files", type=Path, default=FILES)
+    g.add_argument("--classes", type=Path, default=CLASSES)
     g.add_argument("--relax", action="store_true",
                    help="no fixed .n/.w widths: gas picks them (for code that moves)")
     g.add_argument("--overlay", type=Path, action="append", default=[], metavar="DIR",
@@ -1059,6 +1353,7 @@ def main(argv=None):
                    help="insert N bytes before the line at ADDR (repeatable)")
     t.add_argument("--relax", action="store_true")
     t.add_argument("--files", type=Path, default=FILES)
+    t.add_argument("--classes", type=Path, default=CLASSES)
     t.add_argument("--keep", type=Path, help="leave the moved source and build here")
     b = sub.add_parser("build", help="assemble and link a generated tree")
     b.add_argument("srcdir", type=Path)
@@ -1069,17 +1364,30 @@ def main(argv=None):
     c.add_argument("--symbols", type=Path, default=SYMBOLS)
     c.add_argument("--doc", type=Path, default=SOURCE_MAP)
     c.add_argument("--list", action="store_true", help="print the missing addresses")
+    m = sub.add_parser("match", help="compile converted C/C++ functions at their stock "
+                       "address and compare them with the image")
+    m.add_argument("image", type=Path)
+    m.add_argument("sources", type=Path, nargs="+", help=".c / .cpp files")
+    m.add_argument("-I", dest="includes", action="append", default=[], metavar="DIR")
+    m.add_argument("--cc", metavar="PREFIX",
+                   help="compiler prefix, e.g. ~/gcc-arm-6/bin/arm-none-eabi- (default: GCC "
+                   "5.3.1 from toolchains/ (tools/fetch_toolchain.py), else arm-none-eabi- "
+                   "from PATH)")
+    m.add_argument("--diff", action="store_true",
+                   help="print stock and compiled instructions of each DIFF/SHORT function")
     args = parser.parse_args(argv)
 
     if args.cmd == "generate":
         try:
             stats = generate(args.image, args.outdir, args.layout, args.symbols,
                              files_path=args.files, relax=args.relax, overlays=args.overlay,
+                             classes_path=args.classes,
                              version=args.version)
         except ValueError as e:
             sys.exit(str(e))
-        print(f"{args.outdir}: {stats['insns']} instructions ({stats['inst']} as .inst), "
-              f"{stats['words']} pointer words, {stats['files']} files "
+        print(f"{args.outdir}: {stats['insns']} instructions ({stats['inst']} as .inst, "
+              f"{stats['it_inst']} more in IT blocks with a biased load), "
+              f"{stats['words']} pointer words, {stats['files']} files, {stats['sections']} sections "
               f"({stats['exported']} labels used across files)")
     elif args.cmd == "coverage":
         doc = args.doc.read_text() if args.doc.exists() else ""
@@ -1091,13 +1399,32 @@ def main(argv=None):
             for label, addrs in (("unnamed", unnamed), ("undocumented", undocumented)):
                 for a in addrs:
                     print(f"{label} {a:#010x}")
+    elif args.cmd == "match":
+        if args.cc is None and reference_cc() == TOOL:
+            print("note: GCC 5.3.1 not in toolchains/ (tools/fetch_toolchain.py); using "
+                  f"{TOOL}gcc from PATH, which may not match stock code", file=sys.stderr)
+        try:
+            results, sections = match(args.image, args.sources, args.includes,
+                                      cc_prefix=args.cc)
+        except subprocess.CalledProcessError as e:
+            sys.exit(f"{Path(e.cmd[0]).name} failed")      # its messages are above
+        for name, addr, status, detail in results:
+            where = f"{addr:08x}" if addr is not None else "--------"
+            print(f"{status:<5} {where} {name}: {detail}")
+            if args.diff and status in ("DIFF", "SHORT"):
+                print(match_diff(args.image, name, addr, sections[f".text.{name}"][1]))
+        counts = {s: sum(r[2] == s for r in results) for s in ("MATCH", "DIFF", "SHORT")}
+        print(", ".join(f"{n} {s.lower()}" for s, n in counts.items()))
+        if counts["DIFF"] or counts["SHORT"]:
+            sys.exit(1)
     elif args.cmd == "shift":
         pads = {}
         for spec in args.pad:
             addr, n = spec.split(":")
             pads[int(addr, 16)] = int(n, 0)
         try:
-            count, errors = shift_test(args.image, pads, args.relax, args.keep, args.files)
+            count, errors = shift_test(args.image, pads, args.relax, args.keep, args.files,
+                                       args.classes)
         except subprocess.CalledProcessError as e:
             sys.exit(f"{e.cmd[0]} failed: the moved source does not build")
         except ValueError as e:
