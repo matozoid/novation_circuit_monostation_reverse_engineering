@@ -17,7 +17,7 @@ FW_BASE = 0x0800C000
 PARAM_TABLE = 0x0802A62A           # 8 bytes per firmware parameter id
 
 # MIDI numbers from Novation's "Circuit Mono Station MIDI Parameters" PDF
-# (circuit-mono-station-midi-parameters-v1.pdf): a CC, a CC(8) pair whose
+# (private/docs/circuit-mono-station-midi-parameters-v1.pdf): a CC, a CC(8) pair whose
 # second CC is the first + 32, or an NRPN (MSB, LSB).
 PDF_MIDI = {
     "env_retrigger": ("nrpn", 0, 73),

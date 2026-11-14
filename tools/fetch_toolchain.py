@@ -8,7 +8,8 @@ matching newlib-nano code in the image (docs/source-build.md *Compiler version*)
 ST's STM32F4 Standard Peripheral Library V1.8.0 (STSW-STM32065) and USB OTG
 host/device library V2.2.1 (STSW-STM32046): `fwsrc.py build` compiles the drivers
 libraries.tsv links (docs/source-build.md *ST libraries*). st.com needs a login to
-download them, so put the zips in toolchains/ (or pass --archive) and run this.
+download them: the zips are kept in private/vendor/ (the private repo, CLAUDE.md), or
+put them in toolchains/, or pass --archive.
 
     python3 tools/fetch_toolchain.py [--dest toolchains] [--archive FILE]...
 
@@ -30,6 +31,7 @@ NAME = "gcc-arm-none-eabi-5_3-2016q1"
 ARCHIVE = NAME + "-20160330-linux.tar.bz2"
 URL = "https://launchpad.net/gcc-arm-embedded/5.0/5-2016-q1-update/+download/" + ARCHIVE
 MD5 = "5a261cac18c62d8b7e8c70beba2004bd"
+VENDOR = ROOT / "private" / "vendor"    # the private repo's copy of the ST zips
 # ST packages: name -> (directory in dest, archive name st.com serves, SHA-256). Each
 # unpacks into its directory (the USB zip has no top-level one of its own).
 ST_PACKAGES = {
@@ -149,13 +151,15 @@ def main():
         raise SystemExit("unknown archives: " + ", ".join(sorted(unknown)))
     fetch(dest, by_name.get(ARCHIVE))
     for name, (directory, archive, _) in ST_PACKAGES.items():
-        path = by_name.get(archive, dest / archive)
+        path = by_name.get(archive) or next(
+            (p for p in (dest / archive, VENDOR / archive) if p.is_file()), dest / archive)
         if package_dir(name, dest):
             print(f"already installed: {package_dir(name, dest)}")
         elif path.is_file():
             install_st(name, path, dest)
         else:
-            print(f"missing {archive}: download it from st.com into {dest} ({directory})")
+            print(f"missing {archive}: download it from st.com into {dest} or {VENDOR} "
+                  f"({directory})")
 
 
 if __name__ == "__main__":

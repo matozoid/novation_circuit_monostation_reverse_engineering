@@ -6,7 +6,7 @@ Two lists:
 2. **Firmware features**: everything the stock firmware (build 800, "firmware 1.2") implements in software, plus what this project's patches and overlays add.
 
 Each entry says how far it is understood and where the details are. Sources:
-- **UG**: the user guide (`circuit-mono-station-ug-en-v1-2.pdf`). Bracketed numbers like [16] are its panel callouts (pp. 13–19).
+- **UG**: the user guide (`private/docs/circuit-mono-station-ug-en-v1-2.pdf`). Bracketed numbers like [16] are its panel callouts (pp. 13–19).
 - **FW**: the decoded image (`docs/firmware-map.md`, `docs/source-map.md`).
 - **HW**: read from a unit.
 

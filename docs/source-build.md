@@ -264,7 +264,8 @@ Two ST packages are used:
 - **STM32 USB OTG host/device library V2.2.1** (STSW-STM32046): `usb_core.c`,
   `usb_dcd.c`, `usbd_core.c`, `usbd_ioreq.c`, `usbd_req.c`.
 
-st.com requires a login to download, so the user puts the zips in `toolchains/`.
+st.com requires a login to download. The zips are kept in the private repo's `private/vendor/`
+(or the user puts them in `toolchains/`).
 `tools/fetch_toolchain.py` checks each zip against a pinned SHA-256, unpacks it there and
 marks it with `.installed`. `--archive FILE` takes a zip from elsewhere. ST files are
 never committed: the git-ignored `toolchains/` holds them.
