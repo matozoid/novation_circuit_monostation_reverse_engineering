@@ -8,8 +8,7 @@ Coverage: 851 functions, 851 named, 851 with a purpose. Named data labels are li
 
 App files are app code between two linker fills (`docs/source-build.md` *Input
 sections*), named for what they hold. Thunks (`*_thunk`) are the
-this-adjusting entries that C++ multiple inheritance makes for a second base;
-`*_body` is the code after a function's entry stub when the two are separate units.
+this-adjusting entries that C++ multiple inheritance makes for a second base.
 
 ## Object model
 
@@ -94,11 +93,10 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 
 ### app_main
 
-`0800C230`–`0801264C`. `main`, `app_construct`, `ui_construct`, the root UI object `ui_root` and its button/pad routing, plus the keytrack and mod-matrix views.
+`0800C2D0`–`0801264C`. `main`, `app_construct`, `ui_construct`, the root UI object `ui_root` and its button/pad routing, plus the keytrack and mod-matrix views.
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
-| `0800C230` | `memchr` | 160 | newlib arm memchr.S (uadd8/sel), used by vfprintf |
 | `0800C2D0` | `main` | 7976 | main loop, soft-timer table 0x20003230 |
 | `0800E1F8` | `app_construct` | 6500 | builds the object graph, reads settings and patches |
 | `0800FB5C` | `ui_construct` | 6500 | builds the UI: views, mode view children, ui_root |
@@ -116,8 +114,8 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801161A` | `cell_store` | 14 | write a word to a cell's next buffer |
 | `08011628` | `container_view_ctor` | 24 | view with a 34-entry input port (button ids 0x00-0x21), vtable 0x08027ba4 (pure render) |
 | `08011640` | `keytrack_view_render` | 68 | 8 pads, selected key-tracking value lit |
-| `08011684` | `keytrack_view_render_thunk` | 4 | this-adjusting entry of `keytrack_view_render` |
-| `08011688` | `keytrack_view_render_thunk2` | 8 | this-adjusting entry of `keytrack_view_render` |
+| `08011684` | `keytrack_view_on_cell` | 4 | on_cell: redraws via `keytrack_view_render` |
+| `08011688` | `keytrack_view_on_cell_thunk` | 8 | this-adjusting entry of `keytrack_view_on_cell` |
 | `08011690` | `cell_subscribe1` | 6 | cell_subscribe(cell, obs, 1) |
 | `08011696` | `map_range` | 58 | clamp and scale x from [a,b] to [c,d] |
 | `080116D0` | `ui_root_fader` | 46 | vtable slot 6: ADSR faders -> envelope view |
@@ -128,16 +126,15 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `080117CC` | `ui_root_pad_down` | 72 | forwards to the active pad view |
 | `08011814` | `modmatrix_view_leds` | 268 | routing LEDs |
 | `08011920` | `modmatrix_view_slot4` | 344 | reads routing and param table; adjusts the selected routing's depth |
-| `08011A78` | `modmatrix_view_button` | 2 | Source button cycles routing +8; destinations select |
-| `08011A7A` | `modmatrix_view_button_body` | 202 | body of `modmatrix_view_button` (after its entry stub) |
+| `08011A78` | `modmatrix_view_button` | 204 | Source button cycles routing +8; destinations select |
 | `08011B44` | `view_08027800_render` | 264 | LEDs from three cells, tables 0x08027b90/0x08027bd0 |
-| `08011C4C` | `view_08027800_render_thunk` | 4 | this-adjusting entry of `view_08027800_render` |
-| `08011C50` | `view_08027800_render_thunk2` | 8 | this-adjusting entry of `view_08027800_render` |
+| `08011C4C` | `view_08027800_on_cell` | 4 | on_cell: redraws via `view_08027800_render` |
+| `08011C50` | `view_08027800_on_cell_thunk` | 8 | this-adjusting entry of `view_08027800_on_cell` |
 | `08011C58` | `hold_button_view_render` | 88 | button 0x16 LED colour |
 | `08011CB0` | `ui_root_on_cell` | 264 | render and state changes on the root cells |
 | `08011DB8` | `ui_root_on_cell_thunk` | 8 | this-adjusting entry of `ui_root_on_cell` |
-| `08011DC0` | `hold_button_view_render_thunk` | 4 | this-adjusting entry of `hold_button_view_render` |
-| `08011DC4` | `hold_button_view_render_thunk2` | 8 | this-adjusting entry of `hold_button_view_render` |
+| `08011DC0` | `hold_button_view_on_cell` | 4 | on_cell: redraws via `hold_button_view_render` |
+| `08011DC4` | `hold_button_view_on_cell_thunk` | 8 | this-adjusting entry of `hold_button_view_on_cell` |
 | `08011DCC` | `ui_root_show_top_view` | 152 | apply the view-stack top |
 | `08011E64` | `ui_root_restore_view` | 72 | pop momentary views |
 | `08011EAC` | `ui_root_slot4` | 248 | held-button timers (0x200031dc/0x20003230/0x200032f4) |
@@ -180,8 +177,8 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 |---|---|---:|---|
 | `080127B4` | `gate_view_ctor` | 68 | vtable 0x08027bec |
 | `080127F8` | `octave_view_render` | 100 | 2-LED bar from table 0x0802ab24 |
-| `0801285C` | `octave_view_render_thunk` | 4 | this-adjusting entry of `octave_view_render` |
-| `08012860` | `octave_view_render_thunk2` | 8 | this-adjusting entry of `octave_view_render` |
+| `0801285C` | `octave_view_on_cell` | 4 | on_cell: redraws via `octave_view_render` |
+| `08012860` | `octave_view_on_cell_thunk` | 8 | this-adjusting entry of `octave_view_on_cell` |
 | `08012868` | `pads_flush_held` | 50 | sends 08023004 for held pads other than the current one |
 | `0801289A` | `pads_flush_held_thunk` | 10 | this-adjusting entry of `pads_flush_held` |
 
@@ -210,8 +207,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08012C54` | `glide_view_pad_down` | 100 | sets the track's glide param (id 9/0x10/0x4c) from table 0x08027bd9 |
 | `08012CB8` | `step_view_blink_tick` | 124 | soft-timer step blink |
 | `08012D34` | `step_view_mark_range` | 62 | pattern start/end on the step pads |
-| `08012D72` | `step_view_on_cell` | 4 | step view: cell-change observer |
-| `08012D76` | `step_view_on_cell_body` | 398 | body of `step_view_on_cell` (after its entry stub) |
+| `08012D72` | `step_view_on_cell` | 402 | step view: cell-change observer |
 | `08012F04` | `step_view_on_cell_thunk` | 8 | this-adjusting entry of `step_view_on_cell` |
 | `08012F0C` | `modseq_level_view_render` | 128 | modseq level view: LED render |
 | `08012F8C` | `modseq_level_view_render_thunk` | 8 | this-adjusting entry of `modseq_level_view_render` |
@@ -237,8 +233,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801382C` | `patterns_pad_bit` | 72 | pad -> bit in its track's pattern mask (track from column) |
 | `08013874` | `view_rgb_leds_b` | 6 | returns the RGB LED buffer |
 | `0801387A` | `scales_view_rgb_leds` | 54 | joins the two children's 16 LEDs |
-| `080138B0` | `patterns_view_pad_up` | 6 | patterns view: pad release |
-| `080138B6` | `patterns_view_pad_up_body` | 66 | body of `patterns_view_pad_up` (after its entry stub) |
+| `080138B0` | `patterns_view_pad_up` | 72 | patterns view: pad release |
 | `080138F8` | `patch_view_pad_up` | 14 | patch view: pad release |
 | `08013906` | `cell_set_byte_flag` | 38 | byte +0x18+n = v and touch field n (pattern chain flags) |
 
@@ -250,17 +245,15 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 |---|---|---:|---|
 | `0801392C` | `pattern_octave_ctor` | 44 | 2-LED Oct indicator for Shift+Oct pattern transpose |
 | `08013958` | `select3_view_render` | 60 | 3-pad selector LEDs (field0 0..2), vtable 0x08027400 |
-| `08013994` | `select3_view_render_thunk` | 4 | this-adjusting entry of `select3_view_render` |
-| `08013998` | `select3_view_render_thunk2` | 8 | this-adjusting entry of `select3_view_render` |
+| `08013994` | `select3_view_on_cell` | 4 | on_cell: redraws via `select3_view_render` |
+| `08013998` | `select3_view_on_cell_thunk` | 8 | this-adjusting entry of `select3_view_on_cell` |
 | `080139A0` | `sessions_view_button` | 80 | Oct buttons step the page byte +0x35 (0..13) |
-| `080139F0` | `patterns_view_on_cell` | 4 | patterns view: cell-change observer |
-| `080139F4` | `patterns_view_on_cell_body` | 200 | body of `patterns_view_on_cell` (after its entry stub) |
+| `080139F0` | `patterns_view_on_cell` | 204 | patterns view: cell-change observer |
 | `08013ABC` | `patterns_view_on_cell_thunk` | 8 | this-adjusting entry of `patterns_view_on_cell` |
 | `08013AC4` | `patch_view_render` | 352 | patch view: LED render |
 | `08013C24` | `patch_view_on_cell` | 78 | patch view: cell-change observer |
 | `08013C72` | `patch_view_on_cell_thunk` | 8 | this-adjusting entry of `patch_view_on_cell` |
-| `08013C7A` | `scale_root_view_on_cell` | 2 | marks old/new root pad (colours 0x2f/0x2e) |
-| `08013C7C` | `scale_root_view_on_cell_body` | 40 | body of `scale_root_view_on_cell` (after its entry stub) |
+| `08013C7A` | `scale_root_view_on_cell` | 42 | marks old/new root pad (colours 0x2f/0x2e) |
 | `08013CA4` | `scale_root_view_on_cell_thunk` | 8 | this-adjusting entry of `scale_root_view_on_cell` |
 | `08013CAC` | `scale_type_view_render` | 116 | selected scale and its note mask |
 | `08013D20` | `scale_type_view_render_thunk` | 8 | this-adjusting entry of `scale_type_view_render` |
@@ -276,19 +269,15 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `080142B0` | `sessions_view_on_cell_thunk` | 8 | this-adjusting entry of `sessions_view_on_cell` |
 | `080142B8` | `sessions_view_pad_down` | 120 | posts the session slot (pad, +0x40 page) to the session port |
 | `08014330` | `patch_view_pads` | 276 | patch view: pad press, select/load/preview a patch slot |
-| `08014444` | `patterns_view_pad_down` | 6 | patterns view: pad press |
-| `0801444A` | `patterns_view_pad_down_body` | 412 | body of `patterns_view_pad_down` (after its entry stub) |
+| `08014444` | `patterns_view_pad_down` | 418 | patterns view: pad press |
 | `080145E6` | `pattern_settings_on_cell` | 282 | pattern settings view: cell-change observer |
 | `08014700` | `pattern_settings_on_cell_thunk` | 8 | this-adjusting entry of `pattern_settings_on_cell` |
-| `08014708` | `select3_view_pad_down` | 2 | pads 0-2 set field0 |
-| `0801470A` | `select3_view_pad_down_body` | 42 | body of `select3_view_pad_down` (after its entry stub) |
-| `08014734` | `scale_type_view_pad_down` | 2 | pad -> scale via table 0x08027c78 |
-| `08014736` | `scale_type_view_pad_down_body` | 50 | body of `scale_type_view_pad_down` (after its entry stub) |
+| `08014708` | `select3_view_pad_down` | 44 | pads 0-2 set field0 |
+| `08014734` | `scale_type_view_pad_down` | 52 | pad -> scale via table 0x08027c78 |
 | `08014768` | `save_view_on_cell` | 136 | Save button LED |
 | `080147F0` | `save_view_on_cell_thunk` | 8 | this-adjusting entry of `save_view_on_cell` |
 | `080147F8` | `save_view_button` | 122 | Save press |
-| `08014872` | `pattern_settings_pad_down` | 2 | pads 0-7 sync rate, 12-15 direction, 16-31 start/end |
-| `08014874` | `pattern_settings_pad_down_body` | 102 | body of `pattern_settings_pad_down` (after its entry stub) |
+| `08014872` | `pattern_settings_pad_down` | 104 | pads 0-7 sync rate, 12-15 direction, 16-31 start/end |
 | `080148DA` | `transport_src_adapter_4` | 20 | forwards to target vtable+0x10 with the stored id |
 | `080148EE` | `transport_src_adapter_3` | 20 | transport source adapter: forwards slot 3 (vtable +0xc) with its track index |
 | `08014902` | `transport_src_adapter_2` | 12 | transport source adapter: forwards slot 2 with its track index |
@@ -375,15 +364,12 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
 | `080150A4` | `osc_view_waveform_led` | 40 | osc view: waveform LED colours |
-| `080150CC` | `osc_view_on_cell` | 4 | osc view: cell-change observer |
-| `080150D0` | `osc_view_on_cell_body` | 340 | body of `osc_view_on_cell` (after its entry stub) |
+| `080150CC` | `osc_view_on_cell` | 344 | osc view: cell-change observer |
 | `08015224` | `osc_view_on_cell_thunk` | 8 | this-adjusting entry of `osc_view_on_cell` |
 | `0801522C` | `mixer_view_led4` | 36 | mixer view: LED 4 colour (0xc2 when off) |
-| `08015250` | `mixer_view_on_cell` | 4 | mixer view: cell-change observer |
-| `08015254` | `mixer_view_on_cell_body` | 308 | body of `mixer_view_on_cell` (after its entry stub) |
+| `08015250` | `mixer_view_on_cell` | 312 | mixer view: cell-change observer |
 | `08015388` | `mixer_view_on_cell_thunk` | 8 | this-adjusting entry of `mixer_view_on_cell` |
-| `08015390` | `rec_view_button` | 2 | button 0x20 toggles the port flag and arms a hold timer; 0x21 |
-| `08015392` | `rec_view_button_body` | 138 | body of `rec_view_button` (after its entry stub) |
+| `08015390` | `rec_view_button` | 140 | button 0x20 toggles the port flag and arms a hold timer; 0x21 |
 | `0801541C` | `rec_view_render` | 52 | rec view: LED render |
 | `08015450` | `rec_view_on_cell` | 50 | rec view: cell-change observer |
 | `08015482` | `rec_view_on_cell_thunk` | 10 | this-adjusting entry of `rec_view_on_cell` |
@@ -428,8 +414,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08015DC4` | `flag_led_render` | 36 | colour 0x0d/0x0e from a flag cell |
 | `08015DE8` | `flag_led_render_thunk` | 8 | this-adjusting entry of `flag_led_render` |
 | `08015DF0` | `led_pair_from_table` | 52 | LED pair colour from table 0x08027db2 when enabled |
-| `08015E24` | `select_inverted_index` | 2 | cell field2 = 7 - index for index < 8 |
-| `08015E26` | `select_inverted_index_body` | 34 | body of `select_inverted_index` (after its entry stub) |
+| `08015E24` | `select_inverted_index` | 36 | cell field2 = 7 - index for index < 8 |
 
 ### synth_views_transport
 
@@ -439,13 +424,11 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 |---|---|---:|---|
 | `08015E48` | `lfo_view_on_cell` | 276 | lfo view: cell-change observer |
 | `08015F5C` | `lfo_view_on_cell_thunk` | 8 | this-adjusting entry of `lfo_view_on_cell` |
-| `08015F64` | `filter_view_on_cell` | 4 | filter view: cell-change observer |
-| `08015F68` | `filter_view_on_cell_body` | 260 | body of `filter_view_on_cell` (after its entry stub) |
+| `08015F64` | `filter_view_on_cell` | 264 | filter view: cell-change observer |
 | `0801606C` | `filter_view_on_cell_thunk` | 8 | this-adjusting entry of `filter_view_on_cell` |
 | `08016074` | `envelope_view_on_cell` | 224 | envelope view: cell-change observer |
 | `08016154` | `envelope_view_on_cell_thunk` | 8 | this-adjusting entry of `envelope_view_on_cell` |
-| `0801615C` | `dist_view_on_cell` | 4 | dist view: cell-change observer |
-| `08016160` | `dist_view_on_cell_body` | 148 | body of `dist_view_on_cell` (after its entry stub) |
+| `0801615C` | `dist_view_on_cell` | 152 | dist view: cell-change observer |
 | `080161F4` | `dist_view_on_cell_thunk` | 8 | this-adjusting entry of `dist_view_on_cell` |
 | `080161FC` | `lfo_view_pot` | 296 | pot 1 LFO rate |
 | `08016324` | `filter_view_pot` | 256 | pots 10..12 |
@@ -453,8 +436,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08016514` | `dist_view_pot` | 224 | pot 13 |
 | `080165F4` | `settings_view_on_cell` | 260 | settings view: cell-change observer |
 | `080166F8` | `settings_view_on_cell_thunk` | 8 | this-adjusting entry of `settings_view_on_cell` |
-| `08016700` | `settings_view_pad_down` | 2 | pads 0..15 channel, 0x10..0x14 clock mode, 0x17..0x1f setting bits |
-| `08016702` | `settings_view_pad_down_body` | 362 | body of `settings_view_pad_down` (after its entry stub) |
+| `08016700` | `settings_view_pad_down` | 364 | pads 0..15 channel, 0x10..0x14 clock mode, 0x17..0x1f setting bits |
 | `0801686C` | `view_14_render` | 48 | 8 LEDs, one lit at 7 - value |
 | `0801689C` | `view_14_on_cell` | 4 | view 0x14: cell-change observer |
 | `080168A0` | `view_14_on_cell_thunk` | 8 | this-adjusting entry of `view_14_on_cell` |
@@ -492,15 +474,15 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 |---|---|---:|---|
 | `08016E78` | `transport_on_tick_cell` | 976 | transport: tick cell observer, advances players |
 | `08017248` | `recorder_on_cell` | 896 | recorder: cell-change observer |
-| `080175C8` | `recorder_on_cell_thunk` | 26 | this-adjusting entry of `recorder_on_cell` |
+| `080175C8` | `recorder_on_cell_thunk` | 8 | this-adjusting entry of `recorder_on_cell` |
+| `080175D0` | `ctx_forward_hook` | 18 | callback app_main stores at `0x200035A4`: when arg 0 is 0, tail-calls slot 1 of the object at arg 2 + `0x8C` |
 | `080175E2` | `param_decode` | 112 | reads one param from a patch by its param_table kind |
 | `08017652` | `patch_copy_out` | 28 | vt 080271e0 slot 4 |
 | `0801766E` | `patch_copy_in` | 28 | slot 3 |
 | `0801768A` | `param_get` | 80 | slot 2: decoded value, signed/clamped |
 | `080176DA` | `param_get_raw` | 14 | slot 1 |
 | `080176E8` | `patch_store_param` | 412 | patch object: store one param (split-pair encoding) |
-| `08017884` | `synth_obj_param` | 2 | CC 0x4c sets a global (normal mode), others forward |
-| `08017886` | `synth_obj_param_body` | 70 | body of `synth_obj_param` (after its entry stub) |
+| `08017884` | `synth_obj_param` | 72 | CC 0x4c sets a global (normal mode), others forward |
 | `080178CC` | `synth_obj_param_thunk` | 8 | this-adjusting entry of `synth_obj_param` |
 | `080178D4` | `synth_obj_note_off` | 28 | synth object: note off |
 | `080178F0` | `synth_obj_note_on` | 32 | synth object: note on |
@@ -508,7 +490,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08017934` | `input_log_encoder` | 36 | "Continuous pot %d moved with delta %d" |
 | `08017958` | `input_log_pot` | 36 | "Pot %d value changed to %d" |
 | `0801797C` | `input_log_button` | 42 | "Button %d changed state to %d" |
-| `080179A6` | `input_log_pad` | 54 | "Pad %d changed state to %d with velocity %d" |
+| `080179A4` | `input_log_pad` | 56 | "Pad %d changed state to %d with velocity %d" |
 | `080179DC` | `clock_timer_arm` | 44 | arm the clock soft timer |
 | `08017A08` | `clock_restart_ext` | 56 | in clock mode 3: reset counters, arm timer, first tick |
 | `08017A40` | `cell_read_field1` | 18 | read field 1 of a cell's current buffer |
@@ -525,8 +507,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08017E00` | `clock_state_on_cell` | 160 | clock state: cell observer, tempo fit from tap/ext timestamps |
 | `08017EA0` | `clock_state_on_cell_thunk` | 8 | this-adjusting entry of `clock_state_on_cell` |
 | `08017EA8` | `clock_state_on_midi_clock` | 116 | clock state: MIDI clock tick in |
-| `08017F1C` | `clock_engine` | 2 | sequencer clock engine (1 ms soft timer) |
-| `08017F1E` | `clock_engine_body` | 1610 | body of `clock_engine` (after its entry stub) |
+| `08017F1C` | `clock_engine` | 1612 | sequencer clock engine (1 ms soft timer) |
 | `08018568` | `midi_ctl_song_position` | 8 | forwards to transport events slot 3 |
 | `08018570` | `midi_ctl_song_position_thunk` | 8 | this-adjusting entry of `midi_ctl_song_position` |
 | `08018578` | `midi_ctl_stop` | 8 | MIDI control: stop, forwards to transport events |
@@ -554,17 +535,17 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `080189CE` | `note_sink_note_on` | 20 | note sink: note on |
 | `080189E2` | `scale_snap_note` | 38 | moves a note to the scale (mask 2 bits per semitone) |
 | `08018A08` | `midiout_continue` | 38 | MIDI out: continue (0xFB) |
-| `08018A2E` | `midiout_clock_thunk` | 8 | this-adjusting entry of `midiout_clock` |
+| `08018A2E` | `midiout_continue_thunk` | 8 | this-adjusting entry of `midiout_continue` |
 | `08018A36` | `midiout_clock` | 38 | MIDI out: clock (0xF8) |
 | `08018A5C` | `midiout_clock_tick` | 8 | MIDI out: clock tick wrapper |
 | `08018A64` | `midiout_song_select` | 38 | MIDI out: song select |
-| `08018A8A` | `midiout_song_position_thunk` | 8 | this-adjusting entry of `midiout_song_position` |
+| `08018A8A` | `midiout_song_select_thunk` | 8 | this-adjusting entry of `midiout_song_select` |
 | `08018A92` | `midiout_song_position` | 42 | MIDI out: song position pointer |
-| `08018ABC` | `midiout_stop_thunk` | 8 | this-adjusting entry of `midiout_stop` |
+| `08018ABC` | `midiout_song_position_thunk` | 8 | this-adjusting entry of `midiout_song_position` |
 | `08018AC4` | `midiout_stop` | 38 | MIDI out: stop (0xFC) |
-| `08018AEA` | `midiout_start_thunk` | 8 | this-adjusting entry of `midiout_start` |
+| `08018AEA` | `midiout_stop_thunk` | 8 | this-adjusting entry of `midiout_stop` |
 | `08018AF2` | `midiout_start` | 38 | MIDI out: start (0xFA) |
-| `08018B18` | `midiout_note_off_thunk` | 8 | this-adjusting entry of `midiout_note_off` |
+| `08018B18` | `midiout_start_thunk` | 8 | this-adjusting entry of `midiout_start` |
 | `08018B20` | `midiout_note_off` | 40 | MIDI out: note off |
 | `08018B48` | `midiout_note_on` | 40 | MIDI out: note on |
 | `08018B70` | `midiout_cc` | 32 | status 0xB0 \| channel |
@@ -618,17 +599,38 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08019494` | `session_ctl_save_globals` | 464 | session control: save globals to NOR |
 | `08019664` | `session_ctl_load_globals` | 504 | session control: load globals |
 
-### session_ctl_usb_user
+### session_ctl_patch
 
-`0801985C`–`08019D90`. Session control observers, then the start of the ST USB library (EP transfers, USBD_USR callbacks).
+`0801985C`–`08019B60`. Session control observers: cell change, patch load, save/load done.
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
 | `0801985C` | `session_ctl_on_cell` | 648 | vt_session_ctl slot 1; session_ctl_patch_load is its this-4 thunk |
 | `08019AE4` | `session_ctl_patch_load` | 8 | session control: load a patch from a session |
 | `08019AEC` | `session_ctl_on_save_done` | 116 | session control: save/load done, validate magic, load globals or reset |
+
+### usb_otg_ep0startxfer
+
+`08019B60`–`08019BFA`. ST library `USB_OTG_EP0StartXfer`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `08019B60` | `USB_OTG_EP0StartXfer` | 154 | EP0 DIEPTSIZ/DOEPTSIZ, 0x7f size mask |
+
+### usb_otg_epstartxfer
+
+`08019BFA`–`08019D1C`. ST library `USB_OTG_EPStartXfer`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `08019BFA` | `USB_OTG_EPStartXfer` | 290 | packet count (len+mps-1)/mps |
+
+### usbd_usr
+
+`08019D1C`–`08019D90`. USBD_USR callbacks of the app's ST USB device library port, `IntToUnicode`.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `08019D1C` | `USBD_USR_DeviceSuspended` | 12 | USR cb table 0x0802af78 +0x0c, usb_configured=0 |
 | `08019D28` | `USBD_USR_DeviceDisconnected` | 12 | USR cb +0x18 |
 | `08019D34` | `USBD_USR_DeviceConnected` | 12 | USR cb +0x14 |
@@ -640,7 +642,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 
 ### usbd_desc
 
-`08019D90`–`08019E94`. USB descriptors and serial number.
+`08019D90`–`08019E40`. USB descriptors and serial number.
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
@@ -653,39 +655,109 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08019E04` | `USBD_USR_ConfigStrDescriptor` | 20 | desc table +0x14 |
 | `08019E18` | `USBD_USR_ManufacturerStrDescriptor` | 20 | desc table +0x08 |
 | `08019E2C` | `USBD_USR_ProductStrDescriptor` | 20 | desc table +0x0c |
+
+### dcd_ep_stall
+
+`08019E40`–`08019E94`. ST library `DCD_EP_Stall`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `08019E40` | `DCD_EP_Stall` | 84 | DIEPCTL/DOEPCTL STALL |
 
-### usbd_core_a
+### usbd_setupstage
 
-`08019E94`–`0801A348`. USB device core: setup and data OUT stages, EP Tx/Rx.
+`08019E94`–`0801A244`. ST library `USBD_SetupStage`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
 | `08019E94` | `USBD_SetupStage` | 944 | DCD cb 0x0802b67c +0x08, standard requests inlined |
+
+### dcd_ep_tx
+
+`0801A244`–`0801A282`. ST library `DCD_EP_Tx`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801A244` | `DCD_EP_Tx` | 62 | USB OTG library: start an IN transfer on an endpoint |
+
+### dcd_ep_preparerx
+
+`0801A282`–`0801A2CE`. ST library `DCD_EP_PrepareRx`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801A282` | `DCD_EP_PrepareRx` | 76 | USB OTG library: prepare an OUT endpoint for reception |
+
+### usbd_dataoutstage
+
+`0801A2CE`–`0801A348`. ST library `USBD_DataOutStage`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801A2CE` | `USBD_DataOutStage` | 122 | DCD cb +0x00 |
 
-### usbd_core_b
+### usb_otg_corereset
 
-`0801A348`–`0801A534`. USB OTG core reset, EP0, data IN stage, EP open/close.
+`0801A348`–`0801A394`. ST library `USB_OTG_CoreReset`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
 | `0801A348` | `USB_OTG_CoreReset` | 76 | GRSTCTL AHBIDL then CSRST |
+
+### usb_otg_ep0_outstart
+
+`0801A394`–`0801A3BC`. ST library `USB_OTG_EP0_OutStart`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801A394` | `USB_OTG_EP0_OutStart` | 40 | USB OTG library: arm EP0 for SETUP packets |
+
+### usbd_datainstage
+
+`0801A3BC`–`0801A494`. ST library `USBD_DataInStage`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801A3BC` | `USBD_DataInStage` | 216 | DCD cb +0x04 |
-| `0801A494` | `DCD_EP_Close` | 66 | USB OTG library: close an endpoint |
-| `0801A4D6` | `DCD_EP_Open` | 94 | USB OTG library: open an endpoint |
 
-### usbd_midi
+### usb_otg_epdeactivate
 
-`0801A534`–`0801A790`. FIFO flush, endpoint stop, the USB MIDI class.
+`0801A494`–`0801A4D6`. ST library `USB_OTG_EPDeactivate`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
+| `0801A494` | `USB_OTG_EPDeactivate` | 66 | USB OTG library: deactivate an endpoint (DEPCTL, DAINTMSK) |
+
+### usb_otg_epactivate
+
+`0801A4D6`–`0801A534`. ST library `USB_OTG_EPActivate`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
+| `0801A4D6` | `USB_OTG_EPActivate` | 94 | USB OTG library: activate an endpoint (DEPCTL, DAINTMSK) |
+
+### usb_otg_flushrxfifo
+
+`0801A534`–`0801A56C`. ST library `USB_OTG_FlushRxFifo`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
 | `0801A534` | `USB_OTG_FlushRxFifo` | 56 | USB OTG library: flush the RX FIFO |
+
+### usb_otg_flushtxfifo
+
+`0801A56C`–`0801A5AC`. ST library `USB_OTG_FlushTxFifo`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801A56C` | `USB_OTG_FlushTxFifo` | 64 | USB OTG library: flush a TX FIFO |
+
+### usbd_midi
+
+`0801A5AC`–`0801A790`. Endpoint stop, the USB MIDI class.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801A5AC` | `usb_endpoint_stop` | 108 | stop USB endpoints before the bootloader handover |
 | `0801A618` | `usbd_midi_GetCfgDesc` | 12 | class cb 0x0802af4c +0x28, 0x74-byte config descriptor 0x08028ee8 |
 | `0801A624` | `usbd_midi_SOF` | 4 | class cb +0x1c, returns 0 |
@@ -703,7 +775,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
 | `0801A790` | `usbd_midi_Init` | 140 | class cb +0x00, opens EP 0x81/0x01, 64 bytes |
-| `0801A81C` | `usb_bsp_udelay` | 20 | busy loop n*168/7 (USB_OTG_BSP_uDelay) |
+| `0801A81C` | `USB_OTG_BSP_uDelay` | 20 | busy loop n*168/7: the ST USB library's BSP delay, called by linked usb_core.c |
 | `0801A830` | `usb_soft_disconnect` | 24 | USB soft disconnect (DCTL.SDIS) |
 | `0801A848` | `SystemInit` | 236 | CMSIS system_stm32f4xx.c with SetSysClock: HSE, PLL, FLASH ACR 0x705 |
 | `0801A934` | `dma_stream_setup` | 300 | DMA_DeInit + DMA_Init from a config struct |
@@ -752,22 +824,71 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801AFF4` | `midi_ctl_release_held` | 100 | for each set bit in a port's 160-bit held set calls vtable+4 (note off) |
 | `0801B058` | `router_map_note2` | 100 | router: note map, variant 2 |
 
-### drivers_seq
+### nor_async_b
 
-`0801B0BC`–`0801C010`. Mixed: async NOR read, patch apply, StdPeriph TIM/DMA/NVIC, LED buffers, sequencer track positions, step advance.
+`0801B0BC`–`0801B114`. Async NOR read, patch apply.
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
 | `0801B0BC` | `ext_flash_read_async` | 64 | (sector, offset, dst, len, cb, ctx): nor_async_read at sector*0x1000+offset |
 | `0801B0FC` | `session_ctl_apply_patch` | 24 | synth vtable+0x10 with the session patch at +0x15F5C |
+
+### tim_oc2init
+
+`0801B114`–`0801B194`. ST library `TIM_OC2Init`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801B114` | `TIM_OC2Init` | 128 | SPL stm32f4xx_tim.c |
+
+### calibration_crc
+
+`0801B194`–`0801B1CC`. Calibration CRC-32.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801B194` | `calibration_crc` | 56 | CRC-32 (0xEDB88320) over 0x40 bytes |
+
+### dma_init
+
+`0801B1CC`–`0801B20C`. ST library `DMA_Init`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801B1CC` | `DMA_Init` | 64 | SPL stm32f4xx_dma.c (CR mask 0xF01C803F) |
+
+### leds_tim14
+
+`0801B20C`–`0801B3D4`. TIM14 value, LED frame buffers.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801B20C` | `tim14_value_set` | 32 | stores a byte, sets update flag 0x2000049c bit0 |
 | `0801B22C` | `leds_update` | 316 | builds the LED frame buffers 0x200004a4/0x200005e0 |
 | `0801B368` | `leds_clear` | 108 | clear the LED frame buffers |
+
+### nvic_init
+
+`0801B3D4`–`0801B418`. ST library `NVIC_Init`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801B3D4` | `NVIC_Init` | 68 | SPL misc.c |
+
+### usbd_getstring
+
+`0801B418`–`0801B458`. ST library `USBD_GetString`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801B418` | `USBD_GetString` | 64 | ASCII -> USB string descriptor |
+
+### drivers_seq
+
+`0801B458`–`0801C010`. Mixed: NOR SPI, patch mask, session save, sequencer track positions, step advance, soft timers.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801B458` | `nor_spi_xfer` | 136 | CS low, tx, optional rx, CS mode 1 keep / 3 release |
 | `0801B4E0` | `patch_mask_update` | 228 | update the patch-changed mask |
 | `0801B5C4` | `session_ctl_session_save` | 212 | writes the 0x16000-byte session image to ext flash 0x12000+slot*0x16000 |
@@ -788,13 +909,11 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801BDA8` | `gpio_set` | 14 | BSRRL = pin |
 | `0801BDB6` | `gpio_reset` | 14 | BSRRH = pin |
 | `0801BDC4` | `engine_tick_2khz` | 24 | volume_cv_step, synth_engine_update, counter |
-| `0801BDDC` | `usb_midi_tx_watchdog` | 8 | 50 ms soft timer |
-| `0801BDE4` | `usb_midi_tx_watchdog_body` | 60 | resets the USB MIDI tx queue (08020b04) |
+| `0801BDDC` | `usb_midi_tx_watchdog` | 68 | 50 ms soft timer: resets the USB MIDI tx queue (08020b04) |
 | `0801BE20` | `input_poll_task` | 292 | 10 ms soft timer: pots_scan, control_dispatch |
 | `0801BF44` | `nor_async_program_step_done` | 48 | programs next chunk or posts event 8 |
 | `0801BF74` | `nor_async_read_chunk` | 56 | DMA receive of next <=64K chunk |
-| `0801BFAC` | `nor_async_read_chunk_done` | 12 | next chunk or read-done callback 0x200024c0 |
-| `0801BFB8` | `nor_async_read_chunk_done_tail` | 76 | NOR async read: chunk done, read the next one or raise fsm event 3 |
+| `0801BFAC` | `nor_async_read_chunk_done` | 88 | NOR async read: chunk done, read the next one or raise fsm event 3 and call the read-done callback 0x200024c0 |
 | `0801C004` | `nor_async_read_start` | 12 | fsm action after the read command is sent |
 
 ### nor_async_router
@@ -809,8 +928,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801C060` | `nor_async_wait_idle_thunk` | 4 | this-adjusting entry of `nor_async_wait_idle` |
 | `0801C064` | `nor_async_status_check` | 72 | compares status & mask with expected, re-reads status 0x05 |
 | `0801C0AC` | `nor_async_wait_wel` | 36 | fsm action: poll status until WEL set |
-| `0801C0D0` | `nor_async_continue` | 4 | event 7 program next chunk, 8 erase next sector |
-| `0801C0D4` | `nor_async_continue_body` | 22 | body of `nor_async_continue` (after its entry stub) |
+| `0801C0D0` | `nor_async_continue` | 26 | event 7 program next chunk, 8 erase next sector |
 | `0801C0EA` | `timer_nop` | 2 | empty 10 ms soft-timer callback |
 | `0801C0EC` | `nor_async_read` | 104 | fast read 0x0B via DMA, returns 1 when busy |
 | `0801C154` | `nor_async_program` | 100 | page program 0x02, returns 1 busy/2 address/3 length |
@@ -829,11 +947,9 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801C824` | `midi_ctl_send_b` | 12 | port_send via field 0x34 |
 | `0801C830` | `midi_ctl_send_a` | 12 | port_send via field 0x30 |
 | `0801C83C` | `cell_write_field1` | 6 | begin a write of field 1 |
-| `0801C842` | `param_set` | 2 | set a synth param by id |
-| `0801C844` | `param_set_body` | 468 | body of `param_set` (after its entry stub) |
+| `0801C842` | `param_set` | 470 | set a synth param by id |
 | `0801CA18` | `midi_apply_settings` | 212 | apply the MIDI settings (channels, clock, out) |
-| `0801CAEC` | `midi_ctl_on_cell` | 4 | settings cell changed: release held notes or midi_apply_settings |
-| `0801CAF0` | `midi_ctl_on_cell_body` | 48 | body of `midi_ctl_on_cell` (after its entry stub) |
+| `0801CAEC` | `midi_ctl_on_cell` | 52 | settings cell changed: release held notes or midi_apply_settings |
 | `0801CB20` | `midi_ctl_on_cell_thunk` | 8 | this-adjusting entry of `midi_ctl_on_cell` |
 | `0801CB28` | `router_on_cell` | 64 | vt_router: scale cell -> scale mask + bounds, root cell |
 | `0801CB68` | `router_on_cell_thunk` | 8 | this-adjusting entry of `router_on_cell` |
@@ -844,7 +960,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 
 ### synth_math
 
-`0801D028`–`0801E080`. Pitch/exponent/envelope math, synth engine update, USBD core events.
+`0801D028`–`0801E020`. Pitch/exponent/envelope math, synth engine update.
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
@@ -854,19 +970,61 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801D0D4` | `engine_bind_buffers` | 276 | param 0: binds the modulation source/destination pointers |
 | `0801D1E8` | `bitset_test` | 32 | bit n of the word array 0x20002f90 |
 | `0801D208` | `synth_engine_update` | 3608 | 3608 bytes: glide, pitch CV, SPI DAC, gate/sync output pins |
+
+### usbd_isooutincomplete
+
+`0801E020`–`0801E02E`. ST library `USBD_IsoOUTIncomplete`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E020` | `USBD_IsoOUTIncomplete` | 14 | DCD cb +0x20 |
+
+### usbd_isoinincomplete
+
+`0801E02E`–`0801E03C`. ST library `USBD_IsoINIncomplete`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E02E` | `USBD_IsoINIncomplete` | 14 | DCD cb +0x1c |
+
+### usbd_sof
+
+`0801E03C`–`0801E04C`. ST library `USBD_SOF`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E03C` | `USBD_SOF` | 16 | DCD cb +0x0c |
+
+### usbd_suspend
+
+`0801E04C`–`0801E068`. ST library `USBD_Suspend`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E04C` | `USBD_Suspend` | 28 | DCD cb +0x14 |
+
+### usbd_resume
+
+`0801E068`–`0801E080`. ST library `USBD_Resume`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E068` | `USBD_Resume` | 24 | DCD cb +0x18 |
 
 ### midi_send
 
-`0801E080`–`0801E12C`. Short MIDI send, USBD reset.
+`0801E080`–`0801E0D8`. Short MIDI receive callback.
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
 | `0801E080` | `midi_rx_short` | 88 | receive callback (`+0x30`) of both MIDI byte parsers: passes a short or realtime message with port mask `1 << port` to the MIDI-in callback at 0x20002658; also echoes it to 0x08020d30 when 0x200016a0 bit 5 is set |
+
+### usbd_reset
+
+`0801E0D8`–`0801E12C`. ST library `USBD_Reset`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E0D8` | `USBD_Reset` | 84 | DCD cb +0x10, opens EP0 in/out |
 
 ### io_helpers
@@ -882,9 +1040,9 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801E278` | `bitset_clear` | 30 | (n+7)/8 bytes |
 | `0801E296` | `adc_filter_push` | 122 | power-of-two moving average per channel |
 
-### controls_stdperiph
+### controls
 
-`0801E310`–`0801EE24`. Control scan and dispatch, StdPeriph TIM/RCC/GPIO/DMA, LED render, USBD control helpers.
+`0801E310`–`0801E4DC`. Control scan and dispatch, TIM11 restart.
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
@@ -892,22 +1050,141 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `0801E398` | `button_event` | 60 | control_dispatch, then sysex_send_debug when 0x200016a0 bit 1/2 is set |
 | `0801E3D4` | `pots_scan` | 236 | filtered value vs last, threshold, map range, control_dispatch |
 | `0801E4C0` | `tim11_restart` | 28 | CNT=0, clear UIF, CEN |
+
+### tim_getitstatus
+
+`0801E4DC`–`0801E4F2`. ST library `TIM_GetITStatus`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E4DC` | `TIM_GetITStatus` | 22 | SPL |
+
+### tim_timebasestructinit
+
+`0801E4F2`–`0801E504`. ST library `TIM_TimeBaseStructInit`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E4F2` | `TIM_TimeBaseStructInit` | 18 | SPL |
+
+### tim_timebaseinit
+
+`0801E504`–`0801E580`. ST library `TIM_TimeBaseInit`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E504` | `TIM_TimeBaseInit` | 124 | SPL |
+
+### rcc_apb2periphresetcmd_off
+
+`0801E580`–`0801E590`. ST library `RCC_APB2PeriphResetCmd_off`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E580` | `RCC_APB2PeriphResetCmd_off` | 16 | RCC->APB2RSTR &= ~x (DISABLE half) |
+
+### rcc_apb1periphresetcmd_off
+
+`0801E590`–`0801E5A0`. ST library `RCC_APB1PeriphResetCmd_off`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E590` | `RCC_APB1PeriphResetCmd_off` | 16 | RCC->APB1RSTR &= ~x |
+
+### tim_deinit
+
+`0801E5A0`–`0801E700`. ST library `TIM_DeInit`, generated: the stock build's copy is LTO-specialised or older than the linked library version.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E5A0` | `TIM_DeInit` | 352 | SPL |
+
+### rcc_getclocksfreq
+
+`0801E700`–`0801E788`. ST library `RCC_GetClocksFreq`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E700` | `RCC_GetClocksFreq` | 136 | SPL |
+
+### gpio_pinafconfig
+
+`0801E788`–`0801E7AC`. ST library `GPIO_PinAFConfig`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E788` | `GPIO_PinAFConfig` | 36 | SPL |
+
+### gpio_init
+
+`0801E7AC`–`0801E830`. ST library `GPIO_Init`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E7AC` | `GPIO_Init` | 132 | SPL |
+
+### dma_clearitpendingbit
+
+`0801E830`–`0801E860`. ST library `DMA_ClearITPendingBit`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E830` | `DMA_ClearITPendingBit` | 48 | SPL |
+
+### dma_getitstatus
+
+`0801E860`–`0801E8B0`. ST library `DMA_GetITStatus`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E860` | `DMA_GetITStatus` | 80 | SPL |
+
+### dma_deinit
+
+`0801E8B0`–`0801E9BC`. ST library `DMA_DeInit`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E8B0` | `DMA_DeInit` | 268 | SPL |
+
+### usbd_ctlerror
+
+`0801E9BC`–`0801E9D8`. ST library `USBD_CtlError`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E9BC` | `USBD_CtlError` | 28 | USB device library: stall EP0 on a request error |
+
+### usbd_ctlsendstatus
+
+`0801E9D8`–`0801E9F6`. ST library `USBD_CtlSendStatus`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E9D8` | `USBD_CtlSendStatus` | 30 | USB device library: send a zero-length status packet |
+
+### usbd_ctlsenddata
+
+`0801E9F6`–`0801EA16`. ST library `USBD_CtlSendData`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801E9F6` | `USBD_CtlSendData` | 32 | USB device library: send EP0 data |
+
+### usbd_setcfg
+
+`0801EA16`–`0801EA2E`. ST library `USBD_SetCfg`, linked from ST's source (`src/libraries.tsv`, `docs/source-build.md` *ST libraries*).
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801EA16` | `USBD_SetCfg` | 24 | class Init + USR DeviceConfigured |
+
+### controls_leds
+
+`0801EA2E`–`0801EE24`. `__cxa_pure_virtual`, LED render, volume CV, NOR async status/program, button scan.
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
 | `0801EA2E` | `__cxa_pure_virtual` | 2 | b . in 8 vtable slots |
 | `0801EA30` | `leds_render_rgb` | 312 | 82 RGB LEDs into 0x200005e0: rgb_led_slots gives each LED's first channel, rgb_led_channels each channel's frame byte |
 | `0801EB68` | `leds_render_mono` | 144 | 21 single-colour LEDs |
@@ -931,8 +1208,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
-| `0801EEFC` | `OTG_FS_IRQHandler` | 2 | USB OTG_FS interrupt, dispatches GINTSTS bits |
-| `0801EEFE` | `USBD_OTG_ISR_Handler` | 1498 | OTG_FS_IRQHandler falls into it |
+| `0801EEFC` | `OTG_FS_IRQHandler` | 1500 | USB OTG_FS interrupt: `USBD_OTG_ISR_Handler` (ST `usb_dcd_int.c`) inlined, dispatches GINTSTS bits |
 | `0801F4D8` | `OTG_HS_IRQHandler` | 4 | USB OTG_HS interrupt: branches to the OTG_FS handler |
 | `0801F4DC` | `DMA2_Stream1_IRQHandler` | 40 | DMA2 Stream1 complete: clear the stream's busy flag |
 | `0801F504` | `DMA2_Stream0_IRQHandler` | 64 | DMA2 Stream0 complete: clear busy, set NOR-async state 2 |
@@ -1034,13 +1310,14 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08021E44` | `synth_update_cutoff` | 196 | cutoff, key tracking, 4 cutoff mod depths |
 | `08021F08` | `synth_update_osc2` | 416 | synth update: osc 2 |
 | `080220A8` | `synth_update_osc1` | 388 | synth update: osc 1 |
-| `0802222C` | `synth_update_glide` | 96 | synth update: glide |
+| `0802222C` | `synth_update_glide` | 48 | synth update: glide |
+| `0802225C` | `knob_callback` | 48 | control_dispatch ids 0x20..0x31: looks up the id's byte in `0x0802A060`, calls the pot (`0x20002F34`) or fader (`0x20003124`) callback |
 | `0802228C` | `button_feature_enabled` | 32 | maps a button through a table to feature_bit |
 | `080222AC` | `synth_mod_sources_init` | 100 | fills the mod-source pointer table |
 | `08022310` | `synth_engine_reset` | 388 | runs 10 init callbacks, clears engine state |
 | `08022494` | `synth_note_off` | 552 | clears the held-note bit, last-note priority, pair of synth_note_on |
 | `080226BC` | `synth_note_on` | 224 | synth engine: note on |
-| `0802279C` | `synth_clear_slots` | 28 | clears 3 x 16 word arrays at 0x20002f3c |
+| `0802279C` | `synth_clear_slots` | 28 | clears 3 x 16 byte arrays at 0x20002f3d |
 | `080227B8` | `ui_root_release_pad` | 52 | sends pad up for a held pad bit (+0xc4) |
 | `080227EC` | `ui_root_release_all_pads` | 22 | ui_root: release all pads |
 | `08022802` | `ui_root_flush_bit3` | 36 | ui_root: flush the deferred bit-3 redraw |
@@ -1193,7 +1470,7 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08024690` | `nor_erase_subsector` | 120 | command 0x20, checks flag status 0x22 |
 | `08024708` | `nor_erase_sector` | 120 | command 0xD8 |
 | `08024780` | `nor_program` | 146 | page program with the given command byte |
-| `08024812` | `nor_program_mode` | 162 | mode -> command 0x02/0xA2/0x32 |
+| `08024810` | `nor_program_mode` | 164 | mode -> command 0x02/0xA2/0x32 |
 | `080248B4` | `nor_read` | 108 | mode -> command 0x03/0x0B/0x3B/0x6B |
 | `08024920` | `pin_write` | 32 | {GPIO, mask, active level} via BSRR |
 | `08024940` | `bootloader_handover` | 140 | bootloader handover (flag 2, reset) |
@@ -1207,7 +1484,8 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
 | `08024ADC` | `calib_finish_01` | 20 | selftest table 0x0802941c entry |
-| `08024AF0` | `calib_finish_00` | 44 | selftest table 0x0802941c entry |
+| `08024AF0` | `calib_finish_00` | 20 | selftest table 0x0802941c entry |
+| `08024B04` | `calib_note_c4` | 24 | calibration: oscillator setup in the test patch, then note on 60 (C4) velocity 127 |
 | `08024B1C` | `calib_setup_41` | 28 | selftest table 0x0802941c entry |
 | `08024B38` | `calib_setup_40` | 28 | selftest table 0x0802941c entry |
 | `08024B54` | `calib_setup_39` | 28 | selftest table 0x0802941c entry |
@@ -1216,7 +1494,8 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08024BA8` | `calib_setup_36` | 28 | selftest table 0x0802941c entry |
 | `08024BC4` | `calib_setup_35` | 28 | selftest table 0x0802941c entry |
 | `08024BE0` | `calib_setup_34` | 28 | selftest table 0x0802941c entry |
-| `08024BFC` | `calib_setup_33` | 48 | selftest table 0x0802941c entry |
+| `08024BFC` | `calib_setup_33` | 28 | selftest table 0x0802941c entry |
+| `08024C18` | `calib_note_c5` | 20 | calibration: test patch byte 25 = 127, then note on 72 (C5) velocity 127 |
 | `08024C2C` | `calib_setup_32` | 44 | selftest table 0x0802941c entry |
 | `08024C58` | `calib_setup_29` | 32 | selftest table 0x0802941c entry |
 | `08024C78` | `calib_setup_31` | 32 | selftest table 0x0802941c entry |
@@ -1227,16 +1506,14 @@ MIDI out goes through `midiout_send` → `midi_tx_queue_msg` → `midi_tx_pump`
 | `08024D0C` | `calib_setup_23` | 28 | selftest table 0x0802941c entry |
 | `08024D28` | `calib_setup_25` | 28 | selftest table 0x0802941c entry |
 | `08024D44` | `calib_setup_24` | 28 | selftest table 0x0802941c entry |
-| `08024D60` | `calib_setup_22` | 2 | selftest table 0x0802941c entry |
-| `08024D62` | `calib_setup_23_body` | 50 | calib_setup_23 is a 2-byte stub that falls into it |
+| `08024D60` | `calib_setup_22` | 52 | selftest table 0x0802941c entry |
 | `08024D94` | `calib_setup_21` | 56 | selftest table 0x0802941c entry |
 | `08024DCC` | `calib_setup_17` | 48 | selftest table 0x0802941c entry |
 | `08024DFC` | `calib_setup_16` | 44 | selftest table 0x0802941c entry |
 | `08024E28` | `calib_setup_15` | 44 | selftest table 0x0802941c entry |
 | `08024E54` | `calib_setup_14` | 52 | selftest table 0x0802941c entry |
 | `08024E88` | `calib_setup_13` | 56 | selftest table 0x0802941c entry |
-| `08024EC0` | `calib_setup_12` | 2 | selftest table 0x0802941c entry |
-| `08024EC2` | `calib_setup_12_body` | 46 | calib_setup_12 falls into it |
+| `08024EC0` | `calib_setup_12` | 48 | selftest table 0x0802941c entry |
 | `08024EF0` | `calib_setup_11` | 52 | selftest table 0x0802941c entry |
 | `08024F24` | `calib_setup_10` | 52 | selftest table 0x0802941c entry |
 | `08024F58` | `calib_setup_09` | 52 | selftest table 0x0802941c entry |
@@ -1299,6 +1576,12 @@ C runtime, startup, IRQ handlers and the newlib-nano / libstdc++ objects (`docs/
 | `0800C1D0` | `__do_global_dtors_aux` | 36 | crtstuff destructor runner, once (done flag) |
 | `0800C1F4` | `frame_dummy` | 60 | crtstuff frame_dummy: registers frame info when present |
 
+### libc_memchr
+
+| Address | Name | Size | Purpose |
+|---|---|---:|---|
+| `0800C230` | `memchr` | 160 | newlib arm memchr.S (uadd8/sel), used by vfprintf |
+
 ### syscalls
 
 | Address | Name | Size | Purpose |
@@ -1324,8 +1607,7 @@ C runtime, startup, IRQ handlers and the newlib-nano / libstdc++ objects (`docs/
 | `08023D88` | `TIM1_UP_TIM10_IRQHandler` | 440 | TIM10 update: LED frame scan, next row, start DMA |
 | `08023F40` | `DMA1_Stream4_IRQHandler` | 72 | DMA1 Stream4 complete: LED scan, re-arm TIM10 |
 | `08023F88` | `DMA1_Stream3_IRQHandler` | 88 | DMA1 Stream3 complete: copy the input scan buffer |
-| `08023FE0` | `USART1_IRQHandler` | 2 | DIN MIDI |
-| `08023FE2` | `USART1_IRQHandler_body` | 90 | body of `USART1_IRQHandler`: RXNE into the rx ring, TXE from the tx ring |
+| `08023FE0` | `USART1_IRQHandler` | 92 | DIN MIDI |
 | `0802403C` | `SysTick_Handler` | 36 | SysTick: 1 kHz tick counter |
 | `08024060` | `PendSV_Handler` | 2 | PendSV: unused |
 | `08024062` | `DebugMon_Handler` | 2 | DebugMon: unused |
@@ -1347,19 +1629,19 @@ C runtime, startup, IRQ handlers and the newlib-nano / libstdc++ objects (`docs/
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
-| `08025EAC` | `get_new_handler` | 16 | libstdc++ |
+| `08025EAC` | `_ZSt15get_new_handlerv` | 16 | libstdc++ `std::get_new_handler()` |
 
 ### libstdcxx_new_opv
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
-| `08025EBC` | `operator_new_array` | 4 | libstdc++ |
+| `08025EBC` | `_ZnajRKSt9nothrow_t` | 4 | libstdc++ `operator new[](size_t, const std::nothrow_t &)` |
 
 ### libstdcxx_new_op
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
-| `08025EC0` | `operator_new` | 32 | libstdc++ |
+| `08025EC0` | `_ZnwjRKSt9nothrow_t` | 32 | libstdc++ `operator new(size_t, const std::nothrow_t &)`: the app allocates with `new (std::nothrow)` |
 
 ### libc_init
 
@@ -1450,8 +1732,7 @@ C runtime, startup, IRQ handlers and the newlib-nano / libstdc++ objects (`docs/
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
-| `08026484` | `__sflush_r` | 2 | newlib-nano |
-| `08026486` | `__sflush_r_body` | 270 | body of `__sflush_r` (after its first instruction) |
+| `08026484` | `__sflush_r` | 272 | newlib-nano |
 | `08026594` | `_fflush_r` | 84 | newlib-nano |
 
 ### libc_lseekr
@@ -1507,8 +1788,7 @@ C runtime, startup, IRQ handlers and the newlib-nano / libstdc++ objects (`docs/
 
 | Address | Name | Size | Purpose |
 |---|---|---:|---|
-| `080267A0` | `printf` | 4 | newlib-nano |
-| `080267A4` | `printf_body` | 44 | body of `printf` (after the varargs push) |
+| `080267A0` | `printf` | 48 | newlib-nano |
 
 ### libc_nano_vfprintf
 
@@ -1706,7 +1986,7 @@ the next label in the generated source, so it can be shorter than the object.
 | `0802ACAC` | `led_curve_0` | 264 | 256-entry rising curve 0→255 (slow start, gamma-like). The LED driver object at `0x20000680` points (`+0x18`) at a 5-pointer curve table at `0x20000B30`; `_GLOBAL__sub_I` puts this curve in slots 0, 3 and 4 |
 | `0802ADB4` | `vt_pattern_settings_view` | 56 | view vtable, slots `pattern_settings_*` |
 | `0802ADEC` | `vt_osc_view` | 64 | 8-byte header, then the osc view vtable at `0x0802ADF4` (`osc_view_pot`, `view_ab_on_event`, `osc_view_on_cell`) |
-| `0802AE2C` | `std_nothrow` | 1 | `std::nothrow`, the second argument of every `operator new(size, nothrow)` |
+| `0802AE2C` | `_ZSt7nothrow` | 1 | `std::nothrow`, the second argument of every `operator new(size, nothrow)` |
 | `0802AE94` | `str_printf_flags` | – | `"#-0+ "`, newlib-nano `_vfprintf_r` |
 | `0802AE9A` | `str_printf_lengths` | – | `"hlL"`, `_vfprintf_r` |
 | `0802AE9E` | `str_printf_floats` | – | `"efgEFG"`, `_vfprintf_r` |

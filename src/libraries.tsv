@@ -1,0 +1,128 @@
+# Library code for tools/fwsrc.py: these parts of the image are linked from the stock
+# toolchain's own objects (GNU Arm Embedded 5-2016-q1-update, multilib armv7e-m/fpu, see
+# tools/fetch_toolchain.py) instead of being generated from the image.
+#
+#   file NAME[@VMA] INPUT...   the files.tsv file NAME is these input sections, in this order;
+#                              @VMA: they run at VMA in RAM, NAME holds their load image
+#   at ADDR INPUT...           these sections sit at ADDR in RAM, without bytes in the image
+#                              (.bss)
+#   symbol NAME FILE|ADDR      a linker symbol: the start of a files.tsv file, or an address
+#
+#   source OBJECT PKG/PATH     OBJECT is compiled from the ST library file PATH (PKG: a package
+#                              tools/fetch_toolchain.py installs) with the stock compiler and
+#                              our configuration headers in src/st/
+#   cflag FLAG                 a compiler flag for every source; -IPKG/PATH names a directory
+#                              in a package
+#   export OBJECT SYMBOL [NAME]  make OBJECT's static SYMBOL global, renamed to NAME:
+#                              generated code calls it by its stock name
+#
+# INPUT is OBJECT(SECTION ...): crtbegin.o, crti.o, crtn.o, ARCHIVE:MEMBER or a source
+# OBJECT. Every other section of a listed object is discarded, as the stock link's
+# --gc-sections did; the build fails if a kept section needs one.
+
+file crtbegin                crtbegin.o(.text)
+file libc_memchr             libc_nano.a:lib_a-memchr.o(.text)
+file libstdcxx_new_handler   libstdc++_nano.a:new_handler.o(.text._ZSt15get_new_handlerv)
+file libstdcxx_new_opv       libstdc++_nano.a:new_opvnt.o(.text._ZnajRKSt9nothrow_t)
+file libstdcxx_new_op        libstdc++_nano.a:new_opnt.o(.text._ZnwjRKSt9nothrow_t)
+file libc_init               libc_nano.a:lib_a-init.o(.text.__libc_init_array)
+file libc_malloc             libc_nano.a:lib_a-malloc.o(.text.malloc)
+file libc_memset             libc_nano.a:lib_a-memset.o(.text.memset)
+file libc_nano_freer         libc_nano.a:lib_a-nano-freer.o(.text._free_r)
+file libc_nano_mallocr       libc_nano.a:lib_a-nano-mallocr.o(.text._malloc_r)
+file libc_sbrkr              libc_nano.a:lib_a-sbrkr.o(.text._sbrk_r)
+file libc_writer             libc_nano.a:lib_a-writer.o(.text._write_r)
+file libc_closer             libc_nano.a:lib_a-closer.o(.text._close_r)
+file libc_findfp             libc_nano.a:lib_a-findfp.o(.text._cleanup_r .text.std.isra.0 .text.__sfmoreglue .text.__sinit .text.__sfp)
+file libc_fwalk              libc_nano.a:lib_a-fwalk.o(.text._fwalk_reent)
+file libc_stdio              libc_nano.a:lib_a-stdio.o(.text.__sread .text.__swrite .text.__sseek .text.__sclose)
+file libc_wbuf               libc_nano.a:lib_a-wbuf.o(.text.__swbuf_r)
+file libc_wsetup             libc_nano.a:lib_a-wsetup.o(.text.__swsetup_r)
+file libc_fflush             libc_nano.a:lib_a-fflush.o(.text.__sflush_r .text._fflush_r)
+file libc_lseekr             libc_nano.a:lib_a-lseekr.o(.text._lseek_r)
+file libc_makebuf            libc_nano.a:lib_a-makebuf.o(.text.__swhatbuf_r .text.__smakebuf_r)
+file libc_readr              libc_nano.a:lib_a-readr.o(.text._read_r)
+file libc_fstatr             libc_nano.a:lib_a-fstatr.o(.text._fstat_r)
+file libc_isattyr            libc_nano.a:lib_a-isattyr.o(.text._isatty_r)
+file libc_memcmp             libc_nano.a:lib_a-memcmp.o(.text.memcmp)
+file libc_memcpy             libc_nano.a:lib_a-memcpy-stub.o(.text.memcpy)
+file libc_memmove            libc_nano.a:lib_a-memmove.o(.text.memmove)
+file libc_printf             libc_nano.a:lib_a-printf.o(.text.printf)
+file libc_nano_vfprintf      libc_nano.a:lib_a-nano-vfprintf.o(.text.__sfputc_r .text.__sfputs_r .text._vfprintf_r)
+file libc_nano_vfprintf_i    libc_nano.a:lib_a-nano-vfprintf_i.o(.text._printf_common .text._printf_i)
+file rodata_libstdcxx_nothrow libstdc++_nano.a:new_handler.o(.rodata._ZSt7nothrow)
+file rodata_libc_impure      libc_nano.a:lib_a-impure.o(.rodata.str1.1 .rodata._global_impure_ptr)
+file rodata_libc_findfp      libc_nano.a:lib_a-findfp.o(.rodata.__sf_fake_stdin .rodata.__sf_fake_stdout .rodata.__sf_fake_stderr)
+file rodata_libc_vfprintf    libc_nano.a:lib_a-nano-vfprintf.o(.rodata.str1.1) libc_nano.a:lib_a-nano-vfprintf_i.o(.rodata.str1.1)
+file crti                    crtbegin.o(.eh_frame) crti.o(.init) crtn.o(.init) crti.o(.fini) crtn.o(.fini)
+file init_array_crtbegin     crtbegin.o(.init_array)
+file fini_array              crtbegin.o(.fini_array)
+file data_libc_impure@20000bb4 libc_nano.a:lib_a-impure.o(.data.impure_data .data._impure_ptr)
+
+at 20000c18                  crtbegin.o(.jcr .bss)
+at 200035a8                  libstdc++_nano.a:new_handler.o(.bss._ZN12_GLOBAL__N_113__new_handlerE) libc_nano.a:lib_a-nano-mallocr.o(.bss.__malloc_sbrk_start .bss.__malloc_free_list) libc_nano.a:lib_a-reent.o(COMMON)
+
+# ST libraries (docs/source-build.md *ST libraries*): StdPeriph V1.8.0, USB OTG V2.2.1. The
+# stock build used LTO; the functions it specialised (NVIC_Init, DMA_Init, ...) or that
+# differ from V2.2.1 (USB_OTG_EPDeactivate is older code) stay generated.
+source stm32f4xx_dma.o    stdperiph/Libraries/STM32F4xx_StdPeriph_Driver/src/stm32f4xx_dma.c
+source stm32f4xx_gpio.o   stdperiph/Libraries/STM32F4xx_StdPeriph_Driver/src/stm32f4xx_gpio.c
+source stm32f4xx_rcc.o    stdperiph/Libraries/STM32F4xx_StdPeriph_Driver/src/stm32f4xx_rcc.c
+source stm32f4xx_tim.o    stdperiph/Libraries/STM32F4xx_StdPeriph_Driver/src/stm32f4xx_tim.c
+source usb_core.o         usb/Libraries/STM32_USB_OTG_Driver/src/usb_core.c
+source usb_dcd.o          usb/Libraries/STM32_USB_OTG_Driver/src/usb_dcd.c
+source usbd_core.o        usb/Libraries/STM32_USB_Device_Library/Core/src/usbd_core.c
+source usbd_ioreq.o       usb/Libraries/STM32_USB_Device_Library/Core/src/usbd_ioreq.c
+source usbd_req.o         usb/Libraries/STM32_USB_Device_Library/Core/src/usbd_req.c
+cflag -DSTM32F427_437xx
+cflag -DUSE_STDPERIPH_DRIVER
+cflag -DHSE_VALUE=8000000
+cflag -DUSE_USB_OTG_FS
+cflag -DUSE_EMBEDDED_PHY
+cflag -Istdperiph/Libraries/CMSIS/Include
+cflag -Istdperiph/Libraries/CMSIS/Device/ST/STM32F4xx/Include
+cflag -Istdperiph/Libraries/STM32F4xx_StdPeriph_Driver/inc
+cflag -Iusb/Libraries/STM32_USB_OTG_Driver/inc
+cflag -Iusb/Libraries/STM32_USB_Device_Library/Core/inc
+
+file usb_otg_ep0startxfer     usb_core.o(.text.USB_OTG_EP0StartXfer)
+file dcd_ep_tx                usb_dcd.o(.text.DCD_EP_Tx)
+file dcd_ep_preparerx         usb_dcd.o(.text.DCD_EP_PrepareRx)
+file usb_otg_corereset        usb_core.o(.text.USB_OTG_CoreReset.isra.1)
+file usb_otg_ep0_outstart     usb_core.o(.text.USB_OTG_EP0_OutStart)
+file usb_otg_epactivate       usb_core.o(.text.USB_OTG_EPActivate)
+file usb_otg_flushrxfifo      usb_core.o(.text.USB_OTG_FlushRxFifo)
+file usb_otg_flushtxfifo      usb_core.o(.text.USB_OTG_FlushTxFifo)
+file usbd_isooutincomplete    usbd_core.o(.text.USBD_IsoOUTIncomplete)
+file usbd_isoinincomplete     usbd_core.o(.text.USBD_IsoINIncomplete)
+file usbd_sof                 usbd_core.o(.text.USBD_SOF)
+file usbd_suspend             usbd_core.o(.text.USBD_Suspend)
+file usbd_resume              usbd_core.o(.text.USBD_Resume)
+file tim_getitstatus          stm32f4xx_tim.o(.text.TIM_GetITStatus)
+file tim_timebasestructinit   stm32f4xx_tim.o(.text.TIM_TimeBaseStructInit)
+file tim_timebaseinit         stm32f4xx_tim.o(.text.TIM_TimeBaseInit)
+file rcc_getclocksfreq        stm32f4xx_rcc.o(.text.RCC_GetClocksFreq)
+file gpio_pinafconfig         stm32f4xx_gpio.o(.text.GPIO_PinAFConfig)
+file gpio_init                stm32f4xx_gpio.o(.text.GPIO_Init)
+file dma_clearitpendingbit    stm32f4xx_dma.o(.text.DMA_ClearITPendingBit)
+file dma_getitstatus          stm32f4xx_dma.o(.text.DMA_GetITStatus)
+file dma_deinit               stm32f4xx_dma.o(.text.DMA_DeInit)
+file usbd_ctlerror            usbd_req.o(.text.USBD_CtlError)
+file usbd_ctlsendstatus       usbd_ioreq.o(.text.USBD_CtlSendStatus)
+file usbd_ctlsenddata         usbd_ioreq.o(.text.USBD_CtlSendData)
+file usbd_setcfg              usbd_core.o(.text.USBD_SetCfg)
+file data_apbahbpresctable@2000071a stm32f4xx_rcc.o(.data.APBAHBPrescTable)
+
+# static functions the generated code calls or points to
+export usb_core.o  USB_OTG_CoreReset.isra.1 USB_OTG_CoreReset
+export usbd_core.o USBD_IsoOUTIncomplete
+export usbd_core.o USBD_IsoINIncomplete
+export usbd_core.o USBD_SOF
+export usbd_core.o USBD_Suspend
+export usbd_core.o USBD_Resume
+
+# __libc_init_array's bounds: no .preinit_array, then the two .init_array words
+symbol __preinit_array_start init_array_crtbegin
+symbol __preinit_array_end   init_array_crtbegin
+symbol __init_array_start    init_array_crtbegin
+symbol __init_array_end      fini_array

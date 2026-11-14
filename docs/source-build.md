@@ -141,6 +141,11 @@ at that function's stock address. Every other stock name is `PROVIDE`d at its st
 address (functions with the Thumb bit), so calls, tail calls and literal-pool pointers
 resolve as in the image. Anything else (non-stock functions, `.rodata`, vtables g++
 emits) is parked at `0x08080000`, so a reference to it shows up as a difference.
+A data object whose name is a stock name (for example a vtable,
+`extern "C" void *const vt_osc_view[20] = {0};`) is placed at its stock address. Its
+contents are not compared. Stock constructors load `vt + 8` through a section anchor on
+a vtable defined in the same translation unit, so they match only when the source
+defines the vtable (`osc_view_ctor`, `gate_view_ctor`, `octave_view_ctor`).
 
 A function's compiled bytes, literal pool included, are compared with the image:
 
@@ -152,7 +157,40 @@ A function's compiled bytes, literal pool included, are compared with the image:
 | `EXTRA` | the function's name is not a stock function, so it is not placed |
 
 A C++ method gets its stock name with an asm label: `int get() asm("cell_read");`. The
-exit code is 1 when any function is `DIFF` or `SHORT`.
+exit code is 1 when any function is `DIFF` or `SHORT`. A function ends at the next
+function entry or named code address (`symbols.tsv`), so a this-adjusting thunk that
+Ghidra folded into the function before it still ends that function. A function compiled
+longer than its stock slot overlaps the next one; `match` links with
+`--no-check-sections`, so it still reports the difference. Parameter types
+change code generation: `recorder_write_patch_change` matches only with a `uint8_t`
+pattern index (`mla r1, r1, r0, r4` instead of `mla r1, r0, r1, r4`).
+
+**Unnamed RAM.** A RAM address with no stock name can be given one in the source:
+`asm(".set usb_str_desc, 0x20002517"); extern uint8_t usb_str_desc[];`. The compiler
+then treats it as an unknown address and loads it from one literal, as stock code does.
+A constant cast such as `((uint8_t *)0x20002517)` lets the compiler fold offsets, so
+`p[1]` gets a second literal `0x20002518` (`USBD_GetString` matches only with the
+symbol).
+
+**Specialised library code.** The STM32 Standard Peripheral Library functions match
+their published source, with changes that look like a link-time optimiser specialising
+each function for its callers:
+- `NVIC_Init` has no `NVIC_IRQChannelCmd` check and no subpriority.
+- `TIM_OC2Init` ignores `TIM_OCPolarity`.
+- `TIM_DeInit` inlines `RCC_APBxPeriphResetCmd(p, ENABLE)` and tail-calls separate
+  `DISABLE` copies (`RCC_APB1PeriphResetCmd_off`, `RCC_APB2PeriphResetCmd_off`).
+
+To match, the source is written in the specialised form. The init-struct enums load
+with `ldrb`, so they are one byte. `GPIO_Init` matches only when they are enum types
+(`enum __attribute__((packed))`), not `uint8_t`. A `uint8_t` field may alias the
+register stores, so GCC loads `GPIO_Mode` twice.
+
+**Not GCC.** The vtable stubs at `080114F6`–`08011515` (`return_3`, `return_1`,
+`return_0`, `mode_view_layer`) and `return_1_b` (`08015ABE`) return constants with a
+32-bit `mov.w r0, #n`. `mode_view_layer` also compares with `cmp #3; ite ls`. GCC 5.3.1
+gives `movs` at every `-O` level, and `ite cc` or `ite hi`. These stubs probably come
+from another compiler or from hand-written assembly. Until that is known, they stay
+assembly.
 
 **Compiler version.** With `-Os`, arm-none-eabi-g++ 13.2 compiles `NoteSink::note_on` to
 the stock bytes, but `note_off` gets the same instructions with the registers allocated
@@ -171,12 +209,117 @@ downloads it from Launchpad
 Launchpad's MD5 and unpacks it into git-ignored `toolchains/`; `match` then uses it by
 default (else `arm-none-eabi-` from PATH, with a note). `--cc PREFIX` picks another.
 
+## Library code
+
+The C runtime, newlib-nano and libstdc++ code in the image is not converted. `fwsrc.py
+build` links it from the stock toolchain's own objects, so a later toolchain or library
+version can replace it. `src/libraries.tsv` lists, for each library file in `files.tsv`,
+the input sections it is made of, in image order:
+
+```
+file libc_findfp   libc_nano.a:lib_a-findfp.o(.text._cleanup_r .text.std.isra.0 ...)
+file data_libc_impure@20000bb4  libc_nano.a:lib_a-impure.o(.data.impure_data .data._impure_ptr)
+at 200035a8        libstdc++_nano.a:new_handler.o(.bss._ZN12_GLOBAL__N_113__new_handlerE) ...
+symbol __init_array_start  init_array_crtbegin
+```
+
+- An input is `OBJECT(SECTION ...)`, where OBJECT is `crtbegin.o`, `crti.o`, `crtn.o` or
+  `ARCHIVE:MEMBER`. The build finds each with the stock gcc's `-print-file-name` for the
+  `armv7e-m/fpu` multilib (`-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard`). Without
+  the stock toolchain it stops and names `tools/fetch_toolchain.py`.
+- `file NAME@VMA`: the sections run from RAM at VMA. NAME is their load image.
+- `at ADDR`: `.bss` sections, placed at ADDR without bytes in the image.
+- `symbol`: a linker symbol at a file's start (`__libc_init_array`'s bounds) or at an
+  address.
+- Every other section of a listed object is discarded, as the stock link's `--gc-sections`
+  did. For example, crtbegin's `.data` (`__dso_handle`) is unreferenced and not in the
+  image. A kept section that needs a discarded one fails the link.
+
+The linker script keeps one `KEEP` per section, because ld keeps file order within one
+`file(sec1 sec2)` pattern. Two layout rules are easy to miss:
+- ld merges string sections (`.rodata.str1.1`) across an output section. Each library
+  file with strings therefore gets its own output section: `rodata_libc_impure`'s `"C"`
+  stays apart from printf's strings.
+- A file that runs from RAM ends the flash output section. The next section starts after
+  that file's load image (`LOADADDR + SIZEOF`, a forward reference), so `.` never moves
+  backwards.
+
+App code reaches library code through the library's own symbol names, so `symbols.tsv`
+uses those names: `memcpy`, `_ZnwjRKSt9nothrow_t` (`operator new(size_t, const
+std::nothrow_t &)`) and `_ZSt7nothrow`. The stock operator new is the nothrow variant.
+The shift test moves library files as blocks. It finds their new addresses through the
+ELF's symbols, because a section's alignment can put it after the file's marker.
+`generate --libraries none.tsv` (a missing file) generates the library files from the
+image instead.
+
+## ST libraries
+
+ST's code in the image is linked from ST's source in the same way, compiled by `build`.
+Two ST packages are used:
+
+- **STM32F4xx Standard Peripheral Library V1.8.0** (STSW-STM32065). It provides
+  CMSIS, the `stm32f4xx.h` device header and the StdPeriph drivers (DMA, GPIO, RCC, TIM).
+  V1.9.0 is excluded because its GPIO driver writes a 32-bit `BSRR`, while the image
+  uses the 16-bit `BSRRL`/`BSRRH` halves.
+- **STM32 USB OTG host/device library V2.2.1** (STSW-STM32046): `usb_core.c`,
+  `usb_dcd.c`, `usbd_core.c`, `usbd_ioreq.c`, `usbd_req.c`.
+
+st.com requires a login to download, so the user puts the zips in `toolchains/`.
+`tools/fetch_toolchain.py` checks each zip against a pinned SHA-256, unpacks it there and
+marks it with `.installed`. `--archive FILE` takes a zip from elsewhere. ST files are
+never committed: the git-ignored `toolchains/` holds them.
+
+`src/libraries.tsv` adds three line kinds:
+
+```
+source usb_core.o  usb/Libraries/STM32_USB_OTG_Driver/src/usb_core.c
+cflag  -DUSE_USB_OTG_FS
+cflag  -Iusb/Libraries/STM32_USB_OTG_Driver/inc
+file   usb_otg_corereset  usb_core.o(.text.USB_OTG_CoreReset.isra.1)
+export usb_core.o  USB_OTG_CoreReset.isra.1  USB_OTG_CoreReset
+```
+
+- `source OBJECT PACKAGE/PATH`: the build compiles PATH, a file in the installed
+  `stdperiph` or `usb` package, into `build/.../st/OBJECT`. A `file` input can then name
+  OBJECT. The compiler is the stock one, with `-Os -ffunction-sections -fdata-sections`,
+  the CPU flags, `-I src/st` and every `cflag`.
+- `cflag`: a `-D`, `-I`, `-f`, `-m` or `-O` flag. A `-I PACKAGE/PATH` resolves into the
+  package.
+- `export OBJECT SYMBOL [NAME]`: objcopy makes a static symbol global, renamed to NAME
+  if one is given. Generated data refers to these by name. For example, the DCD callback
+  table holds `.word USBD_SOF`, and a linker-script symbol would lack the Thumb bit.
+
+The configuration headers are ours, in `src/st/`: `stm32f4xx_conf.h`, `usb_conf.h`
+(FS core, device mode, no VBUS sensing, FIFO sizes), `usbd_conf.h` and `usbd_desc.h`.
+The build defines `STM32F427_437xx`, `HSE_VALUE=8000000` (the stock literal `0x7a1200`),
+`USE_USB_OTG_FS` and `USE_EMBEDDED_PHY`. The stock DCD callback table at load address
+`0x0802B67C` has 9 entries, so `VBUS_SENSING_ENABLED` is off.
+
+Every ST function has its own file in `files.tsv`, named after the function in lower
+case. The file's evidence says whether it is linked or generated. Each ST object's
+definitions are made weak. The generated source's definitions of the unlinked functions
+therefore win, and the linker script discards the unlinked sections.
+
+26 functions and `APBAHBPrescTable` (`.data`, VMA `0x2000071A`) match. The other ST
+functions stay generated:
+
+- **LTO.** The stock build used link-time optimisation. Its interprocedural constant
+  propagation specialised some functions for their only caller. `NVIC_Init` lost its
+  `IRQChannelCmd` check and its sub-priority. `DMA_Init` has the constant `0x400` folded
+  in. `TIM_OC2Init`, `TIM_DeInit` and the RCC `.part` clones
+  (`RCC_APB1PeriphResetCmd_off`) are specialised in the same way. ST's source alone cannot
+  reproduce them, and the build uses no LTO.
+- **Version.** The stock USB code predates V2.2.1: its `USB_OTG_EPDeactivate` still
+  clears `DAINTMSK`. The plan is to move the firmware fully to V2.2.1 later, which
+  changes those functions' bytes.
+
 ## How the generator works
 
 - **Layout.** `C` (instructions), `D` (defined data) and `U` (undefined) ranges tile the
-  whole image (129,824 bytes). `layout-fixes.tsv` adds functions Ghidra missed, marks the
-  `b .` fault loops as code, and turns falsely disassembled tables back into data (for
-  example the synth param table at `0x0802A62E`).
+  whole image (129,824 bytes). `layout-fixes.tsv` adds functions Ghidra missed, moves
+  entries Ghidra put after an instruction scheduled before the push (`X` drops the wrong
+  one), marks the `b .` fault loops as code, and turns falsely disassembled tables back
+  into data (for example the synth param table at `0x0802A62E`).
 - **Disassembly.** objdump runs on each `C` range (`-Mforce-thumb`, `--adjust-vma`).
 - **PC-relative operands become labels:** branches (`b`/`bl`/`b<cond>`, `.n`/`.w`,
   `cbz`/`cbnz`), literal loads (`ldr*`, `vldr`, `ldrd`), and `add`/`sub pc` → `adr`.
@@ -207,20 +350,22 @@ source-file names:
 | `vectors` | `0800C000`–`0800C1AC` | vector table, 107 words up to the image header |
 | `image_header` | `0800C1AC`–`0800C1D0` | `MAIN` + BCD version, read by the bootloader |
 | `crtbegin` | `0800C1D0`–`0800C230` | `__do_global_dtors_aux`, `frame_dummy` (the `.fini`/`.init_array` entries) |
+| `libc_memchr` | `0800C230`–`0800C2D0` | newlib's assembly `memchr` (a plain `.text` section, linked before every `.text.*`) |
 | `syscalls` | `0801EEAC`–`0801EEFC` | newlib stubs `_read` … `_close` |
 | `stm32f4xx_it` | `08023A78`–`08024070` | IRQ and fault handlers, in ST's `stm32f4xx_it.c` order reversed (`NMI_Handler` last) |
-| app files | `0800C230`–`08025E60` (60 ranges) | app code between linker input sections: each starts after a `00 00` linker fill that follows code (see below); named for their content, listed in `docs/source-map.md` |
+| app files | `0800C2D0`–`08025E60` (60 ranges) | app code between linker input sections: each starts after a `00 00` linker fill that follows code (see below); named for their content, listed in `docs/source-map.md` |
 | `startup` | `08025E60`–`08025EAC` | `Reset_Handler` + `Default_Handler` (CMSIS `startup_stm32f4xx.s`) |
 | `libstdcxx_*`, `libc_*` | `08025EAC`–`08026D94` | one file per library object (`docs/firmware-map.md` *Runtime libraries*) |
-| `rodata` | `08026D94`–`0802AE30` | app constant data; `D_08026D94` is read by app code |
-| `rodata_libc_*` | `0802AE30`–`0802AEC8` | `_global_impure_ptr`, `__sf_fake_*`, printf strings |
+| `rodata` | `08026D94`–`0802AE2C` | app constant data; `D_08026D94` is read by app code |
+| `rodata_libstdcxx_nothrow`, `rodata_libc_*` | `0802AE2C`–`0802AEC8` | `std::nothrow`, locale `"C"`, `_global_impure_ptr`, `__sf_fake_*`, printf strings |
 | `crti` | `0802AEC8`–`0802AEE0` | `_init`, `_fini` (newlib crti/crtn) |
-| `init_array` / `fini_array` | `0802AEE0`–`0802AEEC` | `frame_dummy` + one static constructor (`0x080256F4`); `__do_global_dtors_aux` |
+| `init_array_crtbegin`, `init_array`, `fini_array` | `0802AEE0`–`0802AEEC` | `frame_dummy`; one static constructor (`0x080256F4`); `__do_global_dtors_aux` |
 | `data` | `0802AEEC`–`0802BAA0` | `.data` load image (`_sidata`); `Reset_Handler` copies `0x0802AEEC`–`0x0802BB04` to `0x20000000`–`0x20000C18` |
 | `data_libc_impure` | `0802BAA0`–`0802BB04` | `impure_data` and `_impure_ptr` at the end of `.data` |
 | `image_tail` | `0802BB04`–`0802BB20` | 28 unexplained bytes up to the image end |
 
-`.bss` runs to `0x200035B8`. `Reset_Handler` calls `0x0801A848`, then
+Files listed in `src/libraries.tsv` are not generated: the build links them from the
+toolchain (*Library code* below). `.bss` runs to `0x200035B8`. `Reset_Handler` calls `0x0801A848`, then
 `0x08025EE0` (`__libc_init_array`), then `main`.
 
 Rules, checked by `generate`:

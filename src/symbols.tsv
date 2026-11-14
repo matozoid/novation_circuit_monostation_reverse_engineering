@@ -48,9 +48,9 @@
 0801eeec _lseek
 0801eef0 _isatty
 0801eef4 _close
-08025eac get_new_handler
-08025ebc operator_new_array
-08025ec0 operator_new
+08025eac _ZSt15get_new_handlerv           std::get_new_handler()
+08025ebc _ZnajRKSt9nothrow_t             operator new[](size_t, const std::nothrow_t &)
+08025ec0 _ZnwjRKSt9nothrow_t             operator new(size_t, const std::nothrow_t &)
 08025ee0 __libc_init_array
 08025f2c malloc
 08025f3c memset
@@ -156,6 +156,7 @@
 08016a72 recorder_note_off
 08017248 recorder_on_cell
 080175c8 recorder_on_cell_thunk
+080175d0 ctx_forward_hook
 08023042 recorder_note_pending
 080231b8 recorder_note_release
 080234a0 recorder_sync_rate
@@ -278,8 +279,8 @@
 0801161a cell_store
 08011628 container_view_ctor
 08011640 keytrack_view_render
-08011684 keytrack_view_render_thunk
-08011688 keytrack_view_render_thunk2
+08011684 keytrack_view_on_cell
+08011688 keytrack_view_on_cell_thunk
 08011690 cell_subscribe1
 08011696 map_range
 080116d0 ui_root_fader
@@ -291,15 +292,14 @@
 08011814 modmatrix_view_leds
 08011920 modmatrix_view_slot4
 08011a78 modmatrix_view_button
-08011a7a modmatrix_view_button_body
 08011b44 view_08027800_render
-08011c4c view_08027800_render_thunk
-08011c50 view_08027800_render_thunk2
+08011c4c view_08027800_on_cell
+08011c50 view_08027800_on_cell_thunk
 08011c58 hold_button_view_render
 08011cb0 ui_root_on_cell
 08011db8 ui_root_on_cell_thunk
-08011dc0 hold_button_view_render_thunk
-08011dc4 hold_button_view_render_thunk2
+08011dc0 hold_button_view_on_cell
+08011dc4 hold_button_view_on_cell_thunk
 08011dcc ui_root_show_top_view
 08011e64 ui_root_restore_view
 08011eac ui_root_slot4
@@ -322,8 +322,8 @@
 # cu_080127b4 (gate_octave_views)
 080127b4 gate_view_ctor
 080127f8 octave_view_render
-0801285c octave_view_render_thunk
-08012860 octave_view_render_thunk2
+0801285c octave_view_on_cell
+08012860 octave_view_on_cell_thunk
 08012868 pads_flush_held
 0801289a pads_flush_held_thunk
 # cu_080128a4 (meter_keyboard_leds)
@@ -341,7 +341,6 @@
 08012cb8 step_view_blink_tick
 08012d34 step_view_mark_range
 08012d72 step_view_on_cell
-08012d76 step_view_on_cell_body
 08012f04 step_view_on_cell_thunk
 08012f0c modseq_level_view_render
 08012f8c modseq_level_view_render_thunk
@@ -362,22 +361,19 @@
 08013874 view_rgb_leds_b
 0801387a scales_view_rgb_leds
 080138b0 patterns_view_pad_up
-080138b6 patterns_view_pad_up_body
 080138f8 patch_view_pad_up
 08013906 cell_set_byte_flag
 # cu_0801392c (pattern_patch_views)
 0801392c pattern_octave_ctor
 08013958 select3_view_render
-08013994 select3_view_render_thunk
-08013998 select3_view_render_thunk2
+08013994 select3_view_on_cell
+08013998 select3_view_on_cell_thunk
 080139a0 sessions_view_button
 080139f0 patterns_view_on_cell
-080139f4 patterns_view_on_cell_body
 08013abc patterns_view_on_cell_thunk
 08013c24 patch_view_on_cell
 08013c72 patch_view_on_cell_thunk
 08013c7a scale_root_view_on_cell
-08013c7c scale_root_view_on_cell_body
 08013ca4 scale_root_view_on_cell_thunk
 08013cac scale_type_view_render
 08013d20 scale_type_view_render_thunk
@@ -393,18 +389,14 @@
 080142b0 sessions_view_on_cell_thunk
 080142b8 sessions_view_pad_down
 08014444 patterns_view_pad_down
-0801444a patterns_view_pad_down_body
 080145e6 pattern_settings_on_cell
 08014700 pattern_settings_on_cell_thunk
 08014708 select3_view_pad_down
-0801470a select3_view_pad_down_body
 08014734 scale_type_view_pad_down
-08014736 scale_type_view_pad_down_body
 08014768 save_view_on_cell
 080147f0 save_view_on_cell_thunk
 080147f8 save_view_button
 08014872 pattern_settings_pad_down
-08014874 pattern_settings_pad_down_body
 080148da transport_src_adapter_4
 080148ee transport_src_adapter_3
 08014902 transport_src_adapter_2
@@ -451,14 +443,11 @@
 # cu_080150a4 (osc_mixer_views)
 080150a4 osc_view_waveform_led
 080150cc osc_view_on_cell
-080150d0 osc_view_on_cell_body
 08015224 osc_view_on_cell_thunk
 0801522c mixer_view_led4
 08015250 mixer_view_on_cell
-08015254 mixer_view_on_cell_body
 08015388 mixer_view_on_cell_thunk
 08015390 rec_view_button
-08015392 rec_view_button_body
 0801541c rec_view_render
 08015450 rec_view_on_cell
 08015482 rec_view_on_cell_thunk
@@ -492,17 +481,14 @@
 08015de8 flag_led_render_thunk
 08015df0 led_pair_from_table
 08015e24 select_inverted_index
-08015e26 select_inverted_index_body
 # cu_08015e48 (synth_views_transport)
 08015e48 lfo_view_on_cell
 08015f5c lfo_view_on_cell_thunk
 08015f64 filter_view_on_cell
-08015f68 filter_view_on_cell_body
 0801606c filter_view_on_cell_thunk
 08016074 envelope_view_on_cell
 08016154 envelope_view_on_cell_thunk
 0801615c dist_view_on_cell
-08016160 dist_view_on_cell_body
 080161f4 dist_view_on_cell_thunk
 080161fc lfo_view_pot
 08016324 filter_view_pot
@@ -511,7 +497,6 @@
 080165f4 settings_view_on_cell
 080166f8 settings_view_on_cell_thunk
 08016700 settings_view_pad_down
-08016702 settings_view_pad_down_body
 0801686c view_14_render
 0801689c view_14_on_cell
 080168a0 view_14_on_cell_thunk
@@ -539,14 +524,13 @@
 0801768a param_get
 080176da param_get_raw
 08017884 synth_obj_param
-08017886 synth_obj_param_body
 080178cc synth_obj_param_thunk
 080178d4 synth_obj_note_off
 08017910 input_log_slider
 08017934 input_log_encoder
 08017958 input_log_pot
 0801797c input_log_button
-080179a6 input_log_pad
+080179a4 input_log_pad
 08017a08 clock_restart_ext
 08017a52 cell_new3
 08017a62 cell_new1
@@ -554,7 +538,6 @@
 08017a74 led_frame_compose
 08017e00 clock_state_on_cell
 08017ea0 clock_state_on_cell_thunk
-08017f1e clock_engine_body
 08018568 midi_ctl_song_position
 08018570 midi_ctl_song_position_thunk
 08018578 midi_ctl_stop
@@ -567,11 +550,11 @@
 08018656 midi_in_cc_pair
 # cu_080186b8 (midi_in_out)
 080189e2 scale_snap_note
-08018a2e midiout_clock_thunk
-08018a8a midiout_song_position_thunk
-08018abc midiout_stop_thunk
-08018aea midiout_start_thunk
-08018b18 midiout_note_off_thunk
+08018a2e midiout_continue_thunk
+08018a8a midiout_song_select_thunk
+08018abc midiout_song_position_thunk
+08018aea midiout_stop_thunk
+08018b18 midiout_start_thunk
 08018b70 midiout_cc
 # cu_08018b90 (sysex_patch_session)
 08018c18 sysex_patch_rx
@@ -592,7 +575,7 @@
 08019366 session_ctl_save_step
 # cu_08019430 (session_globals)
 08019430 session_ctl_patch_write_done
-# cu_0801985c (session_ctl_usb_user)
+# cu_0801985c (session_ctl_patch)
 0801985c session_ctl_on_cell
 08019aec session_ctl_on_save_done
 08019b60 USB_OTG_EP0StartXfer
@@ -616,17 +599,17 @@
 08019e18 USBD_USR_ManufacturerStrDescriptor
 08019e2c USBD_USR_ProductStrDescriptor
 08019e40 DCD_EP_Stall
-# cu_08019e94 (usbd_core_a)
+# cu_08019e94 (usbd_setupstage)
 08019e94 USBD_SetupStage
 0801a244 DCD_EP_Tx
 0801a282 DCD_EP_PrepareRx
 0801a2ce USBD_DataOutStage
-# cu_0801a348 (usbd_core_b)
+# cu_0801a348 (usb_otg_corereset)
 0801a348 USB_OTG_CoreReset
 0801a394 USB_OTG_EP0_OutStart
 0801a3bc USBD_DataInStage
-0801a494 DCD_EP_Close
-0801a4d6 DCD_EP_Open
+0801a494 USB_OTG_EPDeactivate
+0801a4d6 USB_OTG_EPActivate
 # cu_0801a534 (usbd_midi)
 0801a534 USB_OTG_FlushRxFifo
 0801a56c USB_OTG_FlushTxFifo
@@ -640,7 +623,7 @@
 0801a754 usbd_midi_DeInit
 # cu_0801a790 (system_init)
 0801a790 usbd_midi_Init
-0801a81c usb_bsp_udelay
+0801a81c USB_OTG_BSP_uDelay
 0801a848 SystemInit
 0801a934 dma_stream_setup
 0801aa60 spi_init
@@ -686,12 +669,10 @@
 0801bdb6 gpio_reset
 0801bdc4 engine_tick_2khz
 0801bddc usb_midi_tx_watchdog
-0801bde4 usb_midi_tx_watchdog_body
 0801be20 input_poll_task
 0801bf44 nor_async_program_step_done
 0801bf74 nor_async_read_chunk
 0801bfac nor_async_read_chunk_done
-0801bfb8 nor_async_read_chunk_done_tail
 0801c004 nor_async_read_start
 # cu_0801c010 (nor_async_router)
 0801c010 nor_async_send_cmd
@@ -701,7 +682,6 @@
 0801c064 nor_async_status_check
 0801c0ac nor_async_wait_wel
 0801c0d0 nor_async_continue
-0801c0d4 nor_async_continue_body
 0801c0ea timer_nop
 0801c0ec nor_async_read
 0801c154 nor_async_program
@@ -714,9 +694,7 @@
 0801c820 midi_ctl_release_held_thunk
 0801c824 midi_ctl_send_b
 0801c830 midi_ctl_send_a
-0801c844 param_set_body
 0801caec midi_ctl_on_cell
-0801caf0 midi_ctl_on_cell_body
 0801cb20 midi_ctl_on_cell_thunk
 0801cb28 router_on_cell
 0801cb68 router_on_cell_thunk
@@ -745,7 +723,7 @@
 0801e214 sysex_send_debug
 0801e278 bitset_clear
 0801e296 adc_filter_push
-# cu_0801e310 (controls_stdperiph)
+# cu_0801e310 (controls)
 0801e310 control_dispatch
 0801e398 button_event
 0801e3d4 pots_scan
@@ -775,7 +753,6 @@
 0801ecc8 buttons_scan
 0801ee04 to_decimal_digits
 # cu_0801eefc (irq_calibration)
-0801eefe USBD_OTG_ISR_Handler
 0801f654 calib_value_inc
 0801f666 calib_value_dec
 0801f678 calib_step_run
@@ -827,6 +804,7 @@
 08021f08 synth_update_osc2
 080220a8 synth_update_osc1
 0802222c synth_update_glide
+0802225c knob_callback
 0802228c button_feature_enabled
 080222ac synth_mod_sources_init
 08022310 synth_engine_reset
@@ -866,7 +844,6 @@
 # cu_08023370 (players)
 08023414 rec_hub_param_thunk
 # stm32f4xx_it
-08023fe2 USART1_IRQHandler_body
 # cu_080240b0 (nor_regs)
 080240b0 nor_sector_addr
 080240c0 nor_read_otp
@@ -904,7 +881,7 @@
 08024690 nor_erase_subsector
 08024708 nor_erase_sector
 08024780 nor_program
-08024812 nor_program_mode
+08024810 nor_program_mode
 080248b4 nor_read
 08024920 pin_write
 080249cc pin_group_write
@@ -912,6 +889,7 @@
 # cu_08024adc (calibration_dac)
 08024adc calib_finish_01
 08024af0 calib_finish_00
+08024b04 calib_note_c4
 08024b1c calib_setup_41
 08024b38 calib_setup_40
 08024b54 calib_setup_39
@@ -921,6 +899,7 @@
 08024bc4 calib_setup_35
 08024be0 calib_setup_34
 08024bfc calib_setup_33
+08024c18 calib_note_c5
 08024c2c calib_setup_32
 08024c58 calib_setup_29
 08024c78 calib_setup_31
@@ -932,7 +911,6 @@
 08024d28 calib_setup_25
 08024d44 calib_setup_24
 08024d60 calib_setup_22
-08024d62 calib_setup_23_body
 08024d94 calib_setup_21
 08024dcc calib_setup_17
 08024dfc calib_setup_16
@@ -940,7 +918,6 @@
 08024e54 calib_setup_14
 08024e88 calib_setup_13
 08024ec0 calib_setup_12
-08024ec2 calib_setup_12_body
 08024ef0 calib_setup_11
 08024f24 calib_setup_10
 08024f58 calib_setup_09
@@ -980,9 +957,7 @@
 08025c14 pattern_settings_ctor
 08025d18 step_view_ctor
 # libc_fflush
-08026486 __sflush_r_body
 # libc_printf
-080267a4 printf_body
 
 # --- data (source-map.md)
 080271bc vt_pattern_ctl
@@ -1021,7 +996,7 @@
 0802a1e4 param_lanes                    sequencer.md
 0802a5e8 sine_quarter
 0802ab24 ui_colours                     colour role -> palette index
-0802ae2c std_nothrow
+0802ae2c _ZSt7nothrow
 0802aeec _sidata                        source-build.md
 0802bb04 _siccm                         empty CCM .data load image
 08028eb8 usb_str_config

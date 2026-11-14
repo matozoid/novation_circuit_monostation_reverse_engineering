@@ -1,17 +1,46 @@
 # Corrections to src/layout.tsv (the Ghidra export), applied by tools/fwsrc.py.
 # Same syntax: C/D/U start end force a range's kind (hex, [start, end)); F addr [name] adds
-# a function entry. Keep entries sorted by address, with the reason.
+# a function entry, X addr drops a wrong one. Keep entries sorted by address, with the reason.
 
 F 0800c1d0                     # crt0 frame_dummy-style init, reached only through a pointer
 F 080114e6                     # small setters, vtable targets
 F 080114ee
+X 08011a7a                     # modmatrix_view_button: GCC scheduled code before the push (entry stub)
+X 08012d76                     # step_view_on_cell: GCC scheduled code before the push (entry stub)
+X 080138b6                     # patterns_view_pad_up: GCC scheduled code before the push (entry stub)
+X 080139f4                     # patterns_view_on_cell: GCC scheduled code before the push (entry stub)
+X 08013c7c                     # scale_root_view_on_cell: GCC scheduled code before the push (entry stub)
+X 0801444a                     # patterns_view_pad_down: GCC scheduled code before the push (entry stub)
+X 0801470a                     # select3_view_pad_down: GCC scheduled code before the push (entry stub)
+X 08014736                     # scale_type_view_pad_down: GCC scheduled code before the push (entry stub)
+X 08014874                     # pattern_settings_pad_down: GCC scheduled code before the push (entry stub)
 F 0801493e
+X 080150d0                     # osc_view_on_cell: GCC scheduled code before the push (entry stub)
+X 08015254                     # mixer_view_on_cell: GCC scheduled code before the push (entry stub)
+X 08015392                     # rec_view_button: GCC scheduled code before the push (entry stub)
+X 08015e26                     # select_inverted_index: GCC scheduled code before the push (entry stub)
+X 08015f68                     # filter_view_on_cell: GCC scheduled code before the push (entry stub)
+X 08016160                     # dist_view_on_cell: GCC scheduled code before the push (entry stub)
+X 08016702                     # settings_view_pad_down: GCC scheduled code before the push (entry stub)
+F 080175d0                     # ctx_forward_hook: callback stored at 0x200035A4 by app_main, Ghidra folded it into the thunk above
+X 08017886                     # synth_obj_param: GCC scheduled code before the push (entry stub)
+F 080179a4                     # input_log_pad: GCC scheduled cmp r1,#1 before the push
+X 080179a6
+X 08017f1e                     # clock_engine: GCC scheduled code before the push (entry stub)
+X 0801bde4                     # usb_midi_tx_watchdog: GCC scheduled code before the push (entry stub)
+X 0801bfb8                     # nor_async_read_chunk_done: GCC scheduled code before the push (entry stub)
+X 0801c0d4                     # nor_async_continue: GCC scheduled code before the push (entry stub)
+X 0801c844                     # param_set: GCC scheduled code before the push (entry stub)
+X 0801caf0                     # midi_ctl_on_cell: GCC scheduled code before the push (entry stub)
 F 0801eefc                     # vector handlers without a Ghidra function
+X 0801eefe                     # USBD_OTG_ISR_Handler inlined into OTG_FS_IRQHandler: GCC scheduled the pdev load before the push (entry stub)
 C 0801f4d8 0801f4dc            # b.w FUN_0801eefc, vector/vtable target
 F 0801f4d8
 C 0801f666 0801f678            # 16-bit counter decrement, vtable target
 F 0801f666
+F 0802225c                     # knob_callback: control_dispatch tail-calls it
 F 08023fe0
+X 08023fe2                     # USART1_IRQHandler: GCC scheduled code before the push (entry stub)
 F 0802403c
 F 08024060
 F 08024062
@@ -23,12 +52,20 @@ F 0802406a
 F 0802406c
 F 0802406e
 F 080240b0
+F 08024810                     # nor_program_mode: GCC scheduled subs r0,#12 before the push
+X 08024812
+F 08024b04                     # calib_note_c4: shared tail of the calib_setup_* steps
+F 08024c18                     # calib_note_c5: shared tail of the calib_setup_* steps
+X 08024d62                     # calib_setup_22, calib_setup_12: GCC scheduled the ldr before the push
+X 08024ec2
 C 08025ea8 08025eaa            # `b .` loop, pointer target
 F 08025ea8
 F 080260e4                     # newlib _cleanup_r, __sclose, __sflush_r, printf: reached
 F 080262f6                     # through pointers and tail calls only
 F 08026484
+X 08026486                     # __sflush_r: GCC scheduled code before the push (entry stub)
 F 080267a0
+X 080267a4                     # printf: GCC scheduled code before the push (entry stub)
 D 08027cb2 08027d0e            # byte table 00 01 02 ...: Ghidra disassembled it
 D 0802825a 080282fc            # byte table 8e 8e 8d ...: Ghidra disassembled it
 D 0802a62e 0802a678            # synth parameter table (0x0802A62A): Ghidra disassembled it

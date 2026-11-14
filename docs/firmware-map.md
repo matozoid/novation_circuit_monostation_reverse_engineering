@@ -72,11 +72,12 @@ Patches, sessions, the settings record and the calibration table live in an exte
 
 ## Runtime libraries
 
-The toolchain is arm-none-eabi-gcc with **newlib-nano** and libstdc++. Their code fills `0x08025EAC`–`0x08026D94`, right after the startup file. Their constant data sits at the end of `.rodata` (`0x0802AE30`–`0x0802AEC8`), and their `.data` sits at the end of the `.data` image. The functions are identified by code shape, call graph and the data they touch. The image has no symbols. `src/files.tsv` gives one source file per library object, and `src/symbols.tsv` has the names.
+The toolchain is arm-none-eabi-gcc with **newlib-nano** and libstdc++. Their code fills `0x08025EAC`–`0x08026D94`, right after the startup file. Newlib's assembly `memchr` sits apart, at `0x0800C230`, because its section is plain `.text` and links before every `.text.*`. Their constant data sits at the end of `.rodata` (`0x0802AE2C`–`0x0802AEC8`), and their `.data` sits at the end of the `.data` image. The image has no symbols. Each section was found by searching the image for the stock toolchain's library objects, with relocations masked. `src/files.tsv` gives one file per library object. `src/libraries.tsv` makes the build link those files from the toolchain (`docs/source-build.md` *Library code*), and `src/symbols.tsv` uses the libraries' own names.
 
 | Range | Object | Functions |
 |-------|--------|-----------|
-| `08025EAC`–`08025EE0` | libstdc++ `new_handler`, `new_opv`, `new_op` | `get_new_handler` (`__new_handler` `0x200035A8`), `operator new[]`, `operator new` (`malloc`, retried through the handler) |
+| `0800C230`–`0800C2D0` | `memchr` | `memchr` (assembly) |
+| `08025EAC`–`08025EE0` | libstdc++ `new_handler`, `new_opvnt`, `new_opnt` | `std::get_new_handler` (`__new_handler` `0x200035A8`), the nothrow `operator new[]` and `operator new` (`malloc`, retried through the handler) |
 | `08025EE0`–`08025F3C` | `init`, `malloc` | `__libc_init_array` (empty `.preinit_array`, `_init`, `.init_array`), `malloc` → `_malloc_r(_impure_ptr, n)` |
 | `08025F3C`–`08026080` | `memset`, `nano-freer`, `nano-mallocr` | byte-loop `memset`, `_free_r`, `_malloc_r` (first fit on the free list at `0x200035B0`, else `_sbrk_r`) |
 | `08026080`–`080260E4` | `sbrkr`, `writer`, `closer` | `_sbrk_r`, `_write_r`, `_close_r` (errno at `0x200035B4`) |
@@ -84,7 +85,7 @@ The toolchain is arm-none-eabi-gcc with **newlib-nano** and libstdc++. Their cod
 | `08026300`–`080266CC` | `wbuf`, `wsetup`, `fflush`, `lseekr`, `makebuf` | `__swbuf_r`, `__swsetup_r`, `__sflush_r`, `_fflush_r`, `_lseek_r`, `__swhatbuf_r`, `__smakebuf_r` |
 | `080266CC`–`080267A0` | `readr`, `fstatr`, `isattyr`, `memcmp`, `memcpy`, `memmove` | byte-loop string functions |
 | `080267A0`–`08026D94` | `printf`, `nano-vfprintf`, `nano-vfprintf_i` | `printf`, `__sfputc_r`, `__sfputs_r`, `_vfprintf_r`, `_printf_common`, `_printf_i` |
-| `0802AE30`–`0802AEC8` (rodata) | `impure`, `findfp`, `nano-vfprintf*` | `_global_impure_ptr`, `__sf_fake_stdin/stdout/stderr`, `"#-0+ "`, `"hlL"`, `"efgEFG"`, the hex digit strings |
+| `0802AE2C`–`0802AEC8` (rodata) | `new_handler`, `impure`, `findfp`, `nano-vfprintf*` | `std::nothrow`, locale `"C"`, `_global_impure_ptr`, `__sf_fake_stdin/stdout/stderr`, `"#-0+ "`, `"hlL"`, `"efgEFG"`, the hex digit strings |
 | `0802BAA0`–`0802BB04` (`.data` load) | `impure` | `impure_data` (`0x20000BB4`, 0x60-byte nano `_reent`: fake FILEs, locale `"C"`) and `_impure_ptr` (`0x20000C14`) |
 
 The syscall stubs are app code, `0x0801EEAC`–`0x0801EEFC`, just before the USB code:

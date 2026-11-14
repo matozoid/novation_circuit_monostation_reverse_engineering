@@ -402,7 +402,7 @@ classDiagram
     vtable 08027400
     pad_down: select3_view_pad_down
     slot10: return_0
-    on_cell: select3_view_render_thunk
+    on_cell: select3_view_on_cell
   }
   LayeredView <|-- Select3View
   class TempoView {
@@ -435,7 +435,7 @@ classDiagram
     vtable 080275F8
     button_down: hold_button_view_down
     button_up: hold_button_view_up
-    on_cell: hold_button_view_render_thunk
+    on_cell: hold_button_view_on_cell
   }
   ObservingView <|-- HoldButtonView
   class FlagLedView {
@@ -489,7 +489,7 @@ classDiagram
     vtable 080278F8
     pad_down: keytrack_view_pad_down
     slot10: return_1
-    on_cell: keytrack_view_render_thunk
+    on_cell: keytrack_view_on_cell
   }
   LayeredView <|-- KeytrackView
   class PatternsView {
@@ -570,7 +570,7 @@ classDiagram
   IAux <|.. KeyboardView : +0x10 (pads_flush_held)
   class OctaveView {
     vtable 0802AC6C
-    on_cell: octave_view_render_thunk
+    on_cell: octave_view_on_cell
   }
   ObservingView <|-- OctaveView
   class PatternSettingsView {

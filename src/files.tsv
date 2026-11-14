@@ -11,7 +11,8 @@
 0800c000 0800c1ac vectors                vector table: 107 words up to the image header
 0800c1ac 0800c1d0 image_header           "MAIN" + BCD version, read by the bootloader (sysex-handlers.md)
 0800c1d0 0800c230 crtbegin               __do_global_dtors_aux, frame_dummy: the .fini/.init_array entries
-0800c230 0801264c app_main               after crtbegin; no pad up to 0x0801264C
+0800c230 0800c2d0 libc_memchr            newlib memchr.S: its plain .text follows crtbegin's (the linker script takes .text before .text.*)
+0800c2d0 0801264c app_main               after memchr (00 00 fill to 4); no pad up to 0x0801264C
 0801264c 080126e8 pad_leds               after linker fill 00 00
 080126e8 080127b4 pad_flags              after linker fill 00 00
 080127b4 080128a4 gate_octave_views      after linker fill 00 00
@@ -35,21 +36,64 @@
 08018ee8 080192a4 settings               after linker fill 00 00
 080192a4 08019430 session_ctl_save       after linker fill 00 00
 08019430 0801985c session_globals        after linker fill 00 00
-0801985c 08019d90 session_ctl_usb_user   after linker fill 00 00
-08019d90 08019e94 usbd_desc              after linker fill 00 00
-08019e94 0801a348 usbd_core_a            after linker fill 00 00
-0801a348 0801a534 usbd_core_b            after linker fill 00 00
-0801a534 0801a790 usbd_midi              after linker fill 00 00
+0801985c 08019b60 session_ctl_patch      after linker fill 00 00
+08019b60 08019bfa usb_otg_ep0startxfer   ST USB_OTG_EP0StartXfer: linked from the ST source (libraries.tsv)
+08019bfa 08019d1c usb_otg_epstartxfer    ST USB_OTG_EPStartXfer: generated (LTO-specialised, or older than the linked version)
+08019d1c 08019d90 usbd_usr               USBD_USR_* callbacks, after ST USB_OTG_EPStartXfer
+08019d90 08019e40 usbd_desc              after linker fill 00 00
+08019e40 08019e94 dcd_ep_stall           ST DCD_EP_Stall: generated (LTO-specialised, or older than the linked version)
+08019e94 0801a244 usbd_setupstage        ST USBD_SetupStage: generated (LTO-specialised, or older than the linked version)
+0801a244 0801a282 dcd_ep_tx              ST DCD_EP_Tx: linked from the ST source (libraries.tsv)
+0801a282 0801a2ce dcd_ep_preparerx       ST DCD_EP_PrepareRx: linked from the ST source (libraries.tsv)
+0801a2ce 0801a348 usbd_dataoutstage      ST USBD_DataOutStage: generated (LTO-specialised, or older than the linked version)
+0801a348 0801a394 usb_otg_corereset      ST USB_OTG_CoreReset: linked from the ST source (libraries.tsv)
+0801a394 0801a3bc usb_otg_ep0_outstart   ST USB_OTG_EP0_OutStart: linked from the ST source (libraries.tsv)
+0801a3bc 0801a494 usbd_datainstage       ST USBD_DataInStage: generated (LTO-specialised, or older than the linked version)
+0801a494 0801a4d6 usb_otg_epdeactivate   ST USB_OTG_EPDeactivate: generated (LTO-specialised, or older than the linked version)
+0801a4d6 0801a534 usb_otg_epactivate     ST USB_OTG_EPActivate: linked from the ST source (libraries.tsv)
+0801a534 0801a56c usb_otg_flushrxfifo    ST USB_OTG_FlushRxFifo: linked from the ST source (libraries.tsv)
+0801a56c 0801a5ac usb_otg_flushtxfifo    ST USB_OTG_FlushTxFifo: linked from the ST source (libraries.tsv)
+0801a5ac 0801a790 usbd_midi              after ST USB_OTG_FlushTxFifo
 0801a790 0801ab50 system_init            after linker fill 00 00
 0801ab50 0801aecc drivers_a              after linker fill 00 00
 0801aecc 0801aef4 tempo_midiout          after linker fill 00 00
 0801aef4 0801b0bc nor_async_a            after linker fill 00 00
-0801b0bc 0801c010 drivers_seq            after linker fill 00 00
+0801b0bc 0801b114 nor_async_b            after linker fill 00 00
+0801b114 0801b194 tim_oc2init            ST TIM_OC2Init: generated (LTO-specialised, or older than the linked version)
+0801b194 0801b1cc calibration_crc        after ST TIM_OC2Init
+0801b1cc 0801b20c dma_init               ST DMA_Init: generated (LTO-specialised, or older than the linked version)
+0801b20c 0801b3d4 leds_tim14             after ST DMA_Init
+0801b3d4 0801b418 nvic_init              ST NVIC_Init: generated (LTO-specialised, or older than the linked version)
+0801b418 0801b458 usbd_getstring         ST USBD_GetString: generated (LTO-specialised, or older than the linked version)
+0801b458 0801c010 drivers_seq            after ST USBD_GetString
 0801c010 0801d028 nor_async_router       after linker fill 00 00
-0801d028 0801e080 synth_math             after linker fill 00 00
-0801e080 0801e12c midi_send              after linker fill 00 00
+0801d028 0801e020 synth_math             after linker fill 00 00
+0801e020 0801e02e usbd_isooutincomplete  ST USBD_IsoOUTIncomplete: linked from the ST source (libraries.tsv)
+0801e02e 0801e03c usbd_isoinincomplete   ST USBD_IsoINIncomplete: linked from the ST source (libraries.tsv)
+0801e03c 0801e04c usbd_sof               ST USBD_SOF: linked from the ST source (libraries.tsv)
+0801e04c 0801e068 usbd_suspend           ST USBD_Suspend: linked from the ST source (libraries.tsv)
+0801e068 0801e080 usbd_resume            ST USBD_Resume: linked from the ST source (libraries.tsv)
+0801e080 0801e0d8 midi_send              after linker fill 00 00
+0801e0d8 0801e12c usbd_reset             ST USBD_Reset: generated (LTO-specialised, or older than the linked version)
 0801e12c 0801e310 io_helpers             after linker fill 00 00
-0801e310 0801ee24 controls_stdperiph     after linker fill 00 00
+0801e310 0801e4dc controls               after linker fill 00 00
+0801e4dc 0801e4f2 tim_getitstatus        ST TIM_GetITStatus: linked from the ST source (libraries.tsv)
+0801e4f2 0801e504 tim_timebasestructinit ST TIM_TimeBaseStructInit: linked from the ST source (libraries.tsv)
+0801e504 0801e580 tim_timebaseinit       ST TIM_TimeBaseInit: linked from the ST source (libraries.tsv)
+0801e580 0801e590 rcc_apb2periphresetcmd_off ST RCC_APB2PeriphResetCmd_off: generated (LTO-specialised, or older than the linked version)
+0801e590 0801e5a0 rcc_apb1periphresetcmd_off ST RCC_APB1PeriphResetCmd_off: generated (LTO-specialised, or older than the linked version)
+0801e5a0 0801e700 tim_deinit             ST TIM_DeInit: generated (LTO-specialised, or older than the linked version)
+0801e700 0801e788 rcc_getclocksfreq      ST RCC_GetClocksFreq: linked from the ST source (libraries.tsv)
+0801e788 0801e7ac gpio_pinafconfig       ST GPIO_PinAFConfig: linked from the ST source (libraries.tsv)
+0801e7ac 0801e830 gpio_init              ST GPIO_Init: linked from the ST source (libraries.tsv)
+0801e830 0801e860 dma_clearitpendingbit  ST DMA_ClearITPendingBit: linked from the ST source (libraries.tsv)
+0801e860 0801e8b0 dma_getitstatus        ST DMA_GetITStatus: linked from the ST source (libraries.tsv)
+0801e8b0 0801e9bc dma_deinit             ST DMA_DeInit: linked from the ST source (libraries.tsv)
+0801e9bc 0801e9d8 usbd_ctlerror          ST USBD_CtlError: linked from the ST source (libraries.tsv)
+0801e9d8 0801e9f6 usbd_ctlsendstatus     ST USBD_CtlSendStatus: linked from the ST source (libraries.tsv)
+0801e9f6 0801ea16 usbd_ctlsenddata       ST USBD_CtlSendData: linked from the ST source (libraries.tsv)
+0801ea16 0801ea2e usbd_setcfg            ST USBD_SetCfg: linked from the ST source (libraries.tsv)
+0801ea2e 0801ee24 controls_leds          after ST USBD_SetCfg
 0801ee24 0801eeac identity               after linker fill 00 00
 0801eeac 0801eefc syscalls               newlib stubs: _read, _fstat (S_IFCHR), _sbrk (limit 0x200235B8, bkpt #1), _write (drops output), _lseek, _isatty, _close
 0801eefc 0801fac4 irq_calibration        after linker fill 00 00
@@ -102,13 +146,18 @@
 080267a0 080267d0 libc_printf            printf: __sinit, _vfprintf_r on stdout
 080267d0 08026a5c libc_nano_vfprintf     __sfputc_r, __sfputs_r, _vfprintf_r
 08026a5c 08026d94 libc_nano_vfprintf_i   _printf_common, _printf_i
-08026d94 0802ae30 rodata                 app constant data after the library code (D_08026d94 is read by app code): session_defaults, vtables, tables, strings
-0802ae30 0802ae34 rodata_libc_impure     _global_impure_ptr -> impure_data (0x20000BB4); its "C" (0x0802AE2D) stays in rodata, strings are merged
+08026d94 0802ae2c rodata                 app constant data after the library code (D_08026d94 is read by app code): session_defaults, vtables, tables, strings
+0802ae2c 0802ae2d rodata_libstdcxx_nothrow std::nothrow (new_handler.o): app rodata ends, library rodata follows in link order
+0802ae2d 0802ae34 rodata_libc_impure     impure.o: locale "C" (impure_data points to it), 00 fill, _global_impure_ptr -> impure_data (0x20000BB4)
 0802ae34 0802ae94 rodata_libc_findfp     __sf_fake_stdin/stdout/stderr, 3 x 32 zero bytes
 0802ae94 0802aec8 rodata_libc_vfprintf   "#-0+ ", "hlL", "efgEFG" (_vfprintf_r), hex digits (_printf_i); one file: strings end unaligned
 0802aec8 0802aee0 crti                   _init, _fini (newlib crti/crtn)
-0802aee0 0802aee8 init_array             frame_dummy, one static constructor (0x080256F4)
+0802aee0 0802aee4 init_array_crtbegin    frame_dummy: crtbegin's .init_array entry
+0802aee4 0802aee8 init_array             one static constructor (0x080256F4)
 0802aee8 0802aeec fini_array             __do_global_dtors_aux
-0802aeec 0802baa0 data                   app .data load image: Reset_Handler copies 0x0802AEEC-0x0802BB04 to 0x20000000-0x20000C18
+0802aeec 0802b604 data                   app .data load image: Reset_Handler copies 0x0802AEEC-0x0802BB04 to 0x20000000-0x20000C18
+0802b604 0802b606 data_pre_apbahb         2 bytes before APBAHBPrescTable: the data file before must end 4-aligned
+0802b606 0802b616 data_apbahbpresctable  ST APBAHBPrescTable (0x2000071A): linked from the ST source (libraries.tsv)
+0802b616 0802baa0 data_b                 app .data load image continues after APBAHBPrescTable
 0802baa0 0802bb04 data_libc_impure       impure_data (0x20000BB4: fake stdin/stdout/stderr, locale "C") and _impure_ptr (0x20000C14)
 0802bb04 0802bb20 image_tail             28 bytes past .data (8 x ff, then zeros) up to the image end; unknown

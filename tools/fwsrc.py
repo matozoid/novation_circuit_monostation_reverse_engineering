@@ -40,6 +40,7 @@ LAYOUT_FIXES = ROOT / "src" / "layout-fixes.tsv"
 SYMBOLS = ROOT / "src" / "symbols.tsv"
 FILES = ROOT / "src" / "files.tsv"
 CLASSES = ROOT / "src" / "classes.tsv"
+LIBRARIES = ROOT / "src" / "libraries.tsv"
 SOURCE_MAP = ROOT / "docs" / "source-map.md"
 CPU_FLAGS = ["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
 TOOL = "arm-none-eabi-"
@@ -60,6 +61,10 @@ CC_FLAGS = ["-std=gnu17", "-Os", "-ffreestanding", "-fno-common", "-fno-exceptio
 CXX_FLAGS = ["-std=gnu++17", "-Os", "-ffreestanding", "-fno-exceptions", "-fno-rtti",
              "-fno-threadsafe-statics", "-fno-use-cxa-atexit", "-fno-unwind-tables",
              "-fno-asynchronous-unwind-tables", "-Wall", "-Wextra"]
+
+# ST library sources (libraries.tsv `source`): the stock build's flags, as far as the image
+# shows them (docs/source-build.md *ST libraries*)
+ST_FLAGS = ["-Os", "-ffunction-sections", "-fdata-sections"]
 
 Unit = namedtuple("Unit", "kind start end dtype")      # kind: C, D or U
 Insn = namedtuple("Insn", "addr raw text")
@@ -97,7 +102,7 @@ def override(units, new):
 
 def load_layout(path=LAYOUT, fixes=LAYOUT_FIXES):
     """Ghidra's layout, then the hand-made corrections in layout-fixes.tsv (same syntax:
-    C/D/U force a range's kind, F adds a function entry)."""
+    C/D/U force a range's kind, F adds a function entry, X addr drops one)."""
     units, refs, functions = [], {}, {}
     for f in read_layout_lines(path):
         if f[0] in "CDU":
@@ -113,6 +118,8 @@ def load_layout(path=LAYOUT, fixes=LAYOUT_FIXES):
                 units = override(units, Unit(f[0], int(f[1], 16), int(f[2], 16), "fix"))
             elif f[0] == "F":
                 functions[int(f[1], 16)] = f[2] if len(f) > 2 else f"FUN_{int(f[1], 16):08x}"
+            elif f[0] == "X":
+                functions.pop(int(f[1], 16), None)
     return Layout(units, refs, functions)
 
 
@@ -233,6 +240,100 @@ def section_names(pieces):
         count[name] = count.get(name, 0) + 1
     return {s: f".text.{name}" if count[name] == 1 else f".text.{name}.{s:08x}"
             for s, _, name in pieces}
+
+
+Libraries = namedtuple("Libraries", "files at symbols sources cflags exports",
+                       defaults=({}, [], []))
+LIBRARY_INPUT = re.compile(r"(\S+?)\(([^)]*)\)")
+CRT_OBJECTS = ("crtbegin.o", "crti.o", "crtn.o")
+LIBRARY_LIST = "libraries.txt"  # the objects and archives the build links
+ST_DIR = "st"                   # build's subdirectory for objects compiled from ST sources
+ST_CONFIG = ROOT / "src" / "st"     # our configuration headers for the ST sources
+ST_PACKAGE = re.compile(r"(\w+)/(\S+)")
+
+
+def load_libraries(path=LIBRARIES, files=None):
+    """Libraries(files={name: (vma or None, [(object, [section])])}, at=[(addr, inputs)],
+    symbols={symbol: file name or address}, sources={object: PACKAGE/PATH}, cflags=[flag],
+    exports=[(object, symbol, name)]) from libraries.tsv; file names must be in files.tsv
+    (files: its names)."""
+    out = Libraries({}, [], {}, {}, [], [])
+    if not Path(path).exists():
+        return out
+    for n, line in enumerate(Path(path).read_text().splitlines(), 1):
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        kind, rest = (line.split(None, 1) + [""])[:2]
+        try:
+            if kind == "source":
+                obj, src = rest.split()
+                if not obj.endswith(".o") or obj in out.sources or obj in CRT_OBJECTS \
+                        or not ST_PACKAGE.fullmatch(src):
+                    raise ValueError
+                out.sources[obj] = src
+                continue
+            if kind == "cflag":
+                flag, = rest.split()
+                if not flag.startswith(("-D", "-I", "-f", "-m", "-O")):
+                    raise ValueError
+                out.cflags.append(flag)
+                continue
+            if kind == "export":
+                obj, symbol, name = (rest.split() + [None])[:3]
+                out.exports.append((obj, symbol, name or symbol))
+                continue
+            if kind == "symbol":
+                name, value = rest.split()
+                out.symbols[name] = int(value, 16) if re.fullmatch(r"[0-9a-f]{8}", value) \
+                    else value
+                continue
+            target, inputs = rest.split(None, 1)
+            parsed = [(obj, secs.split()) for obj, secs in LIBRARY_INPUT.findall(inputs)]
+            if LIBRARY_INPUT.sub("", inputs).strip() or not all(s for _, s in parsed):
+                raise ValueError
+            for obj, _ in parsed:
+                if obj not in CRT_OBJECTS and obj.count(":") != 1 and obj not in out.sources:
+                    raise ValueError
+            if kind == "file":
+                name, _, vma = target.partition("@")
+                if name in out.files:
+                    raise ValueError
+                out.files[name] = (int(vma, 16) if vma else None, parsed)
+            elif kind == "at":
+                out.at.append((int(target, 16), parsed))
+            else:
+                raise ValueError
+        except ValueError:
+            raise ValueError(f"{path}:{n}: bad library line") from None
+    unused = [o for o, _, _ in out.exports if o not in out.sources]
+    if unused:
+        raise ValueError(f"{path}: exports from objects without a source line: "
+                         + ", ".join(unused))
+    known = set(files) if files is not None else None
+    if known is not None:
+        bad = [f for f in list(out.files) + [v for v in out.symbols.values()
+                                             if isinstance(v, str)] if f not in known]
+        if bad:
+            raise ValueError(f"{path}: not files.tsv files: " + ", ".join(bad))
+    return out
+
+
+def library_objects(libs):
+    """The objects libs names, in first-use order."""
+    seen = {}
+    for _, inputs in list(libs.files.values()) + libs.at:
+        for obj, _ in inputs:
+            seen.setdefault(obj, None)
+    return list(seen)
+
+
+def library_pattern(obj):
+    """An ld input-file pattern for crtbegin.o, ARCHIVE:MEMBER or an object compiled from
+    an ST source (in build's st/)."""
+    if ":" in obj:
+        return "*/{}:{}".format(*obj.split(":"))
+    return f"*/{obj}" if obj in CRT_OBJECTS else f"*/{ST_DIR}/{obj}"
 
 
 Overlay = namedtuple("Overlay", "path base version sources replace")
@@ -508,8 +609,9 @@ def probe(groups, workdir):
 
 class Generator:
     def __init__(self, image, layout, names, code, relax=False, pads=None, markers=False,
-                 files=(), replace=()):
+                 files=(), replace=(), libraries=()):
         self.image, self.layout, self.code, self.relax = image, layout, code, relax
+        self.libraries = set(libraries)     # files linked from library objects, not emitted
         self.pads = dict(pads or {})    # address -> bytes inserted before it (shift test)
         self.markers = markers          # label every line M_<address> (shift test)
         self.end = LOAD_ADDRESS + len(image)
@@ -763,6 +865,7 @@ class Generator:
         self.bias = None            # (bias, base label) of the biased piece being emitted
         sources, opened = {}, set()
         starts = {start: name for start, _, name in self.files}
+        ends = {start: end for start, end, _ in self.files}
 
         def output(addr, out):
             """The list to emit addr into: a new piece's section when one starts there."""
@@ -770,13 +873,14 @@ class Generator:
                 return out
             opened.add(addr)
             # code needs 2, and 4 with PC-relative loads: gas wants that for a safe
-            # Align(PC, 4); data keeps its stock alignment
+            # Align(PC, 4); data keeps its stock alignment, as far as its end has it too (gas
+            # pads a section's size to its alignment)
             if addr in self.biased:
                 align = 1
             elif addr in self.insn_at:
                 align = 2 if starts[addr] in self.pc_loads and addr % 4 == 0 else 1
             else:
-                align = 2 if addr % 4 == 0 else 1 if addr % 2 == 0 else 0
+                align = min(2 if a % 4 == 0 else 1 if a % 2 == 0 else 0 for a in (addr, ends[addr]))
             out = sources.setdefault(starts[addr], [GENERATED, ".syntax unified", ".thumb"])
             out += ["", f".section {self.sections[addr]}, \"ax\", %progbits",
                     f".p2align {align}"]
@@ -803,7 +907,7 @@ class Generator:
                 self.emit_data(out, u)
         bad = []
         for start, end, name in self.files:
-            if start in self.biased:
+            if start in self.biased or name in self.libraries:
                 continue
             need = 1 << max([int(line.split()[-1]) for line in self.piece_lines(sources[name], start)
                              if line.lstrip().startswith(".p2align ")]
@@ -815,7 +919,9 @@ class Generator:
             raise ValueError(f"files that start or end less aligned than data or "
                              f"PC-relative loads in them: "
                              + ", ".join(bad))
-        return {name: "\n".join(out) + "\n" for name, out in sources.items()}
+        self.items = [it for it in self.items if self.file_of(it[0]) not in self.libraries]
+        return {name: "\n".join(out) + "\n" for name, out in sources.items()
+                if name not in self.libraries}
 
     def piece_lines(self, lines, start):
         """The lines of the piece at start, from its .section line to the next one."""
@@ -911,47 +1017,115 @@ class Generator:
             pos = stop
 
 
-def linker_script(files, overlays=False, biased=None):
+def linker_script(files, overlays=False, biased=None, libraries=None, markers=False):
     """files: the pieces in address order. A biased piece first moves to its stock offset
-    from a 4-byte boundary (no bytes in a stock build)."""
-    names, biased, lines = section_names(files), biased or {}, []
-    for start, _, _ in files:
+    from a 4-byte boundary (no bytes in a stock build). A library file (libraries.tsv) is
+    its objects' sections, in the listed order; one that runs from RAM gets its own output
+    section, loaded where it lies in the image. markers: a shift-test marker at each library
+    file (it moves as a block)."""
+    libs = libraries or Libraries({}, [], {})
+    names, biased = section_names(files), biased or {}
+    objects = library_objects(libs)
+    archives = sorted({o.split(":")[0] for o in objects if ":" in o})
+    # generated sections are named .text.<file>: a library section may share the name.
+    # (EXCLUDE_FILE inside *( ) covers only the next pattern; before *( ) it covers all.)
+    lib_files = " ".join([library_pattern(o) for o in objects if ":" not in o]
+                         + [f"*{a}:" for a in archives]) or "none"
+    exclude = f"*{OVERLAY_PREFIX}* " + lib_files * bool(objects)
+    starts = {}
+    for sym, where in libs.symbols.items():
+        if isinstance(where, str):
+            starts.setdefault(where, []).append(sym)
+    lines, ram, done, chunks = [], [], set(), []
+    head = f"{LOAD_ADDRESS:#x}"     # where the current flash section starts
+
+    def split():
+        """End the current flash section; return its name."""
+        sec = ".text" if not chunks else f".text_{len(chunks)}"
+        chunks.append((sec, head, list(lines)))
+        lines.clear()
+        return sec
+    for start, _, name in files:
+        lines += [f"        {s} = .;" for s in starts.pop(name, [])]
+        if name in libs.files:
+            if name in done:
+                raise ValueError(f"library file {name} in several pieces")
+            done.add(name)
+            if markers:
+                lines.append(f"        {MARKER}{start:08x} = .;")
+            vma, inputs = libs.files[name]
+            keep = [f"        KEEP({library_pattern(o)}({s}))" for o, ss in inputs for s in ss]
+            if vma is None and any(s.startswith(".rodata.str") for _, ss in inputs for s in ss):
+                # ld merges string sections across an output section: one of its own
+                if lines:
+                    sec = split()
+                    head = f"LOADADDR({sec}) + SIZEOF({sec})"
+                lines += keep
+                sec = split()
+                head = f"LOADADDR({sec}) + SIZEOF({sec})"
+            elif vma is None:
+                lines += keep
+            else:
+                # runs from RAM: its load image ends this flash section, the next one
+                # starts after it
+                sec = split()
+                lma = f"LOADADDR({sec}) + SIZEOF({sec})"
+                body = "\n".join(keep)
+                ram.append(f"    .{name} {vma:#x} : AT({lma})\n    {{\n{body}\n    }}")
+                head = f"{lma} + SIZEOF(.{name})"
+            continue
         if start in biased:
-            # `.` is relative to .text, which starts 4-aligned (ABSOLUTE(.) here adds the
+            # `.` is relative to the output section, which starts 4-aligned (ABSOLUTE(.) here adds the
             # address twice)
             lines.append(f"        . = . + (({biased[start]} - .) & 3);")
         # overlay objects may have a section of the same name (gcc's .text.startup)
-        lines.append(f"        KEEP(*(EXCLUDE_FILE(*{OVERLAY_PREFIX}*) {names[start]}))")
-    sections = "\n".join(lines)
+        lines.append(f"        KEEP(*(EXCLUDE_FILE({exclude}) {names[start]}))")
+    if starts:
+        raise ValueError("library symbols at files the image does not have: "
+                         + ", ".join(sorted(starts)))
     if overlays:
         # overlay code after the image; read-only: the stock startup neither copies .data
         # nor clears .bss for it
-        sections += """
-        . = ALIGN(4);
-        overlay_start = .;
-        *(.text .text.* .rodata .rodata.*)
-        overlay_end = .;
-    }
+        lines += ["        . = ALIGN(4);", "        overlay_start = .;",
+                  f"        EXCLUDE_FILE({lib_files}) *(.text .text.* .rodata .rodata.*)",
+                  "        overlay_end = .;"]
+    split()
+    blocks = ["    {} {} :\n    {{\n{}\n    }}".format(sec, at, "\n".join(body))
+              for sec, at, body in chunks]
+    if overlays:
+        blocks.append(f"""\
     .data :
-    {
-        *(.data .data.* .bss .bss.* COMMON)
-    }
+    {{
+        EXCLUDE_FILE({lib_files}) *(.data .data.* .bss .bss.* COMMON)
+    }}
     .init_array :
-    {
-        *(.preinit_array .init_array .init_array.* .ctors .ctors.* .fini_array .fini_array.* .dtors .dtors.*)"""
+    {{
+        EXCLUDE_FILE({lib_files}) *(.preinit_array .init_array .init_array.* .ctors .ctors.* .fini_array .fini_array.* .dtors .dtors.*)
+    }}""")
+    blocks += ram
+    for addr, inputs in libs.at:
+        body = "\n".join(f"        KEEP({library_pattern(o)}({s}))" for o, ss in inputs for s in ss)
+        blocks.append(f"    .ram_{addr:08x} {addr:#x} (NOLOAD) :\n    {{\n{body}\n    }}")
+    for sym, where in libs.symbols.items():
+        if not isinstance(where, str):
+            blocks.append(f"    {sym} = {where:#x};")
+    if objects:
+        # what the stock link's --gc-sections dropped; a kept section that needs one of
+        # these fails the link
+        body = "\n".join(f"        {p}(*)" for p in
+                          [library_pattern(o) for o in objects if ":" not in o]
+                          + [f"*{a}:*" for a in archives])
+        blocks.append(f"    /DISCARD/ :\n    {{\n{body}\n    }}")
     checks = f"""
 ASSERT(SIZEOF(.data) == 0, "overlays cannot use .data or .bss")
 ASSERT(SIZEOF(.init_array) == 0, "overlays cannot have static constructors or destructors")
 ASSERT(overlay_end <= {FLASH_END:#x}, "overlays do not fit in the flash")""" if overlays else ""
+    body = "\n".join(blocks)
     return f"""\
 /* Generated by tools/fwsrc.py. */
 SECTIONS
 {{
-    . = {LOAD_ADDRESS:#x};
-    .text :
-    {{
-{sections}
-    }}
+{body}
 }}
 ASSERT(image_header == {LOAD_ADDRESS + IMAGE_HEADER:#x},
        "image header moved: the bootloader reads it at image offset {IMAGE_HEADER:#x}"){checks}
@@ -959,17 +1133,22 @@ ASSERT(image_header == {LOAD_ADDRESS + IMAGE_HEADER:#x},
 
 
 def plan_source(image_path, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
-                files_path=FILES, overlays=(), version=None, classes_path=CLASSES, **options):
+                files_path=FILES, overlays=(), version=None, classes_path=CLASSES,
+                libraries_path=LIBRARIES, **options):
     """A Generator with every instruction and label planned; options go to Generator."""
     image, replace = apply_overlays(Path(image_path).read_bytes(), overlays, version)
     layout = load_layout(layout_path, fixes)
     check_layout(layout, len(image))
     symbols = load_symbols(symbols_path)
-    files = plan_pieces(load_files(files_path), layout, {**layout.functions, **symbols},
+    listed = load_files(files_path)
+    libs = load_libraries(libraries_path, [f[2] for f in listed])
+    files = plan_pieces(listed, layout, {**layout.functions, **symbols},
                         load_classes(classes_path), LOAD_ADDRESS + len(image))
     layout.units = split_units(layout.units, [f[0] for f in files])
     code = disassemble(image_path, layout)
-    gen = Generator(image, layout, symbols, code, files=files, replace=replace, **options)
+    gen = Generator(image, layout, symbols, code, files=files, replace=replace,
+                    libraries=libs.files, **options)
+    gen.library_info = libs
     with tempfile.TemporaryDirectory() as tmp:
         gen.plan(tmp)
     return gen
@@ -983,6 +1162,7 @@ def write_source(gen, outdir, overlays=()):
             if f.readline().rstrip("\n").startswith((GENERATED, OVERLAY_COPY, OVERLAY_COPY_C)):
                 old.unlink()
     (outdir / OVERLAY_LIST).unlink(missing_ok=True)
+    (outdir / LIBRARY_LIST).unlink(missing_ok=True)
     for name, text in gen.emit().items():
         (outdir / f"{name}.s").write_text(text)
     for ov in overlays:
@@ -998,16 +1178,29 @@ def write_source(gen, outdir, overlays=()):
         (outdir / OVERLAY_LIST).write_text(
             "".join(f"replace {name}\n" for name, _ in gen.replaced.values())
             + "".join(f"include {d}\n" for d in dirs))
-    (outdir / "firmware.ld").write_text(linker_script(gen.files, bool(overlays), gen.biased))
+    libs = gen.library_info
+    if libs.files or libs.at:
+        sources = {o for o in library_objects(libs) if o in libs.sources}
+        (outdir / LIBRARY_LIST).write_text(
+            "".join(f"{o}\n" for o in library_objects(libs) if o not in sources)
+            + "".join(f"source {o} {libs.sources[o]}\n" for o in sorted(sources))
+            + "".join(f"cflag {f}\n" for f in libs.cflags) * bool(sources)
+            + "".join(f"export {o} {sym} {name}\n" for o, sym, name in libs.exports
+                      if o in sources))
+    (outdir / "firmware.ld").write_text(linker_script(gen.files, bool(overlays), gen.biased,
+                                                      libs, gen.markers))
 
 
 def generate(image_path, outdir, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes=LAYOUT_FIXES,
-             files_path=FILES, relax=False, overlays=(), version=None, classes_path=CLASSES):
+             files_path=FILES, relax=False, overlays=(), version=None, classes_path=CLASSES,
+             libraries_path=LIBRARIES):
     overlays = [load_overlay(d) if not isinstance(d, Overlay) else d for d in overlays]
     gen = plan_source(image_path, layout_path, symbols_path, fixes, files_path,
-                      overlays=overlays, version=version, relax=relax, classes_path=classes_path)
+                      overlays=overlays, version=version, relax=relax, classes_path=classes_path,
+                      libraries_path=libraries_path)
     write_source(gen, outdir, overlays)
-    return dict(gen.stats, files=len({f[2] for f in gen.files}), sections=len(gen.files),
+    emitted = [f for f in gen.files if f[2] not in gen.libraries]
+    return dict(gen.stats, files=len({f[2] for f in emitted}), sections=len(emitted),
                 exported=len(gen.exported))
 
 
@@ -1015,6 +1208,89 @@ def overlay_list(srcdir, kind):
     path = Path(srcdir) / OVERLAY_LIST
     lines = path.read_text().splitlines() if path.exists() else []
     return [line.split(" ", 1)[1] for line in lines if line.startswith(kind + " ")]
+
+
+def library_lines(srcdir):
+    path = Path(srcdir) / LIBRARY_LIST
+    return [line.split() for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def library_paths(srcdir):
+    """crt objects and archives that libraries.txt names, from the stock toolchain (the
+    one the libraries in the image came from)."""
+    lines = library_lines(srcdir)
+    if not lines:
+        return [], []
+    cc = reference_cc()
+    if cc == TOOL:
+        raise ValueError("library code links from the stock toolchain: "
+                         "python3 tools/fetch_toolchain.py")
+    objects, archives = [], []
+    for line in lines:
+        if len(line) != 1:
+            continue
+        name = line[0].split(":")[0]
+        found = subprocess.run([cc + "gcc", *CPU_FLAGS, f"-print-file-name={name}"],
+                               check=True, capture_output=True, text=True).stdout.strip()
+        if not Path(found).is_file():
+            raise ValueError(f"{name} not in the stock toolchain")
+        group = archives if name.endswith(".a") else objects
+        if found not in group:
+            group.append(found)
+    return objects, archives
+
+
+def st_package_path(spec):
+    """PACKAGE/PATH -> the file in the ST package tools/fetch_toolchain.py installed."""
+    import fetch_toolchain
+    package, path = ST_PACKAGE.fullmatch(spec).groups()
+    if package not in fetch_toolchain.ST_PACKAGES:
+        raise ValueError(f"unknown ST package {package!r} (tools/fetch_toolchain.py)")
+    base = fetch_toolchain.package_dir(package, ROOT / "toolchains")
+    if base is None:
+        raise ValueError(f"ST package {package} is not installed: download "
+                         f"{fetch_toolchain.ST_PACKAGES[package][1]} from st.com into "
+                         "toolchains/, then python3 tools/fetch_toolchain.py")
+    return base / path
+
+
+def build_st_sources(srcdir):
+    """Compile the ST sources libraries.txt names into srcdir/st/ with the stock compiler
+    and src/st/ configuration; make the exported static symbols global and every
+    definition weak. Returns the objects."""
+    lines = library_lines(srcdir)
+    sources = [(l[1], l[2]) for l in lines if l[0] == "source"]
+    if not sources:
+        return []
+    cc = reference_cc()
+    if cc == TOOL:
+        raise ValueError("ST library code builds with the stock toolchain: "
+                         "python3 tools/fetch_toolchain.py")
+    flags = [f"-I{ST_CONFIG}"]
+    for l in lines:
+        if l[0] == "cflag":
+            flags.append(f"-I{st_package_path(l[1][2:])}" if l[1].startswith("-I") else l[1])
+    out = Path(srcdir) / ST_DIR
+    out.mkdir(exist_ok=True)
+    objs = []
+    for obj, spec in sources:
+        o = out / obj
+        subprocess.run([cc + "gcc", *CPU_FLAGS, *ST_FLAGS, *flags, "-c", "-o", str(o),
+                        str(st_package_path(spec))], check=True)
+        rename = [a for l in lines if l[0] == "export" and l[1] == obj
+                  for a in (["--redefine-sym", f"{l[2]}={l[3]}"] if l[2] != l[3] else [])
+                  + ["--globalize-symbol", l[3]]]
+        if rename:
+            subprocess.run([cc + "objcopy", *rename, str(o)], check=True)
+        # the generated source defines the functions not linked from here: its definitions
+        # win, and the linker script discards these sections
+        defined = subprocess.run([cc + "nm", "-g", "--defined-only", "--format=posix", str(o)],
+                                 check=True, capture_output=True, text=True).stdout.split("\n")
+        weaken = [a for line in defined if line for a in ("--weaken-symbol", line.split()[0])]
+        if weaken:
+            subprocess.run([cc + "objcopy", *weaken, str(o)], check=True)
+        objs.append(str(o))
+    return objs
 
 
 def build(srcdir, out_bin):
@@ -1038,9 +1314,13 @@ def build(srcdir, out_bin):
         # helpers gcc calls (64-bit division, double arithmetic): only those the image lacks
         libs.append(subprocess.run([TOOL + "gcc", *CPU_FLAGS, "-print-libgcc-file-name"],
                                    check=True, capture_output=True, text=True).stdout.strip())
+    objs += build_st_sources(srcdir)
+    crt, archives = library_paths(srcdir)
+    if archives:
+        libs = ["--start-group", *archives, *libs, "--end-group"]
     elf = srcdir / "firmware.elf"
     subprocess.run([TOOL + "ld", "-T", str(srcdir / "firmware.ld"), "-o", str(elf), *objs,
-                    *libs], check=True)
+                    *crt, *libs], check=True)
     check_overlays(srcdir, elf)
     subprocess.run([TOOL + "objcopy", "-O", "binary", str(elf), str(out_bin)], check=True)
     return Path(out_bin).read_bytes()
@@ -1068,16 +1348,33 @@ def check_overlays(srcdir, elf):
 
 # --- shift test: move code, check that every reference follows ----------------------------
 
-def address_map(elf):
-    """Stock address -> new address, from the shift test's line markers."""
+def address_map(elf, names=None):
+    """Stock address -> new address, from the shift test's line markers. names: stock
+    address -> symbol, for code linked from libraries (it has no markers): where the
+    symbol, if the ELF has it once, landed (a marker at a library file's start can lie
+    before the alignment of its first section)."""
     out = subprocess.run([TOOL + "nm", str(elf)], check=True, capture_output=True,
                          text=True).stdout
-    amap = {}
+    amap, found = {}, {}
     for line in out.splitlines():
-        value, _, name = line.split()
+        f = line.split()
+        if len(f) != 3:
+            continue
+        value, _, name = f
         if name.startswith(MARKER):
             amap[int(name[len(MARKER):], 16)] = int(value, 16)
+        found.setdefault(name, []).append(int(value, 16))
+    for addr, name in (names or {}).items():
+        if len(found.get(name, ())) == 1:
+            amap[addr] = found[name][0]
     return amap
+
+
+def library_names(gen):
+    """Stock address -> name, for every named address in a library file run from flash."""
+    flash = {n for n, (vma, _) in gen.library_info.files.items() if vma is None}
+    return {a: n for a, n in gen.names.items()
+            if LOAD_ADDRESS <= a < gen.end and gen.file_of(a) in flash}
 
 
 def normalize(insn, kind):
@@ -1106,10 +1403,21 @@ def shift_check(gen, new_image, amap):
     order = sorted(amap.values())
     ranges = []
     for u in gen.layout.units:
-        if u.kind == "C":
-            start = amap[u.start]
-            n = bisect.bisect_right(order, amap[gen.code[u.start][-1].addr])
-            ranges.append((start, order[n] if n < len(order) else LOAD_ADDRESS + len(new_image)))
+        if u.kind != "C":
+            continue
+        # a unit can run into or out of a library file (one ST function per file): only its
+        # generated runs are in amap
+        runs = []
+        for i in gen.code[u.start]:
+            if gen.file_of(i.addr) in gen.libraries:
+                runs.append(None)
+            elif runs and runs[-1]:
+                runs[-1][1] = i.addr
+            else:
+                runs.append([i.addr, i.addr])
+        for first, last in filter(None, runs):
+            n = bisect.bisect_right(order, amap[last])
+            ranges.append((amap[first], order[n] if n < len(order) else LOAD_ADDRESS + len(new_image)))
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "moved.bin"
         path.write_bytes(new_image)
@@ -1154,11 +1462,13 @@ def shift_check(gen, new_image, amap):
     return errors
 
 
-def shift_test(image_path, pads, relax=False, keep=None, files_path=FILES, classes_path=CLASSES):
+def shift_test(image_path, pads, relax=False, keep=None, files_path=FILES, classes_path=CLASSES,
+               libraries_path=LIBRARIES):
     """Build the source with bytes inserted at the given addresses; return
-    (number of lines checked, errors)."""
+    (number of lines checked, errors). Library files move as blocks: their bytes come from
+    the toolchain, so only the references into them are checked."""
     gen = plan_source(image_path, files_path=files_path, relax=relax, pads=pads, markers=True,
-                      classes_path=classes_path)
+                      classes_path=classes_path, libraries_path=libraries_path)
     with tempfile.TemporaryDirectory() as tmp:
         outdir = Path(keep or tmp)
         write_source(gen, outdir)
@@ -1166,7 +1476,7 @@ def shift_test(image_path, pads, relax=False, keep=None, files_path=FILES, class
         if lost:
             raise ValueError("no line starts at " + ", ".join(f"{a:#010x}" for a in lost))
         data = build(outdir, outdir / "firmware.bin")
-        amap = address_map(outdir / "firmware.elf")
+        amap = address_map(outdir / "firmware.elf", library_names(gen))
     return len(gen.items), shift_check(gen, data, amap)
 
 
@@ -1191,23 +1501,39 @@ def elf_sections(path):
     return out
 
 
-def function_extent(layout, start):
+def code_entries(layout, names):
+    """Function entries: layout functions plus named addresses that start an instruction
+    (thunks and other entries Ghidra folded into a neighbour)."""
+    ranges = sorted((u.start, u.end) for u in layout.units if u.kind == "C")
+    def in_code(a):
+        i = bisect.bisect_right(ranges, (a, float("inf"))) - 1
+        return i >= 0 and ranges[i][0] <= a < ranges[i][1]
+    return set(layout.functions) | {a for a in names if in_code(a)}
+
+
+def function_extent(layout, start, entries=None):
     """(code end, next function): the end of the last code unit that belongs to the
-    function at start, and the next function's entry (its literal pool lies between)."""
-    entries = sorted(layout.functions)
+    function at start, and the next function's entry (its literal pool lies between).
+    entries defaults to the layout's functions (see code_entries)."""
+    entries = sorted(layout.functions if entries is None else entries)
     i = bisect.bisect_right(entries, start)
     nxt = entries[i] if i < len(entries) else LOAD_ADDRESS + 0x20000000
     code_end = max((u.end for u in layout.units if u.kind == "C" and start <= u.start < nxt),
                    default=start)
-    return code_end, nxt
+    return min(code_end, nxt), nxt
 
 
-def match_script(placed, provides):
-    """Linker script: each converted function's section at its stock address, the rest
-    parked at MATCH_PARK, every other stock name provided at its stock address."""
+def match_script(placed, provides, data=None):
+    """Linker script: each converted function's section at its stock address, each data
+    object with a stock name (a vtable defined in the source, which gcc reaches through a
+    section anchor) at its stock address, the rest parked at MATCH_PARK, every other stock
+    name provided at its stock address."""
     lines = ["SECTIONS", "{"]
     for name, addr in sorted(placed.items(), key=lambda kv: kv[1]):
         lines.append(f"  .text.{name} {addr:#x} : {{ *(.text.{name}) }}")
+    for name, addr in sorted((data or {}).items(), key=lambda kv: kv[1]):
+        lines.append(f"  .data.{name} {addr:#x} : {{ *(.rodata.{name} .data.rel.ro.{name} "
+                     f".data.rel.ro.local.{name} .data.{name}) }}")
     lines += [f"  .park {MATCH_PARK:#x} : {{ *(.text .text.* .rodata .rodata.* .data .data.* "
               f".bss .bss.* COMMON) }}",
               "  /DISCARD/ : { *(.ARM.exidx* .ARM.attributes .comment .note*) }", "}"]
@@ -1234,6 +1560,50 @@ def reference_cc():
     return str(gcc)[:-3] if gcc.is_file() else TOOL
 
 
+THUNK = re.compile(r"_ZThn(\d+)_\S+")
+
+
+def thunk_stock_name(target, offset, image, by_name):
+    """Stock name of gcc's this-adjusting thunk for the method named target: a
+    `<target>_thunk…` entry whose code starts with sub.w r0, r0, #offset. None if absent."""
+    want = struct.pack("<HH", 0xF1A0, offset)
+    for name in sorted(n for n in by_name if n.startswith(target + "_thunk")):
+        at = by_name[name] - LOAD_ADDRESS
+        if image[at:at + 4] == want:
+            return name
+    return None
+
+
+def name_thunks(obj, image, by_name):
+    """Give gcc's this-adjusting thunks (_ZThn<N>_<method>) in obj the stock name of the
+    thunk they compile to, so match places and compares them: the thunk branches to the
+    method, whose asm label is its stock name (see thunk_stock_name)."""
+    table = subprocess.run([TOOL + "readelf", "-rsW", str(obj)], check=True,
+                           capture_output=True, text=True).stdout
+    # gcc branches to a local alias (.LTHUNK<n>) at the method's address: find the method
+    rows = [f for f in map(str.split, table.splitlines())
+            if len(f) == 8 and f[0].endswith(":") and f[3] == "FUNC"]
+    at = {f[7]: (f[6], f[1]) for f in rows}
+    method = {at[f[7]]: f[7] for f in rows if not f[7].startswith(".")}
+    renames = []
+    for section in re.split(r"\n(?=Relocation section )", table):
+        m = re.match(r"Relocation section '\.rel\.text\.(" + THUNK.pattern + r")'", section)
+        if not m:
+            continue
+        targets = [f[4] for f in map(str.split, section.splitlines())
+                   if len(f) >= 5 and f[2] in ("R_ARM_THM_JUMP24", "R_ARM_THM_CALL")]
+        target = targets and method.get(at.get(targets[0]), targets[0])
+        stock = target and thunk_stock_name(target, int(m.group(2)), image, by_name)
+        if stock:
+            renames.append((m.group(1), stock))
+    if renames:
+        args = []
+        for mangled, stock in renames:
+            args += ["--rename-section", f".text.{mangled}=.text.{stock}",
+                     "--redefine-sym", f"{mangled}={stock}"]
+        subprocess.run([TOOL + "objcopy", *args, str(obj)], check=True)
+
+
 def match(image_path, sources, includes=(), layout_path=LAYOUT, symbols_path=SYMBOLS,
           fixes=LAYOUT_FIXES, cc_prefix=None):
     """Compile C/C++ sources whose functions carry stock names (extern "C" or
@@ -1246,7 +1616,8 @@ def match(image_path, sources, includes=(), layout_path=LAYOUT, symbols_path=SYM
     image = Path(image_path).read_bytes()
     layout = load_layout(layout_path, fixes)
     names = load_symbols(symbols_path)
-    by_name = {names.get(a, f"FUN_{a:08x}"): a for a in layout.functions}
+    entries = code_entries(layout, names)
+    by_name = {names.get(a, f"FUN_{a:08x}"): a for a in entries}
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         objs = []
@@ -1259,21 +1630,26 @@ def match(image_path, sources, includes=(), layout_path=LAYOUT, symbols_path=SYM
                             *(f"-I{d}" for d in includes), "-c", "-o", str(o), str(src)],
                            check=True)
             objs.append(o)
-        defined = set()
+        for o in objs:
+            name_thunks(o, image, by_name)
+        defined, objects = set(), set()
         for o in objs:
             table = subprocess.run([TOOL + "readelf", "-sW", str(o)], check=True,
                                    capture_output=True, text=True).stdout
-            defined |= {f[7] for f in map(str.split, table.splitlines())
-                        if len(f) == 8 and f[3] == "FUNC" and f[6].isdigit()}
+            rows = [f for f in map(str.split, table.splitlines()) if len(f) == 8 and f[6].isdigit()]
+            defined |= {f[7] for f in rows if f[3] == "FUNC" and not f[7].startswith(".L")}
+            objects |= {f[7] for f in rows if f[3] == "OBJECT"}
         placed = {n: by_name[n] for n in defined if n in by_name}
+        data = {name: addr for addr, name in names.items()
+                if name in objects and addr not in entries}
         provides = {}
         for addr, name in names.items():
-            if name not in defined:
-                provides[name] = addr | 1 if addr in layout.functions else addr
+            if name not in defined and name not in data:
+                provides[name] = addr | 1 if addr in entries else addr
         script = tmp / "match.ld"
-        script.write_text(match_script(placed, provides))
+        script.write_text(match_script(placed, provides, data))
         elf = tmp / "match.elf"
-        subprocess.run([TOOL + "ld", "-T", str(script), "-o", str(elf),
+        subprocess.run([TOOL + "ld", "--no-check-sections", "-T", str(script), "-o", str(elf),
                         *map(str, objs)], check=True)
         sections = elf_sections(elf)
     results = []
@@ -1284,7 +1660,7 @@ def match(image_path, sources, includes=(), layout_path=LAYOUT, symbols_path=SYM
         addr = placed[name]
         code = sections.get(f".text.{name}", (addr, b""))[1]
         stock = image[addr - LOAD_ADDRESS:addr - LOAD_ADDRESS + len(code)]
-        code_end, _ = function_extent(layout, addr)
+        code_end, _ = function_extent(layout, addr, entries)
         diff = first_difference(code, stock)
         if diff is not None:
             results.append((name, addr, "DIFF", f"first difference at {addr + diff:#x}"))
@@ -1341,6 +1717,8 @@ def main(argv=None):
     g.add_argument("--symbols", type=Path, default=SYMBOLS)
     g.add_argument("--files", type=Path, default=FILES)
     g.add_argument("--classes", type=Path, default=CLASSES)
+    g.add_argument("--libraries", type=Path, default=LIBRARIES,
+                   help="library code linked from the toolchain (a missing file: none)")
     g.add_argument("--relax", action="store_true",
                    help="no fixed .n/.w widths: gas picks them (for code that moves)")
     g.add_argument("--overlay", type=Path, action="append", default=[], metavar="DIR",
@@ -1354,6 +1732,7 @@ def main(argv=None):
     t.add_argument("--relax", action="store_true")
     t.add_argument("--files", type=Path, default=FILES)
     t.add_argument("--classes", type=Path, default=CLASSES)
+    t.add_argument("--libraries", type=Path, default=LIBRARIES)
     t.add_argument("--keep", type=Path, help="leave the moved source and build here")
     b = sub.add_parser("build", help="assemble and link a generated tree")
     b.add_argument("srcdir", type=Path)
@@ -1381,7 +1760,7 @@ def main(argv=None):
         try:
             stats = generate(args.image, args.outdir, args.layout, args.symbols,
                              files_path=args.files, relax=args.relax, overlays=args.overlay,
-                             classes_path=args.classes,
+                             classes_path=args.classes, libraries_path=args.libraries,
                              version=args.version)
         except ValueError as e:
             sys.exit(str(e))
@@ -1424,7 +1803,7 @@ def main(argv=None):
             pads[int(addr, 16)] = int(n, 0)
         try:
             count, errors = shift_test(args.image, pads, args.relax, args.keep, args.files,
-                                       args.classes)
+                                       args.classes, args.libraries)
         except subprocess.CalledProcessError as e:
             sys.exit(f"{e.cmd[0]} failed: the moved source does not build")
         except ValueError as e:

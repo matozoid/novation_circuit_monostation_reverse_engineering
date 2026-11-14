@@ -31,6 +31,13 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual([(u.kind, u.start, u.end) for u in out],
                          [("C", 0x100, 0x140), ("D", 0x140, 0x150), ("C", 0x150, 0x200)])
 
+    def test_layout_fixes_add_and_drop_functions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layout, fixes = Path(tmp) / "layout.tsv", Path(tmp) / "fixes.tsv"
+            layout.write_text("C 08000000 08000010\nF 08000002 FUN_08000002\n")
+            fixes.write_text("F 08000000 # scheduled first instruction\nX 08000002\n")
+            self.assertEqual(fwsrc.load_layout(layout, fixes).functions, {0x08000000: "FUN_08000000"})
+
     def test_checked_in_layout_covers_image(self):
         layout = fwsrc.load_layout()
         units = layout.units
@@ -85,6 +92,62 @@ class LayoutTest(unittest.TestCase):
             path.write_text("08000000 FUN_08000000\n")
             with self.assertRaises(ValueError):
                 fwsrc.load_symbols(path)
+
+class LibrariesTest(unittest.TestCase):
+    def test_load_and_script(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "libraries.tsv"
+            path.write_text("file a   libc_nano.a:lib_a-x.o(.text.x .text.y)  # two\n"
+                            "file d@20000010 crtbegin.o(.data)\n"
+                            "at 20000100 libc_nano.a:lib_a-x.o(.bss.z)\n"
+                            "symbol s_start a\nsymbol s_ram 20000200\n")
+            libs = fwsrc.load_libraries(path, ["a", "b", "d"])
+            self.assertEqual(libs.files["a"], (None, [("libc_nano.a:lib_a-x.o",
+                                                       [".text.x", ".text.y"])]))
+            self.assertEqual(libs.files["d"][0], 0x20000010)
+            self.assertEqual(libs.symbols, {"s_start": "a", "s_ram": 0x20000200})
+            script = fwsrc.linker_script(
+                [(0x0800C000, 0x0800C010, "a"), (0x0800C010, 0x0800C020, "b"),
+                 (0x0800C020, 0x0800C024, "d")], libraries=libs)
+            # one KEEP per section, in order; d runs from RAM, loaded after .text
+            self.assertLess(script.index("KEEP(*/libc_nano.a:lib_a-x.o(.text.x))"),
+                            script.index("KEEP(*/libc_nano.a:lib_a-x.o(.text.y))"))
+            self.assertIn(".d 0x20000010 : AT(LOADADDR(.text) + SIZEOF(.text))", script)
+            self.assertIn(".ram_20000100 0x20000100 (NOLOAD)", script)
+            self.assertIn("s_start = .;", script)
+            self.assertIn("/DISCARD/", script)
+            with self.assertRaisesRegex(ValueError, "not files.tsv files: a"):
+                fwsrc.load_libraries(path, ["b", "d"])
+            path.write_text("file a lib_a-x.o(.text)\n")      # no archive
+            with self.assertRaisesRegex(ValueError, ":1: bad library line"):
+                fwsrc.load_libraries(path)
+        self.assertEqual(fwsrc.load_libraries(Path(tmp) / "absent.tsv").files, {})
+
+    def test_sources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "libraries.tsv"
+            path.write_text("source usb_core.o usb/Libraries/src/usb_core.c\n"
+                            "cflag -DUSE_DEVICE_MODE\ncflag -Iusb/Libraries/inc\n"
+                            "file a usb_core.o(.text.f.isra.1)\n"
+                            "export usb_core.o f.isra.1 f\nexport usb_core.o g\n")
+            libs = fwsrc.load_libraries(path, ["a"])
+            self.assertEqual(libs.sources, {"usb_core.o": "usb/Libraries/src/usb_core.c"})
+            self.assertEqual(libs.cflags, ["-DUSE_DEVICE_MODE", "-Iusb/Libraries/inc"])
+            self.assertEqual(libs.exports, [("usb_core.o", "f.isra.1", "f"),
+                                            ("usb_core.o", "g", "g")])
+            self.assertEqual(fwsrc.library_pattern("usb_core.o"), "*/st/usb_core.o")
+            script = fwsrc.linker_script([(0x0800C000, 0x0800C010, "a")], libraries=libs)
+            self.assertIn("KEEP(*/st/usb_core.o(.text.f.isra.1))", script)
+            for bad in ["file a other.o(.text)",            # object without a source line
+                        "source x.o not-a-package-path",
+                        "cflag -o/tmp/out"]:
+                path.write_text(bad + "\n")
+                with self.assertRaisesRegex(ValueError, ":1: bad library line"):
+                    fwsrc.load_libraries(path)
+            path.write_text("export x.o f\n")
+            with self.assertRaisesRegex(ValueError, "without a source line: x.o"):
+                fwsrc.load_libraries(path)
+
 
 class OverlayTest(unittest.TestCase):
     def write(self, tmp, toml):
@@ -275,18 +338,32 @@ class Overlay800Test(unittest.TestCase):
         self.assertEqual(status["note_sink_note_off"], (0x080189BA, "MATCH"))
         self.assertEqual(status["not_stock"], (None, "EXTRA"))
 
+    @unittest.skipUnless(HAVE_REFERENCE_CC, "reference compiler not installed (tools/fetch_toolchain.py)")
+    def test_match_ends_at_named_entry(self):
+        """A function ends at the next named entry, even one Ghidra folded into it: stock
+        midi_ctl_song_position (0x08018568) is followed by its this-adjusting thunk in one code
+        unit."""
+        src = self.tmp / "m.cpp"
+        src.write_text("struct T { virtual void a(); virtual void b(); virtual void c();\n"
+                       "           virtual void song_position() = 0; };\n"
+                       "struct M { char pad[36]; T *t; void sp() asm(\"midi_ctl_song_position\"); };\n"
+                       "void M::sp() { t->song_position(); }\n")
+        results, _ = fwsrc.match(self.tmp / "stock.bin", [src])
+        status = {name: (addr, s) for name, addr, s, _ in results}
+        self.assertEqual(status["midi_ctl_song_position"], (0x08018568, "MATCH"))
+
     @unittest.skipUnless(HAVE_GCC or HAVE_REFERENCE_CC, "arm-none-eabi-gcc not installed")
     def test_match_resolves_stock_calls(self):
         """A call to another stock function links to its stock address, so a wrapper that
         only tail-calls matches the stock bytes only if the stock does the same."""
         src = self.tmp / "w.c"
-        src.write_text("void usb_midi_tx_watchdog_body(void);\n"
-                       "void main(void) { usb_midi_tx_watchdog_body(); }\n")
+        src.write_text("void usb_midi_tx_watchdog(void);\n"
+                       "void main(void) { usb_midi_tx_watchdog(); }\n")
         results, sections = fwsrc.match(self.tmp / "stock.bin", [src])
         (name, addr, _, _), = results
         self.assertEqual((name, addr), ("main", 0x0800C2D0))
         code = sections[".text.main"][1]
-        # b.w to usb_midi_tx_watchdog_body (0x0801BDE4), resolved by PROVIDE
+        # b.w to usb_midi_tx_watchdog (0x0801BDDC), resolved by PROVIDE
         self.assertEqual(len(code), 4)
         hi, lo = int.from_bytes(code[:2], "little"), int.from_bytes(code[2:], "little")
         self.assertEqual(hi >> 11, 0x1E)
@@ -343,7 +420,7 @@ class RoundTrip800Test(unittest.TestCase):
             # the check notices a reference that did not follow
             gen = fwsrc.plan_source(tmp / "stock.bin", relax=True, pads=pads, markers=True)
             gen.emit()
-            amap = fwsrc.address_map(tmp / "src" / "firmware.elf")
+            amap = fwsrc.address_map(tmp / "src" / "firmware.elf", fwsrc.library_names(gen))
             moved = bytearray((tmp / "src" / "firmware.bin").read_bytes())
             moved[amap[0x0800C004] - fwsrc.LOAD_ADDRESS] ^= 4       # reset vector
         errors = fwsrc.shift_check(gen, bytes(moved), amap)
@@ -363,26 +440,28 @@ class RoundTrip800Test(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             (tmp / "stock.bin").write_bytes(image)
-            files, none = tmp / "files.tsv", tmp / "no-classes.tsv"
+            # no classes, no libraries: the test's files.tsv does not have their files
+            files, none = tmp / "files.tsv", tmp / "none.tsv"
             # one function per file, f1 at 2 mod 4: the fixed and relaxed builds stay identical
             files.write_text("080114c0 080114e6 f0\n080114ee 08011508 f2\n"
                              "080114e6 080114ee f1\n")
             for relax in (False, True):
                 fwsrc.generate(tmp / "stock.bin", tmp / "src", files_path=files, relax=relax,
-                               classes_path=none)
+                               classes_path=none, libraries_path=none)
                 self.assertTrue((tmp / "src" / "f1.s").exists())
                 built = fwsrc.build(tmp / "src", tmp / "out.bin")
                 self.assertIsNone(fwsrc.first_difference(built, image))
             # a narrow branch (beq at 0x080126F0) would cross into the file
             files.write_text("080126f2 08012708 t\n")
             with self.assertRaisesRegex(ValueError, "reference across files: 0x080126f0"):
-                fwsrc.plan_source(tmp / "stock.bin", files_path=files, classes_path=none)
+                fwsrc.plan_source(tmp / "stock.bin", files_path=files, classes_path=none,
+                                  libraries_path=none)
             # functions with literal loads in files that start or end at 2 mod 4 (0x080179A6):
             # their loads are spelled out from the file's start, so both builds stay identical
             files.write_text("0801797c 080179a6 t\n080179a6 080179dc u\n")
             for relax in (False, True):
                 fwsrc.generate(tmp / "stock.bin", tmp / "src", files_path=files, relax=relax,
-                               classes_path=none)
+                               classes_path=none, libraries_path=none)
                 self.assertIn(".Lb_080179a6:", (tmp / "src" / "u.s").read_text())
                 built = fwsrc.build(tmp / "src", tmp / "out.bin")
                 self.assertIsNone(fwsrc.first_difference(built, image))
