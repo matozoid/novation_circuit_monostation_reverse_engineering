@@ -1,6 +1,6 @@
 """Tests for tools/patchbank.py: the 136-byte Mono Station bank/pack reader.
 
-Uses the real bank in Roboo.monostationpack (repo root) when present; the
+Uses the real bank in private/Roboo.monostationpack (private repo) when present; the
 structural tests run on a synthetic bank otherwise.
 """
 import sys
@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import patchbank  # noqa: E402
 
-PACK = ROOT / "Roboo.monostationpack"
-FIRMWARE_BIN = ROOT / "firmware" / "monostation-firmware-800.bin"
+PACK = ROOT / "private" / "Roboo.monostationpack"
+FIRMWARE_BIN = ROOT / "private" / "firmware" / "monostation-firmware-800.bin"
 FW_BASE = 0x0800C000
 PARAM_TABLE = 0x0802A62A           # 8 bytes per firmware parameter id
 
@@ -170,7 +170,7 @@ class ParamDecodeTest(unittest.TestCase):
         self.assertEqual(len(d), len(patchbank.PARAMS))
 
 
-@unittest.skipUnless(PACK.exists(), "Roboo.monostationpack absent")
+@unittest.skipUnless(PACK.exists(), "private/Roboo.monostationpack absent")
 class EnumTest(unittest.TestCase):
     def test_category_names(self):
         self.assertEqual(len(patchbank.CATEGORIES), 15)

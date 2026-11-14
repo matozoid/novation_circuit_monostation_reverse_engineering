@@ -9,7 +9,7 @@ proved by compiling to the stock bytes (*Matching*).
 
 The firmware is Novation's code. Generated assembly and converted C/C++ are **never
 checked in** (the repo is public): converted functions live in a git-ignored directory.
-Each user generates it locally from their own `firmware/*.syx`/`.bin` into `build/`
+Each user generates it locally from their own `private/firmware/*.syx`/`.bin` into `build/`
 (git-ignored). The repo holds only the generator and metadata:
 
 | File | What it is |
@@ -26,9 +26,9 @@ Each user generates it locally from their own `firmware/*.syx`/`.bin` into `buil
 
 ## Usage
 
-    python3 tools/syx2bin.py firmware/monostation-firmware-800.syx firmware/monostation-firmware-800.bin
-    python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/fwsrc
-    python3 tools/fwsrc.py build build/fwsrc build/fwsrc/firmware.bin --compare firmware/monostation-firmware-800.bin
+    python3 tools/syx2bin.py private/firmware/monostation-firmware-800.syx private/firmware/monostation-firmware-800.bin
+    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/fwsrc
+    python3 tools/fwsrc.py build build/fwsrc build/fwsrc/firmware.bin --compare private/firmware/monostation-firmware-800.bin
 
 Output: one `<name>.s` per file (section `.text.<name>`) and `firmware.ld`
 (`. = 0x0800C000`, the sections in address order, plus an `ASSERT` that `image_header`
@@ -44,7 +44,7 @@ Build flags (`--fatal-warnings`): `-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mf
 An overlay is checked-in code of ours that replaces stock functions by name. It works on
 the generated tree, so features stay out of the generated source:
 
-    python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/fwsrc --overlay overlays/hello
+    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/fwsrc --overlay overlays/hello
     python3 tools/fwsrc.py build build/fwsrc build/fwsrc/firmware.bin
     python3 tools/bin2syx.py build/fwsrc/firmware.bin out.syx --version 801
 
@@ -132,7 +132,7 @@ To regenerate the layout after Ghidra changes:
 
 `match` checks converted functions without building the image:
 
-    python3 tools/fwsrc.py match firmware/monostation-firmware-800.bin build/cpp/*.cpp --diff
+    python3 tools/fwsrc.py match private/firmware/monostation-firmware-800.bin private/cpp/*.cpp --diff
 
 It compiles each `.c`/`.cpp` with the overlay flags plus `-ffunction-sections
 -fdata-sections -fno-reorder-functions`, so every function gets its own `.text.<name>`

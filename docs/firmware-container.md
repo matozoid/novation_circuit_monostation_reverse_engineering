@@ -34,7 +34,7 @@ Encoding `0xFF` fill produces `7f` × 37. No per-block address or checksum has b
 
 ## Decoded image
 
-`tools/syx2bin.py firmware/monostation-firmware-800.syx out.bin` → 129,824 bytes.
+`tools/syx2bin.py private/firmware/monostation-firmware-800.syx out.bin` → 129,824 bytes.
 `tools/bin2syx.py out.bin out.syx --version 800` reverses it. The output is byte-identical to the stock file, and the same holds for Peak 352 with `--product-id "00 7e"`. Images that aren't a multiple of 32 bytes are padded with `FF` (erased flash), and the padding is included in the checksum.
 
 - ARM Cortex-M Thumb-2. Vector table at offset 0: initial SP `0x10010000` (top of 64 KB CCM RAM at `0x10000000`, which points to an STM32F4-class part), Reset `0x08025e61`.

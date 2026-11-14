@@ -4,8 +4,9 @@
 circuit-mono-station-midi-parameters-v1.pdf
 circuit-mono-station-ug-en-v1-2.pdf
 
-# Extracted / decoded firmware blobs
-firmware/
+# Copyrighted files (firmware images, converted C++, patch/session data): a clone of a
+# private repo, never committed here
+private/
 
 .idea/
 
@@ -14,8 +15,6 @@ __pycache__/
 # Ghidra project DB (regenerate with tools/ghidra/import_firmware.sh)
 ghidra-project/
 
-Roboo.monostationpack
-YBC-Flippin-Grooves-Circuit.zip
 
 # Python venv for device tools (mido + python-rtmidi)
 .venv/

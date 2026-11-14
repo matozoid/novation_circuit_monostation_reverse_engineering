@@ -8,7 +8,7 @@ bytes) after checking that the original bytes are what the patch expects.
 
 Needs GNU binutils for ARM (arm-none-eabi-as/ld/objcopy/readelf); everything else is stdlib.
 Example:
-  python3 tools/fwpatch.py patches/hello firmware/monostation-firmware-800.bin out.bin --syx out.syx
+  python3 tools/fwpatch.py patches/hello private/firmware/monostation-firmware-800.bin out.bin --syx out.syx
 """
 
 import argparse

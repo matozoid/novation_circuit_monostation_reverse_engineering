@@ -11,7 +11,7 @@ import fwpatch  # noqa: E402
 import fwsrc  # noqa: E402
 import fwsyx  # noqa: E402
 
-FIRMWARE_800 = ROOT / "firmware" / "monostation-firmware-800.syx"
+FIRMWARE_800 = ROOT / "private" / "firmware" / "monostation-firmware-800.syx"
 HELLO = ROOT / "overlays" / "hello"
 HELLO_C = ROOT / "overlays" / "hello_c"
 RANDOMISE = ROOT / "overlays" / "randomise"
@@ -187,7 +187,7 @@ class OverlayTest(unittest.TestCase):
             fwsrc.apply_overlays(image, [b], 10000)
 
 
-@unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not present")
+@unittest.skipUnless(FIRMWARE_800.exists(), "private/firmware/monostation-firmware-800.syx not present")
 @unittest.skipUnless(HAVE_BINUTILS, "arm-none-eabi binutils not installed")
 class Overlay800Test(unittest.TestCase):
     def setUp(self):
@@ -380,7 +380,7 @@ class Overlay800Test(unittest.TestCase):
             fwsrc.plan_source(self.tmp / "stock.bin", overlays=[ov._replace(replace=["no_such"])])
 
 
-@unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not present")
+@unittest.skipUnless(FIRMWARE_800.exists(), "private/firmware/monostation-firmware-800.syx not present")
 @unittest.skipUnless(HAVE_BINUTILS, "arm-none-eabi binutils not installed")
 class RoundTrip800Test(unittest.TestCase):
     def test_generate_build_identical(self):

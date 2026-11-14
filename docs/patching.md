@@ -3,7 +3,7 @@
 `tools/fwpatch.py` builds a patched firmware image from assembly source and a declarative hook list. Patches are source, not hex blobs.
 
 ```sh
-python3 tools/fwpatch.py patches/<name> firmware/monostation-firmware-800.bin out.bin --syx out.syx
+python3 tools/fwpatch.py patches/<name> private/firmware/monostation-firmware-800.bin out.bin --syx out.syx
 ```
 
 It needs GNU binutils for ARM (`apt install binutils-arm-none-eabi`: `as`, `ld`, `objcopy`, `readelf`). If capstone is installed, it also prints a disassembly of each branch site before and after. The tests in `tests/test_fwpatch.py` skip the build tests when binutils or the firmware is missing.

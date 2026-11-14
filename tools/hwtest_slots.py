@@ -39,7 +39,7 @@ from pathlib import Path
 import sessionsyx
 
 ROOT = Path(__file__).resolve().parent.parent
-FIRMWARE_BIN = ROOT / "firmware" / "monostation-firmware-800.bin"
+FIRMWARE_BIN = ROOT / "private" / "firmware" / "monostation-firmware-800.bin"
 LOAD_BASE = 0x0800C000
 INITIAL_PATCH_ADDR = 0x08028F6B
 

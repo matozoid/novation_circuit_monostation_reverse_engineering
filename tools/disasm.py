@@ -2,7 +2,7 @@
 """Quick Thumb-2 disassembly of a decoded image around an address.
 
 Optional analysis helper (not part of the core stdlib-only tooling); needs `pip install capstone`.
-Example: python3 tools/disasm.py firmware/monostation-firmware-800.bin 0x08025e61 -n 20
+Example: python3 tools/disasm.py private/firmware/monostation-firmware-800.bin 0x08025e61 -n 20
 """
 
 import argparse

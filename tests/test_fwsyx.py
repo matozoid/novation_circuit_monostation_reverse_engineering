@@ -8,9 +8,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import fwsyx  # noqa: E402
 
-FIRMWARE_800 = ROOT / "firmware" / "monostation-firmware-800.syx"
+FIRMWARE_800 = ROOT / "private" / "firmware" / "monostation-firmware-800.syx"
 # Novation Peak build 352 (Components catalogue id 10): same container family, used as a second data point.
-PEAK_352 = ROOT / "firmware" / "peak-firmware-352.syx"
+PEAK_352 = ROOT / "private" / "firmware" / "peak-firmware-352.syx"
 
 
 class ContainerChecks:
@@ -46,7 +46,7 @@ class ContainerChecks:
         self.assertEqual(in_image_order[-1][2], self.image[-1] >> (8 - fwsyx.SPARE_BITS))
 
 
-@unittest.skipUnless(PEAK_352.exists(), "firmware/peak-firmware-352.syx not downloaded")
+@unittest.skipUnless(PEAK_352.exists(), "private/firmware/peak-firmware-352.syx not downloaded")
 class Peak352Test(ContainerChecks, unittest.TestCase):
     path = PEAK_352
     product_id = (0x00, 0x7E)
@@ -82,7 +82,7 @@ class EncodeFirmwareTest(unittest.TestCase):
                                     fwsyx.CMD_DATA_FIRST, fwsyx.CMD_TRAILER])
 
 
-@unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not extracted")
+@unittest.skipUnless(FIRMWARE_800.exists(), "private/firmware/monostation-firmware-800.syx not extracted")
 class Firmware800Test(ContainerChecks, unittest.TestCase):
     path = FIRMWARE_800
     product_id = fwsyx.MONOSTATION_PRODUCT_ID

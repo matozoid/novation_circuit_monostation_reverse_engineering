@@ -1,6 +1,6 @@
 # Classes for tools/fwsrc.py: `addr class name`. The function at addr (named name in
 # symbols.tsv), up to the next function entry, goes to <class>.s instead of its files.tsv
-# file, and its C++ conversion to build/cpp/<class>.cpp (docs/source-build.md *Classes*).
+# file, and its C++ conversion to private/cpp/<class>.cpp (docs/source-build.md *Classes*).
 # Stock code interleaves classes inside a compile unit, so a class file holds several
 # sections, which the linker puts back in stock order.
 # Class names come from the vtables (vt_<class> in symbols.tsv); a function is listed when

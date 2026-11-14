@@ -1,8 +1,8 @@
 # Bootloader 740
 
-Static analysis of the bootloader dumped from a unit with patch memread (`firmware/bootloader-740.bin`, 48 KiB at `0x08000000`, SHA-256 `3df50875dd055853c5e154a397bb43a17d0427417273ff8b4cd54b77cb5a12af`). Code and data end at `0x08007003`; the rest is `FF`.
+Static analysis of the bootloader dumped from a unit with patch memread (`private/firmware/bootloader-740.bin`, 48 KiB at `0x08000000`, SHA-256 `3df50875dd055853c5e154a397bb43a17d0427417273ff8b4cd54b77cb5a12af`). Code and data end at `0x08007003`; the rest is `FF`.
 
-Ghidra: `GHIDRA_HOME=… tools/ghidra/import_firmware.sh firmware/bootloader-740.bin ghidra-project 0x08000000` adds it to the same project as program `bootloader-740.bin`. The post-scripts work on it with `-process bootloader-740.bin`. Function names below are Ghidra's defaults.
+Ghidra: `GHIDRA_HOME=… tools/ghidra/import_firmware.sh private/firmware/bootloader-740.bin ghidra-project 0x08000000` adds it to the same project as program `bootloader-740.bin`. The post-scripts work on it with `-process bootloader-740.bin`. Function names below are Ghidra's defaults.
 
 ## Image
 

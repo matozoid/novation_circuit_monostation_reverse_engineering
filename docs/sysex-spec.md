@@ -93,7 +93,7 @@ The YBC "Big City Flippin' Grooves" pack ships a `.syx` bank plus 64 "Patch Deta
 
 ## Reference data
 
-- `Roboo.monostationpack` (repo root) — a real 64-patch bank: slots 0–31 named (bass1–4, drum one-shots, pad1–4, key1–4, …), 32–63 = `Initial Patch`. Primary corroboration for the 136-byte layout above.
+- `private/Roboo.monostationpack` (private repo, `private/README.md`) — a real 64-patch bank: slots 0–31 named (bass1–4, drum one-shots, pad1–4, key1–4, …), 32–63 = `Initial Patch`. Primary corroboration for the 136-byte layout above.
 - Firmware 800 embeds two defaults in its image: `Classic Mono` (`0x08028868`) and `Initial Patch` (`0x08028F6B`), each a bare 126-byte patch (the 136-byte message without its 9-byte header and `F7`), name first. `Classic Mono` is the patch a blank session gets: `FUN_08018ca4` copies it to session offset `0x15F5C`. `Initial Patch` is the "empty slot" reference: at boot the firmware reads 128 stored patches from external flash (block `n/8 + 2`, offset `(n % 8) × 512`, i.e. from `0x2000`) and builds a bitmask of slots that differ from it, and `FUN_0801b4e0` updates that mask when a patch is saved. The firmware image contains **only** these templates, not a factory bank: the factory patches are in the external flash's patch store, outside the update image.
 
 ### Patch store: 128 slots, 64 reachable from the panel

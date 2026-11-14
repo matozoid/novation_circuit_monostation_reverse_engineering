@@ -27,7 +27,7 @@ flag >> 6), the same split the firmware uses for its CC + LSB-CC MIDI output;
 see PARAMS and decode_params.
 
 Usage:
-    python3 tools/patchbank.py list Roboo.monostationpack
+    python3 tools/patchbank.py list private/Roboo.monostationpack
     python3 tools/patchbank.py list patches.syx
     python3 tools/patchbank.py show patches.syx 24      # by slot index
     python3 tools/patchbank.py show patches.syx Acid     # or by name

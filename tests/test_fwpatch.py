@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import fwpatch  # noqa: E402
 import fwsyx  # noqa: E402
 
-FIRMWARE_800 = ROOT / "firmware" / "monostation-firmware-800.syx"
+FIRMWARE_800 = ROOT / "private" / "firmware" / "monostation-firmware-800.syx"
 HAVE_BINUTILS = all(shutil.which(f"arm-none-eabi-{tool}") for tool in ("as", "ld", "objcopy", "readelf"))
 
 
@@ -52,7 +52,7 @@ class BranchEncodingTest(unittest.TestCase):
         self.assertEqual(fwpatch.version_bcd(1234), b"\x34\x12")
 
 
-@unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not present")
+@unittest.skipUnless(FIRMWARE_800.exists(), "private/firmware/monostation-firmware-800.syx not present")
 @unittest.skipUnless(HAVE_BINUTILS, "arm-none-eabi binutils not installed")
 class BuildTest(unittest.TestCase):
     TOML = """

@@ -107,7 +107,7 @@ import sys; sys.path.insert(0, 'tools'); import sessionsyx
 data = open(sys.argv[1], 'rb').read()
 _, s = sessionsyx.decode_transfer(data) if data[:1] == b'\xF0' else (0, data)
 first = 0 if len(s) == 0x10000 else 64          # slots-64-127.bin holds 64..127
-init = open('firmware/monostation-firmware-800.bin', 'rb').read()[0x08028F6B - 0x0800C000:][:126]
+init = open('private/firmware/monostation-firmware-800.bin', 'rb').read()[0x08028F6B - 0x0800C000:][:126]
 for i in range(len(s) // 512):
     p = s[i * 512:i * 512 + 126]
     kind = 'erased FF' if p == b'\xFF' * 126 else 'Initial Patch' if p == init else 'data'

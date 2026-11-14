@@ -15,7 +15,7 @@ and switch it on. The script waits for the bootloader port.
 MIDI I/O uses mido + python-rtmidi (imported in main); the helpers are stdlib-only.
 
 Usage:
-    python3 tools/flash.py firmware/monostation-firmware-800.syx [--port NAME] [--yes]
+    python3 tools/flash.py private/firmware/monostation-firmware-800.syx [--port NAME] [--yes]
 """
 import argparse
 import struct

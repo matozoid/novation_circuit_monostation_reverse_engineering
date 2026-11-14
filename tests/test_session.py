@@ -1,7 +1,7 @@
 """Tests for tools/session.py: the .monostationsession image layout.
 
 Synthetic images always run; the init-image test uses
-firmware/session_32.monostationsession (git-ignored) when present.
+private/firmware/session_32.monostationsession (git-ignored) when present.
 """
 import sys
 import unittest
@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import patchbank  # noqa: E402
 import session  # noqa: E402
 
-SESSION_32 = ROOT / "firmware" / "session_32.monostationsession"
+SESSION_32 = ROOT / "private" / "firmware" / "session_32.monostationsession"
 
 
 def make_image():
@@ -116,7 +116,7 @@ class LaneMapTest(unittest.TestCase):
         self.assertEqual(mod & set(session.LANE_IDS[0]), mod - osc2)
 
 
-FIRMWARE_BIN = ROOT / "firmware" / "monostation-firmware-800.bin"
+FIRMWARE_BIN = ROOT / "private" / "firmware" / "monostation-firmware-800.bin"
 FW_BASE = 0x0800C000
 
 

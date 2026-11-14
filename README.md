@@ -104,27 +104,27 @@ firmware (build 752), see the quick start below.
 - The stock firmware 1.2, `monostation-firmware-800.syx`. It ships inside Novation
   Components 1.72.5 (`resources/app.asar`; on Windows the installer holds
   `Components-1.72.5-full.nupkg`, which holds `lib/net45/resources/app.asar`). Unpack it
-  with an asar extractor and copy the file to `firmware/`. Don't run the installer to get
+  with an asar extractor and copy the file to `private/firmware/`. Don't run the installer to get
   it; unpack it with `7z`.
 
 ## Quick start
 
 Build the modded firmware:
 
-    python3 tools/syx2bin.py firmware/monostation-firmware-800.syx firmware/monostation-firmware-800.bin
-    python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/rand --overlay overlays/randomise
+    python3 tools/syx2bin.py private/firmware/monostation-firmware-800.syx private/firmware/monostation-firmware-800.bin
+    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/rand --overlay overlays/randomise
     python3 tools/fwsrc.py build build/rand build/rand/firmware.bin
-    python3 tools/bin2syx.py build/rand/firmware.bin firmware/randomise-750.syx --version 750
+    python3 tools/bin2syx.py build/rand/firmware.bin private/firmware/randomise-750.syx --version 750
 
 For both features (Mutate and live transpose) in one firmware, build 752:
 
-    python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/both --overlay overlays/randomise --overlay overlays/transpose --version 752
+    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/both --overlay overlays/randomise --overlay overlays/transpose --version 752
     python3 tools/fwsrc.py build build/both build/both/firmware.bin
-    python3 tools/bin2syx.py build/both/firmware.bin firmware/mods-752.syx --version 752
+    python3 tools/bin2syx.py build/both/firmware.bin private/firmware/mods-752.syx --version 752
 
-Flash it (or `firmware/mods-752.syx` for both features):
+Flash it (or `private/firmware/mods-752.syx` for both features):
 
-    .venv/bin/python tools/flash.py firmware/randomise-750.syx
+    .venv/bin/python tools/flash.py private/firmware/randomise-750.syx
 
 The flasher checks the file, then waits for the unit's bootloader:
 
@@ -136,7 +136,7 @@ The flasher checks the file, then waits for the unit's bootloader:
 Go back to stock firmware 1.2 at any time: connect the unit to Novation Components and
 accept its firmware update, or flash it the same way:
 
-    .venv/bin/python tools/flash.py firmware/monostation-firmware-800.syx
+    .venv/bin/python tools/flash.py private/firmware/monostation-firmware-800.syx
 
 ## Writing your own mods
 
@@ -147,8 +147,9 @@ stays callable as `stock_<name>`. The Mutate feature is one small C file:
 `overlays/include/firmware.h`. See `docs/source-build.md` (*Overlays*) for the format and
 `docs/source-map.md` for what each stock function does.
 
-Generated source is Novation's code: it stays in the git-ignored `build/` directory.
-Never commit it.
+Generated source is Novation's code: it stays in the git-ignored `build/` directory, and
+the firmware and other copyrighted files in the git-ignored `private/` directory. Never
+commit them.
 
 ## Tools
 
@@ -194,5 +195,5 @@ For modders:
 
     python3 -m unittest discover -s tests -v
 
-Firmware tests skip when `firmware/monostation-firmware-800.syx` is missing; overlay
+Firmware tests skip when `private/firmware/monostation-firmware-800.syx` is missing; overlay
 tests skip without `arm-none-eabi-gcc`.

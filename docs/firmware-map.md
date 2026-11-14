@@ -1,6 +1,6 @@
 # Firmware subsystem map
 
-Addresses are from a **static** scan of the decoded application image (`firmware/monostation-firmware-800.bin`, load base `0x0800C000`): the vector table, word-aligned peripheral-register literals, debug format strings and their literal-pool cross-references, plus spot Thumb-2 disassembly. Entries below are handler entry points or the tightest xref cluster for each subsystem; exact function boundaries are in `docs/source-map.md`. See `docs/hardware.md` for the memory map and MCU.
+Addresses are from a **static** scan of the decoded application image (`private/firmware/monostation-firmware-800.bin`, load base `0x0800C000`): the vector table, word-aligned peripheral-register literals, debug format strings and their literal-pool cross-references, plus spot Thumb-2 disassembly. Entries below are handler entry points or the tightest xref cluster for each subsystem; exact function boundaries are in `docs/source-map.md`. See `docs/hardware.md` for the memory map and MCU.
 
 ## Active interrupt vectors
 

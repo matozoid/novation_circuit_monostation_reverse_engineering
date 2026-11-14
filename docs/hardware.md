@@ -21,7 +21,7 @@ Base `0x08000000`. STM32F4 sector layout: sectors 0–3 = 16 KB, sector 4 = 64 K
 
 | Region | Range | Notes |
 |--------|-------|-------|
-| Bootloader | `0x08000000`–`0x0800BFFF` (48 KB, sectors 0–2) | Not in the firmware file, and an app update never writes it. Dumped from a unit: `firmware/bootloader-740.bin` (`docs/bootloader.md`). Code ends at `0x08007003`; the rest is erased. |
+| Bootloader | `0x08000000`–`0x0800BFFF` (48 KB, sectors 0–2) | Not in the firmware file, and an app update never writes it. Dumped from a unit: `private/firmware/bootloader-740.bin` (`docs/bootloader.md`). Code ends at `0x08007003`; the rest is erased. |
 | Application | `0x0800C000`–`0x0802BB20` (129,824 bytes) | The decoded image. Occupies sector 3 (16 KB @ `0x0800C000`), sector 4 (64 KB @ `0x08010000`) and part of sector 5 (128 KB @ `0x08020000`). |
 | Free | `0x0802BB20`–`0x0807FFFF` | Erased (`FF`) on a unit (read from a unit). Patch code goes here (`docs/patching.md`). |
 

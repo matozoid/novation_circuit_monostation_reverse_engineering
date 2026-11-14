@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import flash  # noqa: E402
 import fwsyx  # noqa: E402
 
-FIRMWARE_800 = ROOT / "firmware" / "monostation-firmware-800.syx"
+FIRMWARE_800 = ROOT / "private" / "firmware" / "monostation-firmware-800.syx"
 
 
 def fake_image(sp=0x10010000, reset=0x0800C101, version=b"\x00\x08", size=0x400):
@@ -82,7 +82,7 @@ class CheckTest(unittest.TestCase):
         image[0x1AC:0x1B0] = b"XXXX"
         self.rejects(fake_syx(bytes(image)), "MAIN")
 
-    @unittest.skipUnless(FIRMWARE_800.exists(), "firmware/monostation-firmware-800.syx not present")
+    @unittest.skipUnless(FIRMWARE_800.exists(), "private/firmware/monostation-firmware-800.syx not present")
     def test_stock_800(self):
         data = FIRMWARE_800.read_bytes()
         packets, info = flash.check_syx(data)

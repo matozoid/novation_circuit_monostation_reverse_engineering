@@ -1,7 +1,7 @@
 """Tests for tools/sessionsyx.py: the session SysEx transfer codec.
 
 Synthetic streams always run; the real-session test uses
-firmware/session_32.monostationsession (git-ignored) when present.
+private/firmware/session_32.monostationsession (git-ignored) when present.
 """
 import os
 import sys
@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import sessionsyx  # noqa: E402
 
-SESSION_32 = ROOT / "firmware" / "session_32.monostationsession"
+SESSION_32 = ROOT / "private" / "firmware" / "session_32.monostationsession"
 
 
 class BlockTest(unittest.TestCase):

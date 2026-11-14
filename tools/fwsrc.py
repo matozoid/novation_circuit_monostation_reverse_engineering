@@ -6,9 +6,9 @@ checked in. What is checked in is the metadata in src/: layout.tsv (code/data ma
 exported from Ghidra with tools/ghidra/ExportLayout.java), symbols.tsv (names) and
 files.tsv (which address ranges become which .s file; the rest goes into gap_*.s).
 
-    python3 tools/fwsrc.py generate firmware/monostation-firmware-800.bin build/fwsrc
+    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/fwsrc
     python3 tools/fwsrc.py build build/fwsrc build/fwsrc/firmware.bin
-    cmp build/fwsrc/firmware.bin firmware/monostation-firmware-800.bin
+    cmp build/fwsrc/firmware.bin private/firmware/monostation-firmware-800.bin
     python3 tools/fwsrc.py coverage        # functions named and listed in docs/source-map.md
     python3 tools/fwsrc.py generate IMAGE build/fwsrc --overlay overlays/hello   # our code
 

@@ -2,7 +2,7 @@
 """Static subsystem map of the Mono Station image: active interrupt vectors,
 peripheral-register literals, and text-like strings. Read-only, stdlib only.
 
-Usage: python3 tools/fwmap.py firmware/monostation-firmware-800.bin [xref_addr]
+Usage: python3 tools/fwmap.py private/firmware/monostation-firmware-800.bin [xref_addr]
 The optional second arg lists literal-pool cross-references to that address.
 Feeds docs/firmware-map.md."""
 import struct, sys, re, collections
